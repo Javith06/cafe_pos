@@ -230,7 +230,7 @@ return (
 return (
 <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }}>
 <ImageBackground
-  source={require("../../assets/images/11.jpg")}
+  source={require("../../assets/images/a13.jpg")}
   style={styles.background}
   resizeMode="cover"
 >

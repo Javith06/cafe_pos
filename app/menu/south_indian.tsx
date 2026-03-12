@@ -308,7 +308,7 @@ export default function SouthIndian() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }}>
       <ImageBackground
-        source={require("../../assets/images/003.jpg")}
+        source={require("../../assets/images/a13.jpg")}
         style={{ width, height }}
         resizeMode="cover"
       >

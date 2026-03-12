@@ -116,7 +116,7 @@ export default function CartScreen() {
   return (
     <View style={{ flex: 1 }}>
       <ImageBackground
-        source={require("../assets/images/11.jpg")}
+        source={require("../assets/images/a13.jpg")}
         style={{ width: SCREEN_W, height: SCREEN_H }}
         resizeMode="cover"
       >
