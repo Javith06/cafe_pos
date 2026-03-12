@@ -3,18 +3,19 @@ import { clearCart } from "./cartStore";
 import { clearOrderContext, getOrderContext } from "./orderContextStore";
 import { clearTable } from "./tableStatusStore";
 
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 
 import {
-  ActivityIndicator,
-  Dimensions,
-  ImageBackground,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Dimensions,
+    ImageBackground,
+    Pressable,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from "react-native";
 
 export default function PaymentScreen() {
@@ -233,6 +234,7 @@ export default function PaymentScreen() {
                 ]}
                 onPress={handleConfirm}
               >
+                <Ionicons name="checkmark-circle-outline" size={24} color="#052b12" style={{marginRight: 8}} />
                 <Text style={styles.confirmText}>Confirm Payment</Text>
               </Pressable>
             </>
@@ -293,12 +295,15 @@ const styles = StyleSheet.create({
 
   methodBtn: {
     padding: 12,
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(17, 24, 39, 0.75)",
     borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
 
   methodActive: {
-    backgroundColor: "#22c55e",
+    backgroundColor: "rgba(34,197,94,0.85)",
+    borderColor: "rgba(74,222,128,0.5)",
   },
 
   methodText: {
@@ -311,16 +316,18 @@ const styles = StyleSheet.create({
   },
 
   label: {
-    color: "#fff",
+    color: "#e5e7eb",
     marginBottom: 5,
   },
 
   input: {
-    backgroundColor: "rgba(255,255,255,0.15)",
+    backgroundColor: "rgba(17, 24, 39, 0.75)",
     color: "#fff",
     padding: 10,
     borderRadius: 8,
     marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
 
   tenderRow: {
@@ -331,10 +338,12 @@ const styles = StyleSheet.create({
   },
 
   tenderBtn: {
-    backgroundColor: "#444",
+    backgroundColor: "rgba(17, 24, 39, 0.75)",
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
 
   tenderText: {
@@ -353,10 +362,12 @@ const styles = StyleSheet.create({
   },
 
   confirmBtn: {
-    backgroundColor: "#22c55e",
+    flexDirection: "row",
+    backgroundColor: "rgba(34,197,94,0.85)",
     padding: 15,
     borderRadius: 12,
     alignItems: "center",
+    justifyContent: "center",
   },
 
   disabledBtn: {

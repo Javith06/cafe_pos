@@ -1,4 +1,4 @@
-import { BlurView } from "expo-blur";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useMemo } from "react";
 import {
@@ -10,11 +10,11 @@ import {
   View,
 } from "react-native";
 
-import { useCartStore, CartItem } from "../app/cartStore";
+import { OrderItem, useActiveOrdersStore } from "../app/activeOrdersStore";
+import { CartItem, useCartStore } from "../app/cartStore";
+import { useOrderContextStore } from "../app/orderContextStore";
 import { getNextOrderId } from "../app/orderIdStore";
 import { setTableActive } from "../app/tableStatusStore";
-import { useActiveOrdersStore, OrderItem } from "../app/activeOrdersStore";
-import { useOrderContextStore } from "../app/orderContextStore";
 
 interface CartSidebarProps {
   width?: DimensionValue;
@@ -25,10 +25,13 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
 
   // Zustand Hooks
   const orderContext = useOrderContextStore((state) => state.currentOrder);
-  const cart = useCartStore((state) => state.cart);
-  const addToCartGlobal = useCartStore((state) => state.addToCartGlobal);
+  const carts = useCartStore((state) => state.carts);
+  const currentContextId = useCartStore((state) => state.currentContextId);
   const removeFromCartGlobal = useCartStore((state) => state.removeFromCartGlobal);
+  const addToCartGlobal = useCartStore((state) => state.addToCartGlobal);
   const clearCart = useCartStore((state) => state.clearCart);
+
+  const cart = currentContextId ? carts[currentContextId] || [] : [];
 
   const activeOrders = useActiveOrdersStore((state) => state.activeOrders);
   const appendOrder = useActiveOrdersStore((state) => state.appendOrder);
@@ -157,9 +160,15 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
                     <Text style={[styles.name, isSent && styles.sentName]}>{item.name}</Text>
                     {isSent ? (
-                      <Text style={styles.sentBadge}> ✓ SENT</Text>
+                      <View style={styles.badgeRow}>
+                        <Ionicons name="checkmark-circle" size={14} color="#a7f3d0" />
+                        <Text style={styles.sentBadgeText}>SENT</Text>
+                      </View>
                     ) : (
-                      <Text style={styles.newBadge}> ● NEW</Text>
+                      <View style={styles.badgeRow}>
+                        <Ionicons name="ellipse" size={10} color="#60a5fa" />
+                        <Text style={styles.newBadgeText}>NEW</Text>
+                      </View>
                     )}
                   </View>
 
@@ -183,7 +192,7 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
                       style={styles.actionBtn}
                       onPress={() => removeFromCartGlobal(item.lineItemId!)}
                     >
-                      <Text style={styles.actionBtnText}>-</Text>
+                      <Ionicons name="remove" size={20} color="#f3f4f6" />
                     </Pressable>
                     <Pressable
                       style={styles.actionBtn}
@@ -192,7 +201,7 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
                         addToCartGlobal(rest);
                       }}
                     >
-                      <Text style={styles.actionBtnText}>+</Text>
+                      <Ionicons name="add" size={20} color="#f3f4f6" />
                     </Pressable>
                   </View>
                 )}
@@ -211,10 +220,8 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
             {cart.length > 0 && (
               <>
                 <Pressable
-                  style={[styles.checkoutBtn, { backgroundColor: "#f97316" }]}
+                  style={[styles.checkoutBtn, { backgroundColor: "rgba(249,115,22,0.85)" }]}
                   onPress={() => {
-                     // Wait, need to import holdOrder
-                     // will fix this import or logic later if needed
                      const { holdOrder } = require("../app/heldOrdersStore");
                      let targetOrderId = activeOrder?.orderId;
                      if (!targetOrderId) {
@@ -233,7 +240,7 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
                   <Text style={styles.checkoutBtnText}>Hold</Text>
                 </Pressable>
                 <Pressable
-                  style={[styles.checkoutBtn, { backgroundColor: "#22c55e" }]}
+                  style={[styles.checkoutBtn, { backgroundColor: "rgba(34,197,94,0.85)" }]}
                   onPress={sendOrder}
                 >
                   <Text style={[styles.checkoutBtnText, { color: "#052b12" }]}>
@@ -245,7 +252,7 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
 
             {(activeOrder?.items.length || 0) > 0 && cart.length === 0 && (
               <Pressable
-                style={[styles.checkoutBtn, { backgroundColor: "#0ea5e9" }]}
+                style={[styles.checkoutBtn, { backgroundColor: "rgba(14,165,233,0.85)" }]}
                 onPress={() => router.push("/summary")}
               >
                 <Text style={styles.checkoutBtnText}>Proceed</Text>
@@ -265,13 +272,11 @@ const styles = StyleSheet.create({
   },
   surface: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "rgba(17, 24, 39, 0.85)",
     borderRadius: 16,
     padding: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
   topBar: {
     flexDirection: "row",
@@ -306,19 +311,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   contextText: {
-    color: "#4b5563",
+    color: "#9ca3af",
     fontSize: 14,
     fontWeight: "600",
     marginBottom: 6,
   },
   title: {
-    color: "#111827",
+    color: "#e5e7eb",
     fontSize: 22,
     fontWeight: "900",
     marginBottom: 10,
   },
   emptyText: {
-    color: "#9ca3af",
+    color: "#6b7280",
     fontSize: 16,
     textAlign: "center",
     marginTop: 40,
@@ -329,22 +334,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderColor: "#f3f4f6",
+    borderColor: "rgba(255,255,255,0.05)",
   },
   itemInfo: {
     flex: 1,
     marginRight: 10,
   },
   name: {
-    color: "#111827",
+    color: "#f3f4f6",
     fontWeight: "800",
     fontSize: 16,
   },
   sentName: {
-    color: "#4b5563",
+    color: "#6b7280",
   },
-  sentBadge: { color: "#22c55e", fontSize: 12, fontWeight: "800", marginLeft: 4 },
-  newBadge: { color: "#3b82f6", fontSize: 12, fontWeight: "800", marginLeft: 4 },
+  badgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 6,
+  },
+  sentBadgeText: { color: "#a7f3d0", fontSize: 12, fontWeight: "800", marginLeft: 2 },
+  newBadgeText: { color: "#93c5fd", fontSize: 12, fontWeight: "800", marginLeft: 2 },
   modifierContainer: {
     marginTop: 4,
     marginBottom: 4,
@@ -374,23 +384,18 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "rgba(255,255,255,0.15)",
     justifyContent: "center",
     alignItems: "center",
   },
-  actionBtnText: {
-    color: "#111827",
-    fontWeight: "900",
-    fontSize: 18,
-  },
   bottomBlock: {
     paddingTop: 16,
-    borderTopWidth: 2,
-    borderColor: "#e5e7eb",
+    borderTopWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
     marginTop: 10,
   },
   subtotalText: {
-    color: "#111827",
+    color: "#f3f4f6",
     fontSize: 18,
     fontWeight: "900",
     textAlign: "right",

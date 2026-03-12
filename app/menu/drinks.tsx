@@ -6,18 +6,18 @@ import { addToCartGlobal, getCart } from "../cartStore";
 import { getOrderContext } from "../orderContextStore";
 
 import {
-  FlatList,
-  Image,
-  ImageBackground,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  useWindowDimensions,
-  View,
+    FlatList,
+    Image,
+    ImageBackground,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    useWindowDimensions,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -347,9 +347,14 @@ export default function Drinks() {
   const router = useRouter();
   const orderContext = getOrderContext();
 
-  if (!orderContext) {
-    router.replace("/(tabs)/category");
-  }
+  React.useEffect(() => {
+    if (!orderContext) {
+      router.replace("/(tabs)/category");
+    } else {
+      const { setCurrentContext, getContextId } = require("../cartStore");
+      setCurrentContext(getContextId(orderContext));
+    }
+  }, [orderContext, router]);
 
   const { width, height } = useWindowDimensions();
   const listRef = useRef<FlatList>(null);
@@ -703,10 +708,12 @@ const styles = StyleSheet.create({
   },
 
   foodCard: {
-    backgroundColor: "rgba(255,255,255,0.95)",
+    backgroundColor: "rgba(17, 24, 39, 0.75)",
     borderRadius: 14,
     overflow: "hidden",
     marginBottom: 2,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
   foodImage: {
     width: "100%",
@@ -717,8 +724,8 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   foodName: { 
-    color: "#1F2937", 
-    fontWeight: "600", 
+    color: "#f3f4f6", 
+    fontWeight: "700", 
     fontSize: 15, 
     marginBottom: 4 
   },

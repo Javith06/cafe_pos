@@ -1,13 +1,14 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useMemo } from "react";
 import {
-  Dimensions,
-  FlatList,
-  ImageBackground,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
+    Dimensions,
+    FlatList,
+    ImageBackground,
+    Pressable,
+    StyleSheet,
+    Text,
+    View,
 } from "react-native";
 
 import { findActiveOrder } from "./activeOrdersStore";
@@ -59,7 +60,11 @@ export default function SummaryScreen() {
       >
         <View style={[styles.overlay, { backgroundColor: "rgba(0,0,0,0.35)" }]}>
           <View style={styles.headerBar}>
-            <Pressable style={styles.backBtn} onPress={() => router.back()}>
+            <Pressable style={styles.backBtn} onPress={() => {
+              // Note: We don't clearCart here because we might want to edit the cart.
+              // We'll let cart.tsx handle its own unmount or back button if needed.
+              router.back();
+            }}>
               <Text style={styles.backBtnText}>Back</Text>
             </Pressable>
             
@@ -137,6 +142,7 @@ export default function SummaryScreen() {
               style={styles.proceedBtn}
               onPress={() => router.push("/payment")}
             >
+              <Ionicons name="card-outline" size={24} color="#052b12" style={{marginRight: 8}} />
               <Text style={styles.proceedText}>Proceed to Payment</Text>
             </Pressable>
           </View>
@@ -183,7 +189,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   title: {
-    color: "#9ef01a",
+    color: "#e5e7eb",
     fontSize: 20,
     fontWeight: "bold",
   },
@@ -195,11 +201,13 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.85)",
+    backgroundColor: "rgba(17, 24, 39, 0.75)",
     paddingHorizontal: 16,
     height: 65,
     borderRadius: 12,
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
   },
   rowContent: {
     flex: 1,
@@ -273,7 +281,8 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   proceedBtn: {
-    backgroundColor: "#22c55e",
+    flexDirection: "row",
+    backgroundColor: "rgba(34,197,94,0.85)",
     height: 60,
     justifyContent: "center",
     alignItems: "center",

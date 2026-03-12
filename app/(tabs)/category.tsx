@@ -110,17 +110,17 @@ if (tableData) {
   const minutes = Math.floor((Date.now() - tableData.startTime) / 60000);
 
   if (minutes >= 30) {
-    bgColor = "rgba(220,38,38,0.6)"; // Darker Red
-    tableNoColor = "#fee2e2";
-    borderColor = "rgba(248,113,113,0.95)";
+    bgColor = "rgba(185,28,28,0.85)"; // Deep solid red
+    tableNoColor = "#fca5a5";
+    borderColor = "rgba(248,113,113,0.5)";
   } else if (minutes >= 15) {
-    bgColor = "rgba(217,119,6,0.6)"; // Darker Orange
-    tableNoColor = "#fef3c7";
-    borderColor = "rgba(251,191,36,0.95)";
+    bgColor = "rgba(194,65,12,0.85)"; // Deep solid orange
+    tableNoColor = "#fcd34d";
+    borderColor = "rgba(251,191,36,0.5)";
   } else {
-    bgColor = "rgba(22,163,74,0.6)"; // Darker Green
-    tableNoColor = "#dcfce7";
-    borderColor = "rgba(74,222,128,0.95)";
+    bgColor = "rgba(21,128,61,0.85)"; // Deep solid green
+    tableNoColor = "#86efac";
+    borderColor = "rgba(74,222,128,0.5)";
   }
 
   const time = new Date(tableData.startTime);
@@ -150,9 +150,9 @@ if (tableData) {
   });
 
   if (isHeld) {
-    bgColor = "rgba(202,138,4,0.6)"; // Dark yellow / Gold
-    tableNoColor = "#fef08a";
-    borderColor = "rgba(234,179,8,0.95)";
+    bgColor = "rgba(161,98,7,0.85)"; // Deep solid gold
+    tableNoColor = "#fde047";
+    borderColor = "rgba(250,204,21,0.5)";
     timeText = "Held";
   }
 }
@@ -190,7 +190,7 @@ return (
   >
 
     <BlurView
-      intensity={40}
+      intensity={width < 900 ? 65 : 40}
       tint="dark"
       style={{ flex: 1, backgroundColor: bgColor }}
     >
@@ -363,18 +363,18 @@ borderColor: "rgba(255,255,255,0.15)",
 },
 
 activeTabBtn: {
-backgroundColor: "rgba(215,255,154,0.2)",
-borderColor: "#d7ff9a",
+backgroundColor: "rgba(167,243,208,0.2)",
+borderColor: "#a7f3d0",
 },
 
 tabText: {
-color: "#fff",
+color: "#e5e7eb",
 fontWeight: "700",
 fontSize: 16,
 },
 
 activeTabText: {
-color: "#d7ff9a",
+color: "#a7f3d0",
 },
 
 navRightGroup: {
@@ -428,7 +428,7 @@ marginBottom: 2,
 },
 
 orderText: {
-color: "#d7ff9a",
+color: "#a7f3d0",
 fontWeight: "600",
 },
 

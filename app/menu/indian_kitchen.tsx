@@ -389,6 +389,9 @@ export default function IndianKitchen() {
   React.useEffect(() => {
     if (!orderContext) {
       router.replace("/(tabs)/category");
+    } else {
+      const { setCurrentContext, getContextId } = require("../cartStore");
+      setCurrentContext(getContextId(orderContext));
     }
   }, [orderContext, router]);
 
@@ -776,10 +779,12 @@ const styles = StyleSheet.create({
   },
 
   foodCard: {
-    backgroundColor: "rgba(255,255,255,0.95)",
+    backgroundColor: "rgba(17, 24, 39, 0.75)",
     borderRadius: 14,
     overflow: "hidden",
     marginBottom: 2,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
   foodImage: {
     width: "100%",
@@ -790,8 +795,8 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   foodName: { 
-    color: "#1F2937", 
-    fontWeight: "600", 
+    color: "#f3f4f6", 
+    fontWeight: "700", 
     fontSize: 15, 
     marginBottom: 4 
   },

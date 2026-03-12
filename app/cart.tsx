@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { useRouter } from "expo-router";
 import React, { useMemo } from "react";
@@ -16,7 +17,7 @@ import { CartItem, useCartStore } from "./cartStore";
 
 import { holdOrder } from "./heldOrdersStore";
 import { getNextOrderId } from "./orderIdStore";
-import { setTableActive, setTableHold } from "./tableStatusStore";
+import { setTableActive } from "./tableStatusStore";
 
 import { OrderItem, useActiveOrdersStore } from "./activeOrdersStore";
 
@@ -27,10 +28,13 @@ export default function CartScreen() {
   
   // Zustand Hooks
   const orderContext = useOrderContextStore((state) => state.currentOrder);
-  const cart = useCartStore((state) => state.cart);
-  const addToCartGlobal = useCartStore((state) => state.addToCartGlobal);
-  const removeFromCartGlobal = useCartStore((state) => state.removeFromCartGlobal);
+  const carts = useCartStore((state) => state.carts);
+  const currentContextId = useCartStore((state) => state.currentContextId);
   const clearCart = useCartStore((state) => state.clearCart);
+  const removeFromCartGlobal = useCartStore((state) => state.removeFromCartGlobal);
+  const addToCartGlobal = useCartStore((state) => state.addToCartGlobal);
+
+  const cart = currentContextId ? carts[currentContextId] || [] : [];
   
   const activeOrders = useActiveOrdersStore((state) => state.activeOrders);
   const appendOrder = useActiveOrdersStore((state) => state.appendOrder);
@@ -128,7 +132,7 @@ export default function CartScreen() {
             </Pressable>
 
             <View style={styles.topRightGroup}>
-              <Pressable style={styles.back} onPress={() => router.back()}>
+              <Pressable style={styles.back} onPress={() => { clearCart(); router.back(); }}>
                 <Text style={styles.topBtnText}>Back</Text>
               </Pressable>
 
@@ -176,9 +180,15 @@ export default function CartScreen() {
                       <Text style={[styles.name, isSent && styles.sentName]}>{item.name}</Text>
 
                       {isSent ? (
-                        <Text style={styles.sentBadge}> ✓ SENT</Text>
+                        <View style={styles.badgeRow}>
+                          <Ionicons name="checkmark-circle" size={14} color="#a7f3d0" />
+                          <Text style={styles.sentBadgeText}>SENT</Text>
+                        </View>
                       ) : (
-                        <Text style={styles.newBadge}> ● NEW</Text>
+                        <View style={styles.badgeRow}>
+                          <Ionicons name="ellipse" size={10} color="#60a5fa" />
+                          <Text style={styles.newBadgeText}>NEW</Text>
+                        </View>
                       )}
                     </View>
 
@@ -205,14 +215,14 @@ export default function CartScreen() {
                         style={styles.plus}
                         onPress={() => addToCartGlobal(item as CartItem)}
                       >
-                        <Text style={styles.btnText}>+</Text>
+                        <Ionicons name="add" size={24} color="#fff" />
                       </Pressable>
 
                       <Pressable
                         style={styles.minus}
                         onPress={() => removeFromCartGlobal(item.lineItemId)}
                       >
-                        <Text style={styles.btnText}>−</Text>
+                        <Ionicons name="remove" size={24} color="#fff" />
                       </Pressable>
                     </View>
                   )}
@@ -245,11 +255,6 @@ export default function CartScreen() {
                     holdOrder(orderId, cart, orderContext); // Might need updating if HeldOrders also needs refactoring later
 
                     if (orderContext.orderType === "DINE_IN") {
-                      setTableHold(
-                        orderContext.section!,
-                        orderContext.tableNo!,
-                        orderId,
-                      );
                       clearCart();
                       router.replace(`/(tabs)/category?section=${orderContext.section}`);
                     } else if (orderContext.orderType === "TAKEAWAY") {
@@ -424,6 +429,26 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   
+  badgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 10,
+  },
+  
+  sentBadgeText: {
+    color: "#a7f3d0",
+    marginLeft: 4,
+    fontWeight: "bold",
+    fontSize: 12,
+  },
+  
+  newBadgeText: {
+    color: "#93c5fd",
+    marginLeft: 4,
+    fontWeight: "bold",
+    fontSize: 12,
+  },
+
   modifierContainer: {
      marginTop: 4,
      marginBottom: 4,
@@ -499,19 +524,5 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "900",
     fontSize: 20,
-  },
-
-  sentBadge: {
-    color: "#22c55e",
-    marginLeft: 8,
-    fontWeight: "bold",
-    fontSize: 12,
-  },
-
-  newBadge: {
-    color: "#facc15",
-    marginLeft: 8,
-    fontWeight: "bold",
-    fontSize: 12,
   },
 });

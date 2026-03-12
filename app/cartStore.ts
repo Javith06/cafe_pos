@@ -1,6 +1,6 @@
-import { create } from "zustand";
 import "react-native-get-random-values";
 import { v4 as uuidv4 } from "uuid";
+import { create } from "zustand";
 
 export type CartItem = {
   lineItemId: string; // Unique ID for this specific cart instance
@@ -17,19 +17,35 @@ export type CartItem = {
 };
 
 type CartState = {
-  cart: CartItem[];
+  carts: Record<string, CartItem[]>;
+  currentContextId: string | null;
+  setCurrentContext: (contextId: string | null) => void;
+  getCart: () => CartItem[];
   addToCartGlobal: (item: Omit<CartItem, "qty" | "lineItemId">) => void;
   removeFromCartGlobal: (lineItemId: string) => void;
   clearCart: () => void;
+  clearAllCarts: () => void;
 };
 
 export const useCartStore = create<CartState>((set, get) => ({
-  cart: [],
+  carts: {},
+  currentContextId: null,
+
+  setCurrentContext: (contextId) => set({ currentContextId: contextId }),
+
+  getCart: () => {
+    const { carts, currentContextId } = get();
+    if (!currentContextId) return [];
+    return carts[currentContextId] || [];
+  },
 
   addToCartGlobal: (item) => {
-    const { cart } = get();
+    const { carts, currentContextId } = get();
+    if (!currentContextId) return; // Prevent adding if no context
 
-    const existing = cart.find(
+    const currentCart = carts[currentContextId] || [];
+
+    const existing = currentCart.find(
       (p) =>
         p.id === item.id &&
         p.spicy === item.spicy &&
@@ -41,48 +57,83 @@ export const useCartStore = create<CartState>((set, get) => ({
 
     if (existing) {
       set({
-        cart: cart.map((p) =>
-          p.lineItemId === existing.lineItemId
-            ? { ...p, qty: p.qty + 1 }
-            : p
-        ),
+        carts: {
+          ...carts,
+          [currentContextId]: currentCart.map((p) =>
+            p.lineItemId === existing.lineItemId
+              ? { ...p, qty: p.qty + 1 }
+              : p
+          ),
+        },
       });
     } else {
       set({
-        cart: [...cart, { ...item, qty: 1, lineItemId: uuidv4() }],
+        carts: {
+          ...carts,
+          [currentContextId]: [...currentCart, { ...item, qty: 1, lineItemId: uuidv4() }],
+        },
       });
     }
   },
 
   removeFromCartGlobal: (lineItemId) => {
-    const { cart } = get();
-    const item = cart.find((p) => p.lineItemId === lineItemId);
+    const { carts, currentContextId } = get();
+    if (!currentContextId) return;
+
+    const currentCart = carts[currentContextId] || [];
+    const item = currentCart.find((p) => p.lineItemId === lineItemId);
 
     if (!item) return;
 
     if (item.qty > 1) {
       set({
-        cart: cart.map((p) =>
-          p.lineItemId === lineItemId ? { ...p, qty: p.qty - 1 } : p
-        ),
+        carts: {
+          ...carts,
+          [currentContextId]: currentCart.map((p) =>
+            p.lineItemId === lineItemId ? { ...p, qty: p.qty - 1 } : p
+          ),
+        },
       });
     } else {
       set({
-        cart: cart.filter((p) => p.lineItemId !== lineItemId),
+         carts: {
+           ...carts,
+           [currentContextId]: currentCart.filter((p) => p.lineItemId !== lineItemId),
+         },
       });
     }
   },
 
-  clearCart: () => set({ cart: [] }),
+  clearCart: () => {
+    const { carts, currentContextId } = get();
+    if (!currentContextId) return;
+    
+    set({
+      carts: {
+        ...carts,
+        [currentContextId]: [],
+      },
+    });
+  },
+
+  clearAllCarts: () => set({ carts: {}, currentContextId: null }),
 }));
 
+// Helper to generate context ID
+export const getContextId = (context?: { orderType: string, section?: string, tableNo?: string, takeawayNo?: string } | null) => {
+  if (!context) return null;
+  if (context.orderType === "DINE_IN") return `DINE_IN_${context.section}_${context.tableNo}`;
+  if (context.orderType === "TAKEAWAY") return `TAKEAWAY_${context.takeawayNo}`;
+  return null;
+}
+
 // Backwards compatibility functions, though it's recommended to use hooks directly in React components.
-export const getCart = () => useCartStore.getState().cart;
+export const getCart = () => useCartStore.getState().getCart();
 export const addToCartGlobal = (item: Omit<CartItem, "qty" | "lineItemId">) => useCartStore.getState().addToCartGlobal(item);
 export const removeFromCartGlobal = (lineItemId: string) => useCartStore.getState().removeFromCartGlobal(lineItemId);
 export const clearCart = () => useCartStore.getState().clearCart();
+export const setCurrentContext = (contextId: string | null) => useCartStore.getState().setCurrentContext(contextId);
 
-// Note: subscribeCart is no longer needed with Zustand, but we export a dummy version if it's imported elsewhere
 export const subscribeCart = (listener: () => void) => {
   return useCartStore.subscribe(listener);
 };

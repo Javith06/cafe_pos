@@ -1,6 +1,7 @@
+import { Ionicons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { BlurView } from "expo-blur";
 import { Dimensions, FlatList, ImageBackground, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { addToCartGlobal, clearCart } from "./cartStore";
@@ -118,6 +119,7 @@ export default function HeldOrdersScreen() {
                 router.back();
               }}
             >
+              <Ionicons name="cart-outline" size={18} color="#052b12" style={{marginRight: 6}} />
               <Text style={styles.btnText}>Open Order</Text>
             </Pressable>
             </BlurView>
@@ -137,17 +139,20 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    color: "#9ef01a",
+    color: "#e5e7eb",
     fontSize: 22,
     fontWeight: "bold",
     marginBottom: 20,
   },
 
   card: {
+    backgroundColor: "rgba(17, 24, 39, 0.75)",
     padding: 15,
     borderRadius: 16,
     marginBottom: 15,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
 
   header: {
@@ -161,19 +166,21 @@ const styles = StyleSheet.create({
   },
 
   openBtn: {
-    marginTop: 10,
-    backgroundColor: "#22c55e",
-    padding: 10,
-    borderRadius: 8,
+    marginTop: 15,
+    flexDirection: "row",
+    backgroundColor: "rgba(34,197,94,0.85)",
+    padding: 12,
+    borderRadius: 10,
+    justifyContent: "center",
     alignItems: "center",
   },
 
   btnText: {
-    color: "#000",
+    color: "#052b12",
     fontWeight: "bold",
   },
   subHeader: {
-    color: "#9ef01a",
+    color: "#a7f3d0",
     marginBottom: 8,
     fontWeight: "bold",
   },
