@@ -479,7 +479,7 @@ export default function IndianKitchen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }}>
       <ImageBackground
-        source={require("../../assets/images/a15.jpg")}
+        source={require("../../assets/images/a4.jpg")}
         style={{ width, height }}
         resizeMode="cover"
       >
