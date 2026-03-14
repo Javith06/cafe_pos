@@ -256,6 +256,10 @@ export default function Category() {
                 <Text style={[styles.orderText, { fontSize: smallFont, color: borderColor }]}>
                   {orderText}
                 </Text>
+
+                <Text style={[styles.billText, { fontSize: smallFont, color: "#ffffff" }]}>
+                  ${billAmount.toFixed(2)}
+                </Text>
               </>
             )}
 
