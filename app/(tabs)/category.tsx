@@ -1,6 +1,6 @@
 import { BlurView } from "expo-blur";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   FlatList,
   ImageBackground,
@@ -8,11 +8,13 @@ import {
   Text,
   TouchableOpacity,
   useWindowDimensions,
-  View
+  View,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { clearCart } from "../cartStore";
+import { useActiveOrdersStore } from "../activeOrdersStore";
+import { getContextId, useCartStore } from "../cartStore";
 import { setOrderContext } from "../orderContextStore";
 import { getTables } from "../tableStatusStore";
 
@@ -53,7 +55,12 @@ export default function Category() {
   const { section: urlSection } = useLocalSearchParams<{ section?: string }>();
 
   const [activeTab, setActiveTab] = useState<string>("SECTION_1");
+  const sectionScrollRef = useRef<ScrollView>(null);
+
   const [, forceUpdate] = useState(0);
+
+  const carts = useCartStore((state) => state.carts);
+
 
   useEffect(() => {
     if (urlSection && SECTIONS.includes(urlSection)) {
@@ -71,19 +78,34 @@ export default function Category() {
   /* ---------------- Responsive Grid ---------------- */
 
   let columns = 10;
+  if (width < 600) columns = 4;
+  else if (width < 900) columns = 5;
+  else if (width < 1200) columns = 8;
+  else columns = 10;
 
-  if (width <= 600) columns = 4;
-  else if (width <= 900) columns = 6;
-  else if (width <= 1200) columns = 8;
+
 
   const GAP = 12;
   const PADDING = 20;
 
-  const itemSize =
-    (width - PADDING * 2 - GAP * (columns - 1)) / columns;
+  const availableGridWidth = width - PADDING * 2;
+  const itemSize = (availableGridWidth - GAP * (columns - 1)) / columns;
+ 
+  useEffect(() => {
+    // Auto-scroll logic: find index of active tab and scroll to approx position
+    const index = SECTIONS.indexOf(activeTab);
+    if (index !== -1 && sectionScrollRef.current) {
+      // Estimated scroll: 120 is approx width of a tab button + margin
+      sectionScrollRef.current.scrollTo({ x: index * 100, animated: true });
+    }
+  }, [activeTab]);
 
-  const numberFont = Math.max(14, Math.min(18, itemSize * 0.22));
-  const smallFont = Math.max(12, Math.min(16, itemSize * 0.18));
+
+
+  const numberFont = Math.max(12, Math.min(22, itemSize * 0.32));
+  const smallFont = Math.max(9, Math.min(16, itemSize * 0.18));
+
+
 
   const currentTables =
     activeTab === "TAKEAWAY" ? TAKEAWAY_TABLES : DINE_IN_TABLES;
@@ -93,6 +115,7 @@ export default function Category() {
   const renderItem = ({ item }: { item: TableItem }) => {
 
     const tables = getTables();
+    const activeOrders = useActiveOrdersStore.getState().activeOrders;
 
     const tableData = tables.find(
       (t) => t.section === activeTab && t.tableNo === item.label
@@ -103,23 +126,63 @@ export default function Category() {
     let tableNoColor = "#ffffff";
     let timeText = "";
     let orderText = "";
+    let billAmount = 0;
+    let isHeld = false;
+    let minutes = 0;
 
     if (tableData) {
 
-      const minutes = Math.floor((Date.now() - tableData.startTime) / 60000);
 
-      if (minutes >= 30) {
-        bgColor = "rgba(185,28,28,0.85)";
-        tableNoColor = "#fca5a5";
-        borderColor = "rgba(248,113,113,0.5)";
-      } else if (minutes >= 15) {
-        bgColor = "rgba(194,65,12,0.85)";
-        tableNoColor = "#fcd34d";
-        borderColor = "rgba(251,191,36,0.5)";
-      } else {
-        bgColor = "rgba(21,128,61,0.85)";
-        tableNoColor = "#86efac";
-        borderColor = "rgba(74,222,128,0.5)";
+      const activeOrder = activeOrders.find((o: any) => 
+        o.context.orderType === (activeTab === "TAKEAWAY" ? "TAKEAWAY" : "DINE_IN") &&
+        (activeTab === "TAKEAWAY" ? o.context.takeawayNo === item.label : (o.context.section === activeTab && o.context.tableNo === item.label))
+      );
+      
+      if (activeOrder) {
+        billAmount = activeOrder.items.reduce((sum: number, i: any) => sum + (i.price || 0) * i.qty, 0);
+      }
+
+      // Add Cart Subtotal (Held / New items)
+      const contextId = getContextId({
+        orderType: activeTab === "TAKEAWAY" ? "TAKEAWAY" : "DINE_IN",
+        section: activeTab,
+        tableNo: item.label,
+        takeawayNo: item.label
+      });
+      
+      if (contextId) {
+        const cartItems = carts[contextId] || [];
+        const cartSubtotal = cartItems.reduce((sum: number, i: any) => sum + (i.price || 0) * i.qty, 0);
+        billAmount += cartSubtotal;
+      }
+
+      const elapsedMs = Date.now() - tableData.startTime;
+      minutes = Math.floor(elapsedMs / 60000);
+
+      switch (tableData.status) {
+        case 'HOLD':
+          bgColor = "rgba(59, 130, 246, 0.85)"; // Blue
+          borderColor = "rgba(96, 165, 250, 0.5)";
+          isHeld = true;
+          break;
+
+
+        case 'SENT':
+          if (minutes >= 60) {
+            bgColor = "rgba(239, 68, 68, 0.85)"; // Red (Active > 1hr)
+            borderColor = "rgba(248, 113, 113, 0.5)";
+          } else {
+            bgColor = "rgba(34, 197, 94, 0.85)"; // Green
+            borderColor = "rgba(74, 222, 128, 0.5)";
+          }
+          break;
+        case 'BILL_REQUESTED':
+          bgColor = "rgba(245, 158, 11, 0.85)"; // Yellow
+          borderColor = "rgba(251, 191, 36, 0.5)";
+          break;
+        default:
+          bgColor = "rgba(255,255,255,0.05)"; // Grey
+          borderColor = "rgba(255,255,255,0.25)";
       }
 
       const time = new Date(tableData.startTime);
@@ -156,7 +219,6 @@ export default function Category() {
             });
           }
 
-          clearCart();
           router.push("/menu/thai_kitchen");
 
         }}
@@ -169,7 +231,17 @@ export default function Category() {
         >
           <View style={styles.tableContent}>
 
+            {isHeld && minutes >= 60 && (
+              <View style={styles.holdRibbonContainer}>
+                <View style={styles.holdRibbon}>
+                  <Text style={styles.holdRibbonText}>HOLD</Text>
+                </View>
+              </View>
+            )}
+
+
             <Text
+
               style={[
                 styles.tableNumber,
                 { fontSize: numberFont, color: tableNoColor },
@@ -187,6 +259,10 @@ export default function Category() {
                 <Text style={[styles.orderText, { fontSize: smallFont }]}>
                   {orderText}
                 </Text>
+
+                <Text style={[styles.billText, { fontSize: smallFont }]}>
+                  ${billAmount.toFixed(2)}
+                </Text>
               </>
             )}
 
@@ -197,6 +273,7 @@ export default function Category() {
     );
 
   };
+
 
   /* ---------------- UI ---------------- */
 
@@ -211,8 +288,15 @@ export default function Category() {
         <View style={styles.overlay} />
 
         <BlurView intensity={35} tint="dark" style={styles.topNavContainer}>
-
-          <View style={styles.tabsWrapper}>
+ 
+          <ScrollView
+            ref={sectionScrollRef}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabsScrollContent}
+            style={styles.tabsScrollView}
+          >
+            <View style={styles.tabsWrapper}>
 
             {SECTIONS.map((section) => {
 
@@ -249,7 +333,9 @@ export default function Category() {
               );
             })}
 
-          </View>
+            </View>
+          </ScrollView>
+
 
           <View style={styles.navRightGroup}>
 
@@ -315,8 +401,16 @@ const styles = StyleSheet.create({
 
   tabsWrapper: {
     flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
     gap: 12,
-    flexWrap: "wrap",
+  },
+  tabsScrollView: {
+    flex: 1,
+  },
+  tabsScrollContent: {
+    alignItems: "center",
+    paddingVertical: 10,
   },
 
   tabBtn: {
@@ -385,7 +479,7 @@ const styles = StyleSheet.create({
   timeText: {
     color: "#fff",
     fontWeight: "500",
-    marginBottom: 2,
+    marginBottom: 1,
   },
 
   orderText: {
@@ -393,4 +487,43 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
+  billText: {
+    color: "#fff",
+    fontWeight: "800",
+    marginTop: 1,
+  },
+
+  holdRibbonContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: 60,
+    height: 60,
+    overflow: "hidden",
+    zIndex: 20,
+  },
+  holdRibbon: {
+    position: "absolute",
+    top: 8,
+    left: -20,
+    width: 80,
+    height: 22,
+    backgroundColor: "#f97316", // Orange
+    transform: [{ rotate: "-45deg" }],
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 4,
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+  },
+  holdRibbonText: {
+    color: "#fff",
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+
 });
+

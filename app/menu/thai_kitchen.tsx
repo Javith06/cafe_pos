@@ -301,10 +301,19 @@ export default function ThaiKitchen() {
   const { width, height } = useWindowDimensions();
   const listRef = useRef<FlatList>(null);
 
-  const availableWidth = width - (width > 900 ? 350 : 0) - (width > 900 ? 20 : 32);
+  const SIDEBAR_WIDTH = 350;
+  const isLargeScreen = width >= 768;
+
+
+  const availableWidth = width - (isLargeScreen ? SIDEBAR_WIDTH : 0) - (isLargeScreen ? 20 : 32);
+
   let dishColumns = 2;
-  if (width > 800) dishColumns = 3;
-  if (width > 1200) dishColumns = 4;
+  if (availableWidth < 450) dishColumns = 2;
+  else if (availableWidth < 650) dishColumns = 3;
+  else if (availableWidth < 800) dishColumns = 4;
+  else dishColumns = 5;
+
+
 
   const [cart, setCart] = useState(getCart());
   const [selectedGroup, setSelectedGroup] = useState("Thai_Soup");
@@ -385,19 +394,33 @@ export default function ThaiKitchen() {
         <View style={styles.backgroundOverlay} />
         <View style={styles.overlay}>
           {/* RESPONSIVE DUAL-PANE WRAPPER */}
-          <View style={{ flex: 1, flexDirection: width > 900 ? "row" : "column", padding: width > 900 ? 10 : 0, paddingTop: width > 900 ? 10 : 40 }}>
+          <View style={{ 
+            flex: 1, 
+            flexDirection: isLargeScreen ? "row" : "column", 
+            padding: isLargeScreen ? 12 : 0, 
+            paddingTop: isLargeScreen ? 12 : 40 
+          }}>
             {/* MAIN CONTENT SURFACE */}
-            <BlurView intensity={50} tint="dark" style={[styles.mainContentSurface, width > 900 ? { flex: 1, padding: 10 } : { flex: 1, padding: 8, margin: 8 }]}>
+            <BlurView 
+              intensity={50} 
+              tint="dark" 
+              style={[
+                styles.mainContentSurface, 
+                isLargeScreen ? { flex: 1, margin: 4 } : { flex: 1, margin: 8 }
+              ]}
+            >
               {/* HEADER */}
               <View style={styles.header}>
+
                 <Text style={styles.title}>THAI KITCHEN</Text>
 
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  {width <= 900 && (
+                  {!isLargeScreen && (
                     <Pressable
                       onPress={() => router.replace("/cart")}
                       style={styles.cartBtn}
                     >
+
                       <Text style={styles.cartText}>Cart</Text>
 
                       {totalItems > 0 && (
@@ -501,8 +524,9 @@ export default function ThaiKitchen() {
             </BlurView>
 
             {/* SIDEBAR COMPONENT */}
-            {width > 900 && <CartSidebar width={350} />}
+            {isLargeScreen && <CartSidebar width={SIDEBAR_WIDTH} />}
           </View>
+
 
       {/* MODAL */}
       <Modal visible={showCustomize} transparent animationType="fade">
@@ -696,9 +720,10 @@ const styles = StyleSheet.create({
   },
   foodImage: {
     width: "100%",
-    height: 120,
+    height: 125,
     resizeMode: "cover",
   },
+
   dishContent: {
     padding: 10,
   },

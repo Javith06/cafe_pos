@@ -15,7 +15,8 @@ import {
 
 import { CartItem, useCartStore } from "./cartStore";
 import { getNextOrderId } from "./orderIdStore";
-import { setTableActive } from "./tableStatusStore";
+import { updateTableStatus, getTables } from "./tableStatusStore";
+
 
 import { OrderItem, useActiveOrdersStore } from "./activeOrdersStore";
 
@@ -62,6 +63,13 @@ export default function CartScreen() {
     });
   }, [activeOrders, orderContext]);
 
+  const currentTableData = useMemo(() => {
+    if (orderContext?.orderType !== "DINE_IN") return undefined;
+    const tables = getTables();
+    return tables.find(t => t.section === orderContext.section && t.tableNo === orderContext.tableNo);
+  }, [orderContext]);
+
+
   // COMBINE SENT ITEMS AND NEW ITEMS FOR THE TICKET VIEW
   const displayItems = useMemo(() => {
     // Cast to slightly generic type to handle both
@@ -98,11 +106,11 @@ export default function CartScreen() {
 
     /* mark table active */
     if (context.orderType === "DINE_IN") {
-      setTableActive(context.section!, context.tableNo!, targetOrderId);
+      updateTableStatus(context.section!, context.tableNo!, targetOrderId, 'SENT');
       clearCart();
       router.replace(`/(tabs)/category?section=${context.section}`);
     } else if (context.orderType === "TAKEAWAY") {
-      setTableActive("TAKEAWAY", context.takeawayNo!, targetOrderId);
+      updateTableStatus("TAKEAWAY", context.takeawayNo!, targetOrderId, 'SENT');
       clearCart();
       router.replace(`/(tabs)/category?section=TAKEAWAY`);
     } else {
@@ -237,26 +245,68 @@ export default function CartScreen() {
 
           {/* ACTION BUTTONS */}
 
-         <View style={styles.bottomButtons}>
-          {cart.length > 0 && (
-            <Pressable 
-              style={[styles.sendBtn, cart.length === 0 && styles.disabledBtn]} 
-              onPress={sendOrder}
-              disabled={cart.length === 0}
-            >
-              <Text style={styles.sendText}>Send Order</Text>
-            </Pressable>
-          )}
+          <View style={styles.bottomButtons}>
+            {/* If cart has items, show Hold and Send */}
+            {cart.length > 0 && (
+              <>
+                <Pressable
+                  style={[styles.holdBtn, { backgroundColor: "#3b82f6" }]} // BLUE for HOLD
+                  onPress={() => {
+                    let targetOrderId = activeOrder?.orderId;
+                    if (!targetOrderId) {
+                      targetOrderId = getNextOrderId();
+                    }
+                    if (orderContext.orderType === "DINE_IN") {
+                      updateTableStatus(orderContext.section!, orderContext.tableNo!, targetOrderId, 'HOLD');
+                      router.replace(`/(tabs)/category?section=${orderContext.section}`);
+                    } else if (orderContext.orderType === "TAKEAWAY") {
+                      router.replace(`/(tabs)/category?section=TAKEAWAY`);
+                    } else {
+                      router.replace("/(tabs)/category");
+                    }
+                  }}
+                >
+                  <Text style={styles.sendText}>Hold</Text>
+                </Pressable>
+ 
+                <Pressable
+                  style={styles.sendBtn}
+                  onPress={sendOrder}
+                >
+                  <Text style={styles.sendText}>Send</Text>
+                </Pressable>
+              </>
+            )}
+ 
+            {/* If no new items, check table status for Checkout or Proceed */}
+            {cart.length === 0 && activeOrder && (
+              <>
+                {(!currentTableData || currentTableData.status === 'SENT' || currentTableData.status === 'HOLD') ? (
+                  <Pressable
+                    style={[styles.holdBtn, { backgroundColor: "#f59e0b" }]} // YELLOW for Checkout
+                    onPress={() => {
+                      if (orderContext.orderType === "DINE_IN") {
+                        updateTableStatus(orderContext.section!, orderContext.tableNo!, activeOrder.orderId, 'BILL_REQUESTED');
+                        router.replace(`/(tabs)/category?section=${orderContext.section}`);
+                      } else {
+                        router.push("/summary");
+                      }
+                    }}
+                  >
+                    <Text style={styles.sendText}>Checkout</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    style={styles.billBtn}
+                    onPress={() => router.push("/summary")}
+                  >
+                    <Text style={styles.billText}>Proceed</Text>
+                  </Pressable>
+                )}
+              </>
+            )}
+          </View>
 
-          {(activeOrder?.items.length || 0) > 0 && cart.length === 0 && (
-            <Pressable
-              style={styles.billBtn}
-              onPress={() => router.push("/summary")}
-            >
-              <Text style={styles.billText}>Proceed to Bill</Text>
-            </Pressable>
-          )}
-        </View>
         </View>
       </ImageBackground>
     </View>

@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ImageBackground,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -17,14 +18,17 @@ export default function TimeEntry() {
   const router = useRouter();
   const { width } = useWindowDimensions();
 
-  const isTablet = width < 900;
+  const isMobile = width < 700;
 
-  const [userId, setUserId] = useState<string>("");
-  const [password, setPassword] = useState<string>("");
-  const [staffName, setStaffName] = useState<string>("");
+  const [userId, setUserId] = useState("");
+  const [password, setPassword] = useState("");
+  const [staffName, setStaffName] = useState("");
   const [active, setActive] = useState<ActiveField>("user");
 
-  const [time, setTime] = useState<Date>(new Date());
+  const [shiftStarted, setShiftStarted] = useState(false);
+  const [onBreak, setOnBreak] = useState(false);
+
+  const [time, setTime] = useState(new Date());
 
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
@@ -34,7 +38,7 @@ export default function TimeEntry() {
   const date = time.toLocaleDateString("en-GB");
   const clock = time.toLocaleTimeString("en-GB");
 
-  const keypad: string[] = [
+  const keypad = [
     "1",
     "2",
     "3",
@@ -53,19 +57,19 @@ export default function TimeEntry() {
     "Ent",
   ];
 
-  const getValue = (): string => {
+  const getValue = () => {
     if (active === "user") return userId;
     if (active === "pass") return password;
     return staffName;
   };
 
-  const setValue = (val: string): void => {
+  const setValue = (val: string) => {
     if (active === "user") setUserId(val);
     if (active === "pass") setPassword(val);
     if (active === "staff") setStaffName(val);
   };
 
-  const handleKeyPress = (key: string): void => {
+  const handleKeyPress = (key: string) => {
     let value = getValue();
 
     if (key === "Bksp") {
@@ -113,12 +117,12 @@ export default function TimeEntry() {
           </Text>
         </BlurView>
 
-        {/* CONTENT */}
-        <View
-          style={[
+        <ScrollView
+          contentContainerStyle={[
             styles.content,
-            { flexDirection: isTablet ? "column" : "row" },
+            { flexDirection: isMobile ? "column" : "row" },
           ]}
+          showsVerticalScrollIndicator={false}
         >
           {/* LOGIN FORM */}
           <BlurView intensity={40} tint="dark" style={styles.form}>
@@ -147,24 +151,44 @@ export default function TimeEntry() {
               onFocus={() => setActive("staff")}
             />
 
-            <View style={styles.buttons}>
-              <TouchableOpacity style={styles.inBtn}>
-                <Text style={styles.btnText}>IN</Text>
-              </TouchableOpacity>
+            {/* ACTION BUTTONS */}
+            <View style={styles.actionRow}>
+              {!shiftStarted ? (
+                <TouchableOpacity
+                  style={styles.inBtn}
+                  onPress={() => setShiftStarted(true)}
+                >
+                  <Text style={styles.btnText}>IN</Text>
+                </TouchableOpacity>
+              ) : (
+                <>
+                  <TouchableOpacity
+                    style={styles.outBtn}
+                    onPress={() => {
+                      setShiftStarted(false);
+                      setOnBreak(false);
+                    }}
+                  >
+                    <Text style={styles.btnText}>OUT</Text>
+                  </TouchableOpacity>
 
-              <TouchableOpacity style={styles.outBtn}>
-                <Text style={styles.btnText}>OUT</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={[styles.buttons, { marginTop: 15 }]}>
-              <TouchableOpacity style={styles.breakInBtn}>
-                <Text style={styles.btnText}>Break IN</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.breakOutBtn}>
-                <Text style={styles.btnText}>Break OUT</Text>
-              </TouchableOpacity>
+                  {!onBreak ? (
+                    <TouchableOpacity
+                      style={styles.breakInBtn}
+                      onPress={() => setOnBreak(true)}
+                    >
+                      <Text style={styles.btnText}>Break IN</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.breakOutBtn}
+                      onPress={() => setOnBreak(false)}
+                    >
+                      <Text style={styles.btnText}>Break OUT</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              )}
             </View>
           </BlurView>
 
@@ -180,7 +204,7 @@ export default function TimeEntry() {
               </TouchableOpacity>
             ))}
           </BlurView>
-        </View>
+        </ScrollView>
       </View>
     </ImageBackground>
   );
@@ -223,7 +247,7 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
     gap: 30,
@@ -231,10 +255,10 @@ const styles = StyleSheet.create({
   },
 
   form: {
-    width: "100%",
-    maxWidth: 380,
-    padding: 20,
-    borderRadius: 18,
+    flex: 1,
+    maxWidth: 420,
+    padding: 24,
+    borderRadius: 20,
   },
 
   label: {
@@ -252,44 +276,44 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 
-  buttons: {
+  actionRow: {
     flexDirection: "row",
     justifyContent: "space-around",
-    marginTop: 22,
+    marginTop: 28,
   },
 
   inBtn: {
     backgroundColor: "#6ccf9f",
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     justifyContent: "center",
     alignItems: "center",
   },
 
   outBtn: {
-    backgroundColor: "#e58f8f",
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    backgroundColor: "#ff7b7b",
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     justifyContent: "center",
     alignItems: "center",
   },
 
   breakInBtn: {
     backgroundColor: "#60a5fa",
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     justifyContent: "center",
     alignItems: "center",
   },
 
   breakOutBtn: {
     backgroundColor: "#c084fc",
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -301,28 +325,28 @@ const styles = StyleSheet.create({
   },
 
   keypad: {
-    width: "100%",
-    maxWidth: 340,
+    flex: 1,
+    maxWidth: 420,
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    padding: 16,
-    borderRadius: 18,
+    padding: 20,
+    borderRadius: 20,
   },
 
   key: {
     width: "23%",
-    height: 60,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.15)",
+    height: 70,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.18)",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 10,
+    marginBottom: 12,
   },
 
   keyText: {
     color: "#fff",
     fontWeight: "700",
-    fontSize: 16,
+    fontSize: 18,
   },
 });

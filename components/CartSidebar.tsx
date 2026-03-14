@@ -14,7 +14,7 @@ import { OrderItem, useActiveOrdersStore } from "../app/activeOrdersStore";
 import { CartItem, useCartStore } from "../app/cartStore";
 import { useOrderContextStore } from "../app/orderContextStore";
 import { getNextOrderId } from "../app/orderIdStore";
-import { setTableActive } from "../app/tableStatusStore";
+import { updateTableStatus, getTables } from "../app/tableStatusStore";
 
 interface CartSidebarProps {
   width?: DimensionValue;
@@ -91,11 +91,11 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
     markItemsSent(targetOrderId);
 
     if (context.orderType === "DINE_IN") {
-      setTableActive(context.section!, context.tableNo!, targetOrderId);
+      updateTableStatus(context.section!, context.tableNo!, targetOrderId, 'SENT');
       clearCart();
       router.replace(`/(tabs)/category?section=${context.section}`);
     } else if (context.orderType === "TAKEAWAY") {
-      setTableActive("TAKEAWAY", context.takeawayNo!, targetOrderId);
+      updateTableStatus("TAKEAWAY", context.takeawayNo!, targetOrderId, 'SENT');
       clearCart();
       router.replace(`/(tabs)/category?section=TAKEAWAY`);
     } else {
@@ -103,6 +103,13 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
       router.replace("/(tabs)/category");
     }
   };
+
+  const currentTableData = useMemo(() => {
+    if (orderContext?.orderType !== "DINE_IN") return undefined;
+    const tables = getTables();
+    return tables.find(t => t.section === orderContext.section && t.tableNo === orderContext.tableNo);
+  }, [orderContext]);
+
 
   return (
     <View style={[styles.container, { width }]}>
@@ -163,6 +170,15 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
                     )}
                   </View>
 
+                  {/* MODIFIERS */}
+                  <View style={styles.modifierContainer}>
+                    {item.spicy && item.spicy !== "Medium" && <Text style={styles.modifierText}>Spicy: {item.spicy}</Text>}
+                    {item.oil && item.oil !== "Normal" && <Text style={styles.modifierText}>Oil: {item.oil}</Text>}
+                    {item.salt && item.salt !== "Normal" && <Text style={styles.modifierText}>Salt: {item.salt}</Text>}
+                    {item.sugar && item.sugar !== "Normal" && <Text style={styles.modifierText}>Sugar: {item.sugar}</Text>}
+                    {item.note && <Text style={styles.modifierText}>Note: {item.note}</Text>}
+                  </View>
+
                   <Text style={styles.qty}>Qty: {item.qty}</Text>
 
                   <Text style={styles.price}>
@@ -200,57 +216,76 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
             Subtotal: ${subtotal.toFixed(2)}
           </Text>
 
-          <View style={styles.checkoutRow}>
+            {/* BUTTON LOGIC */}
+            <View style={styles.checkoutRow}>
+              {/* If cart has items, show Hold and Send */}
+              {cart.length > 0 && (
+                <>
+                  <Pressable
+                    style={[styles.checkoutBtn, { backgroundColor: "#3b82f6" }]} // BLUE for HOLD
+                    onPress={() => {
+                      let targetOrderId = activeOrder?.orderId;
+                      if (!targetOrderId) {
+                        targetOrderId = getNextOrderId();
+                      }
 
-            {cart.length > 0 && (
-              <>
-                <Pressable
-                  style={[styles.checkoutBtn, { backgroundColor: "#f59e0b" }]}
-                  onPress={() => {
-                    const { holdOrder } = require("../app/heldOrdersStore");
+                      // Update table status to HOLD
+                      if (orderContext.orderType === "DINE_IN") {
+                        updateTableStatus(orderContext.section!, orderContext.tableNo!, targetOrderId, 'HOLD');
+                      }
 
-                    let targetOrderId = activeOrder?.orderId;
-                    if (!targetOrderId) {
-                      targetOrderId = getNextOrderId();
-                    }
+                      if (orderContext.orderType === "DINE_IN") {
 
-                    holdOrder(targetOrderId, cart, orderContext);
+                        router.replace(`/(tabs)/category?section=${orderContext.section}`);
+                      } else if (orderContext.orderType === "TAKEAWAY") {
+                        router.replace(`/(tabs)/category?section=TAKEAWAY`);
+                      } else {
+                        router.replace("/(tabs)/category");
+                      }
+                    }}
+                  >
+                    <Text style={styles.checkoutBtnText}>Hold</Text>
+                  </Pressable>
 
-                    clearCart();
+                  <Pressable
+                    style={[styles.checkoutBtn, { backgroundColor: "#22c55e" }]} // GREEN for SENT
+                    onPress={sendOrder}
+                  >
+                    <Text style={[styles.checkoutBtnText, { color: "#052b12" }]}>
+                      Send
+                    </Text>
+                  </Pressable>
+                </>
+              )}
 
-                    if (orderContext.orderType === "DINE_IN") {
-                      router.replace(`/(tabs)/category?section=${orderContext.section}`);
-                    } else if (orderContext.orderType === "TAKEAWAY") {
-                      router.replace(`/(tabs)/category?section=TAKEAWAY`);
-                    } else {
-                      router.replace("/(tabs)/category");
-                    }
-                  }}
-                >
-                  <Text style={styles.checkoutBtnText}>Hold</Text>
-                </Pressable>
-
-                <Pressable
-                  style={[styles.checkoutBtn, { backgroundColor: "#22c55e" }]}
-                  onPress={sendOrder}
-                >
-                  <Text style={[styles.checkoutBtnText, { color: "#052b12" }]}>
-                    Send
-                  </Text>
-                </Pressable>
-              </>
-            )}
-
-            {(activeOrder?.items.length || 0) > 0 && cart.length === 0 && (
-              <Pressable
-                style={[styles.checkoutBtn, { backgroundColor: "#0ea5e9" }]}
-                onPress={() => router.push("/summary")}
-              >
-                <Text style={styles.checkoutBtnText}>Proceed</Text>
-              </Pressable>
-            )}
-
-          </View>
+              {/* If no new items, check table status for Checkout or Proceed */}
+              {cart.length === 0 && activeOrder && (
+                <>
+                  {(!currentTableData || currentTableData.status === 'SENT' || currentTableData.status === 'HOLD') ? (
+                    <Pressable
+                      style={[styles.checkoutBtn, { backgroundColor: "#f59e0b" }]} // YELLOW for Checkout
+                      onPress={() => {
+                        if (orderContext.orderType === "DINE_IN") {
+                          updateTableStatus(orderContext.section!, orderContext.tableNo!, activeOrder.orderId, 'BILL_REQUESTED');
+                          router.replace(`/(tabs)/category?section=${orderContext.section}`);
+                        } else {
+                          router.push("/summary");
+                        }
+                      }}
+                    >
+                      <Text style={styles.checkoutBtnText}>Checkout</Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      style={[styles.checkoutBtn, { backgroundColor: "#0ea5e9" }]} // SKY BLUE for Proceed
+                      onPress={() => router.push("/summary")}
+                    >
+                      <Text style={styles.checkoutBtnText}>Proceed</Text>
+                    </Pressable>
+                  )}
+                </>
+              )}
+            </View>
         </View>
 
       </View>
@@ -328,4 +363,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   checkoutBtnText: { color: "#fff", fontWeight: "900", fontSize: 18 },
-}); 
+  modifierContainer: {
+    marginTop: 4,
+    marginBottom: 4,
+    paddingLeft: 4,
+  },
+  modifierText: {
+    color: "#9ca3af",
+    fontSize: 12,
+    fontWeight: "500",
+  },
+});
+ 
