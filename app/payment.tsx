@@ -1,404 +1,642 @@
+import { FontAwesome5, Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
+import { useRouter } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  ImageBackground,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  useWindowDimensions,
+  View
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
 import { closeActiveOrder, findActiveOrder } from "./activeOrdersStore";
 import { clearCart } from "./cartStore";
 import { clearOrderContext, getOrderContext } from "./orderContextStore";
 import { clearTable } from "./tableStatusStore";
 
-import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
-
-import {
-    ActivityIndicator,
-    Dimensions,
-    ImageBackground,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
-} from "react-native";
-
 export default function PaymentScreen() {
+
   const router = useRouter();
+  const { width, height } = useWindowDimensions();
+
+  const isMobile = width < 768;
 
   const context = getOrderContext();
   const activeOrder = context ? findActiveOrder(context) : undefined;
 
-  const cart = React.useMemo(
-    () => (activeOrder ? activeOrder.items : []),
-    [activeOrder],
-  );
+  const cart = useMemo(() => activeOrder ? activeOrder.items : [], [activeOrder]);
 
-  const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
-
-  /* ================= CALCULATIONS ================= */
+  const [method, setMethod] = useState("CASH");
+  const [cashInput, setCashInput] = useState("");
+  const [processing, setProcessing] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [time, setTime] = useState(new Date());
 
   const subtotal = useMemo(
     () => cart.reduce((sum, item) => sum + (item.price || 0) * item.qty, 0),
-    [cart],
+    [cart]
   );
 
-  const gst = subtotal * 0.09;
-  const total = subtotal + gst;
+  const tax = subtotal * 0.10;
+  const total = subtotal + tax;
 
-  /* ================= STATE ================= */
+  const paidNum = parseFloat(cashInput) || 0;
+  const change = Math.max(0, paidNum - total);
 
-  const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
-  const [cashInput, setCashInput] = useState<string>("");
-
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
-
-  /* ================= GUARD ================= */
+  const quickCash = [20, 50, 100, 200, 500, 1000];
 
   useEffect(() => {
-    if (!context || cart.length === 0) {
-      router.replace("/(tabs)/category" as any);
-    }
-  }, [context, cart.length, router]);
+    const timer = setInterval(() => setTime(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
-  /* ================= CASH LOGIC ================= */
+  const confirmPayment = () => {
 
-  const paidAmount = parseFloat(cashInput) || 0;
+    if (method === "CASH" && paidNum < total) return;
 
-  const change = paidAmount >= total ? paidAmount - total : 0;
-  const remaining = paidAmount < total ? total - paidAmount : 0;
-
-  const isCashValid = selectedMethod !== "CASH" || paidAmount >= total;
-
-  /* ================= TENDER SUGGESTIONS ================= */
-
-  const tenderOptions = useMemo(() => {
-    const notes = [10, 20, 50, 100, 200, 500, 1000];
-    return notes.filter((note) => note >= total);
-  }, [total]);
-
-  /* ================= PAYMENT HANDLER ================= */
-
-  const handleConfirm = () => {
-    if (!selectedMethod) return;
-    if (selectedMethod === "CASH" && paidAmount < total) return;
-
-    setIsProcessing(true);
+    setProcessing(true);
 
     setTimeout(() => {
-      setIsProcessing(false);
-      setIsSuccess(true);
 
-      /* CLOSE ACTIVE ORDER */
+      if (method === "CASH") {
+        openDrawer();
+      }
 
       if (activeOrder) {
         closeActiveOrder(activeOrder.orderId);
       }
 
-      /* FREE TABLE */
-
       if (context?.orderType === "DINE_IN") {
         clearTable(context.section!, context.tableNo!);
       }
 
-      setTimeout(() => {
-        clearCart();
-        clearOrderContext();
+      setProcessing(false);
+      setSuccess(true);
 
-        router.replace("/(tabs)/category" as any);
-      }, 3000);
-    }, 2000);
+    }, 1200);
+
   };
 
-  /* ================= UI ================= */
+  const handleDone = () => {
+    clearCart();
+    clearOrderContext();
+    router.replace("/(tabs)/category");
+  };
 
-  return (
-    <View style={{ flex: 1 }}>
-      <ImageBackground
-        source={require("../assets/images/003.jpg")}
-        style={{ width: SCREEN_W, height: SCREEN_H }}
-        resizeMode="cover"
-      >
-        <View style={styles.overlay}>
-          {/* SUCCESS SCREEN */}
+  const openDrawer = () => {
+    console.log("Open Cash Drawer");
+  };
 
-          {isSuccess && (
-            <View style={styles.centerBox}>
-              <Text style={styles.successText}>✅ PAYMENT SUCCESSFUL</Text>
-              <Text style={styles.successSub}>Order Completed</Text>
-            </View>
-          )}
+  const Header = () => (
+    <View style={styles.header}>
 
-          {/* PROCESSING SCREEN */}
+      <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <Ionicons name="arrow-back" size={18} color="#fff"/>
+        <Text style={styles.backText}>Back</Text>
+      </TouchableOpacity>
 
-          {isProcessing && (
-            <View style={styles.centerBox}>
-              <ActivityIndicator size="large" color="#22c55e" />
-              <Text style={styles.processingText}>Processing Payment...</Text>
-            </View>
-          )}
+      <Text style={styles.headerTitle}>
+        {context?.orderType === "DINE_IN" ? "DINE-IN" : "TAKEAWAY"} | Order {context?.tableNo || context?.takeawayNo || activeOrder?.orderId || "N/A"}
+      </Text>
 
-          {!isProcessing && !isSuccess && (
-            <>
-              {/* TOP BAR WITH BACK BUTTON */}
-              <View style={styles.topBar}>
-                <Pressable
-                  style={styles.backBtn}
-                  onPress={() => router.back()}
-                >
-                  <Text style={styles.backText}>Back</Text>
-                </Pressable>
-              </View>
+      <View style={styles.headerRight}>
+        <Text style={styles.dateTime}>
+          {time.toLocaleDateString()} | {time.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"})}
+        </Text>
+      </View>
 
-              {/* ORDER CONTEXT */}
-
-              {context?.orderType === "DINE_IN" && (
-                <Text style={styles.contextText}>
-                  DINE-IN | {context.section} | Table {context.tableNo}
-                </Text>
-              )}
-
-              {context?.orderType === "TAKEAWAY" && (
-                <Text style={styles.contextText}>
-                  TAKEAWAY | Order {context.takeawayNo}
-                </Text>
-              )}
-
-              <Text style={styles.totalText}>
-                Grand Total: ${total.toFixed(2)}
-              </Text>
-
-              {/* PAYMENT METHODS */}
-
-              <View style={styles.methodRow}>
-                {["CASH", "NETS", "PAYNOW", "CARD"].map((method) => (
-                  <Pressable
-                    key={method}
-                    style={[
-                      styles.methodBtn,
-                      selectedMethod === method && styles.methodActive,
-                    ]}
-                    onPress={() => setSelectedMethod(method)}
-                  >
-                    <Text style={styles.methodText}>{method}</Text>
-                  </Pressable>
-                ))}
-              </View>
-
-              {/* CASH PAYMENT */}
-
-              {selectedMethod === "CASH" && (
-                <View style={styles.cashBox}>
-                  <Text style={styles.label}>Customer Pays</Text>
-
-                  <TextInput
-                    keyboardType="decimal-pad"
-                    value={cashInput}
-                    onChangeText={setCashInput}
-                    placeholder="0.00"
-                    placeholderTextColor="#888"
-                    style={styles.input}
-                  />
-
-                  {/* Tender Buttons */}
-
-                  <View style={styles.tenderRow}>
-                    {tenderOptions.map((amount) => (
-                      <Pressable
-                        key={amount}
-                        style={styles.tenderBtn}
-                        onPress={() => setCashInput(amount.toFixed(2))}
-                      >
-                        <Text style={styles.tenderText}>${amount}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-
-                  {paidAmount < total && paidAmount > 0 && (
-                    <Text style={styles.errorText}>
-                      ⚠ Insufficient Amount{"\n"}
-                      Remaining: ${remaining.toFixed(2)}
-                    </Text>
-                  )}
-
-                  {paidAmount >= total && (
-                    <Text style={styles.changeText}>
-                      Change: ${change.toFixed(2)}
-                    </Text>
-                  )}
-                </View>
-              )}
-
-              {/* CONFIRM BUTTON */}
-
-              <Pressable
-                style={[
-                  styles.confirmBtn,
-                  (!selectedMethod || !isCashValid) && styles.disabledBtn,
-                ]}
-                onPress={handleConfirm}
-              >
-                <Ionicons name="checkmark-circle-outline" size={24} color="#052b12" style={{marginRight: 8}} />
-                <Text style={styles.confirmText}>Confirm Payment</Text>
-              </Pressable>
-            </>
-          )}
-        </View>
-      </ImageBackground>
     </View>
   );
+
+  return (
+
+<SafeAreaView style={{flex:1, backgroundColor:"#000"}}>
+
+<ImageBackground
+source={require("../assets/images/a4.jpg")}
+style={{width,height}}
+resizeMode="cover"
+>
+
+<View style={styles.overlay}/>
+
+<View style={styles.container}>
+
+<Header/>
+
+<View style={[styles.mainLayout, isMobile && styles.mobileLayout]}>
+
+{/* LEFT PANEL */}
+
+<View style={styles.leftPane}>
+
+<Text style={styles.sectionLabel}>Grand Total</Text>
+<Text style={styles.grandTotal}>${total.toFixed(2)}</Text>
+
+<View style={styles.breakdown}>
+
+<View>
+<Text style={styles.breakLabel}>Subtotal</Text>
+<Text style={styles.breakValue}>${subtotal.toFixed(2)}</Text>
+</View>
+
+<View>
+<Text style={styles.breakLabel}>Tax</Text>
+<Text style={styles.breakValue}>${tax.toFixed(2)}</Text>
+</View>
+
+</View>
+
+</View>
+
+{/* CENTER PANEL */}
+
+<View style={styles.centerPane}>
+
+<Text style={styles.sectionLabel}>Payment Method</Text>
+
+<View style={styles.methodRow}>
+
+{[
+{ id:"CASH", icon:"money-bill-wave" },
+{ id:"CARD", icon:"credit-card" },
+{ id:"NETS", icon:"exchange-alt" },
+{ id:"PAYNOW", icon:"qrcode" }
+].map(m => (
+
+<TouchableOpacity
+key={m.id}
+style={[
+styles.methodCard,
+method === m.id && styles.activeMethod
+]}
+onPress={() => setMethod(m.id)}
+>
+
+<FontAwesome5
+name={m.icon}
+size={20}
+color={method===m.id?"#052b12":"#94a3b8"}
+/>
+
+<Text style={[
+styles.methodText,
+method===m.id && {color:"#052b12"}
+]}>
+{m.id}
+</Text>
+
+</TouchableOpacity>
+
+))}
+
+</View>
+
+{/* CASH SECTION */}
+
+{method === "CASH" && (
+
+<>
+
+<View style={styles.cashInputBox}>
+
+<Text style={styles.currency}>$</Text>
+
+<TextInput
+style={styles.cashInput}
+keyboardType="numeric"
+value={cashInput}
+onChangeText={setCashInput}
+placeholder="20.00"
+placeholderTextColor="#475569"
+/>
+
+</View>
+
+<View style={styles.quickRow}>
+
+{quickCash.map(v => (
+
+<TouchableOpacity
+key={v}
+style={styles.quickBtn}
+onPress={() => setCashInput(v.toFixed(2))}
+>
+
+<Text style={styles.quickText}>${v}</Text>
+
+</TouchableOpacity>
+
+))}
+
+</View>
+
+<View style={styles.changeBox}>
+
+<Text style={styles.changeLabel}>Change</Text>
+<Text style={styles.changeValue}>${change.toFixed(2)}</Text>
+
+</View>
+
+</>
+
+)}
+
+<View style={styles.microActions}>
+
+<TouchableOpacity
+style={styles.utilBtn}
+onPress={()=>setCashInput("")}
+>
+<Ionicons name="close" size={18} color="#fff"/>
+<Text style={styles.utilText}>Clear</Text>
+</TouchableOpacity>
+
+<TouchableOpacity
+style={styles.utilBtn}
+onPress={openDrawer}
+>
+<MaterialCommunityIcons name="gesture-tap" size={18} color="#fff"/>
+<Text style={styles.utilText}>Open Drawer</Text>
+</TouchableOpacity>
+
+</View>
+
+<TouchableOpacity
+style={[
+styles.confirmBtn,
+(method==="CASH" && paidNum<total) && styles.disabled
+]}
+disabled={processing || (method==="CASH" && paidNum<total)}
+onPress={confirmPayment}
+>
+
+{processing ? (
+<ActivityIndicator color="#052b12"/>
+) : (
+<>
+<Ionicons name="checkmark-circle" size={20} color="#052b12"/>
+<Text style={styles.confirmText}>Confirm Payment</Text>
+</>
+)}
+
+</TouchableOpacity>
+
+</View>
+
+{/* RIGHT PANEL */}
+
+<View style={styles.rightPane}>
+
+<BlurView intensity={40} tint="dark" style={styles.statusCard}>
+
+{success ? (
+
+<View style={styles.successBox}>
+
+<Ionicons name="checkmark-circle" size={50} color="#22c55e"/>
+
+<Text style={styles.successTitle}>Payment Received</Text>
+
+<View style={styles.receiptRow}>
+<Text style={styles.receiptLabel}>Total</Text>
+<Text style={styles.receiptValue}>${total.toFixed(2)}</Text>
+</View>
+
+<View style={styles.receiptRow}>
+<Text style={styles.receiptLabel}>Customer Given</Text>
+<Text style={styles.receiptValue}>${paidNum.toFixed(2)}</Text>
+</View>
+
+<View style={styles.receiptRow}>
+<Text style={[styles.receiptLabel,{color:"#22c55e"}]}>Change</Text>
+<Text style={[styles.receiptValue,{color:"#22c55e"}]}>${change.toFixed(2)}</Text>
+</View>
+
+<TouchableOpacity
+style={styles.doneBtn}
+onPress={handleDone}
+>
+<Text style={styles.doneText}>Done</Text>
+</TouchableOpacity>
+
+</View>
+
+) : (
+
+<View style={styles.waitBox}>
+
+<Ionicons name="wallet-outline" size={60} color="#1e293b"/>
+
+<Text style={styles.waitText}>
+Waiting for payment
+</Text>
+
+<Text style={styles.waitSub}>
+Select method and confirm
+</Text>
+
+</View>
+
+)}
+
+</BlurView>
+
+</View>
+
+</View>
+
+</View>
+
+</ImageBackground>
+
+</SafeAreaView>
+
+);
 }
 
-/* ================= STYLES ================= */
-
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.65)",
-    paddingTop: 40,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
 
-  contextText: {
-    color: "#d7ff9a",
-    fontWeight: "800",
-    marginBottom: 10,
-  },
+overlay:{
+...StyleSheet.absoluteFillObject,
+backgroundColor:"rgba(0,0,0,0.45)"
+},
 
-  topBar: {
-    flexDirection: "row",
-    marginBottom: 20,
-  },
+container:{
+flex:1,
+padding:14
+},
 
-  backBtn: {
-    backgroundColor: "rgba(255,255,255,0.3)",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
+header:{
+flexDirection:"row",
+justifyContent:"space-between",
+alignItems:"center",
+marginBottom:10
+},
 
-  backText: {
-    color: "#fff",
-    fontWeight: "700",
-  },
+backBtn:{
+flexDirection:"row",
+alignItems:"center",
+gap:6
+},
 
-  totalText: {
-    color: "#22c55e",
-    fontSize: 20,
-    fontWeight: "900",
-    marginBottom: 20,
-  },
+backText:{
+color:"#fff",
+fontWeight:"700"
+},
 
-  methodRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginBottom: 20,
-  },
+headerTitle:{
+color:"#fff",
+fontWeight:"900",
+fontSize:16
+},
 
-  methodBtn: {
-    padding: 12,
-    backgroundColor: "rgba(17, 24, 39, 0.75)",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-  },
+headerRight:{
+flexDirection:"row",
+gap:10
+},
 
-  methodActive: {
-    backgroundColor: "rgba(34,197,94,0.85)",
-    borderColor: "rgba(74,222,128,0.5)",
-  },
+dateTime:{
+color:"#94a3b8",
+fontSize:12
+},
 
-  methodText: {
-    color: "#fff",
-    fontWeight: "800",
-  },
+mainLayout:{
+flex:1,
+flexDirection:"row",
+gap:16
+},
 
-  cashBox: {
-    marginBottom: 20,
-  },
+mobileLayout:{
+flexDirection:"column"
+},
 
-  label: {
-    color: "#e5e7eb",
-    marginBottom: 5,
-  },
+leftPane:{
+flex:1
+},
 
-  input: {
-    backgroundColor: "rgba(17, 24, 39, 0.75)",
-    color: "#fff",
-    padding: 10,
-    borderRadius: 8,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-  },
+centerPane:{
+flex:1.4
+},
 
-  tenderRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginBottom: 10,
-  },
+rightPane:{
+flex:1
+},
 
-  tenderBtn: {
-    backgroundColor: "rgba(17, 24, 39, 0.75)",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-  },
+sectionLabel:{
+color:"#94a3b8",
+fontSize:12,
+marginBottom:6
+},
 
-  tenderText: {
-    color: "#fff",
-    fontWeight: "800",
-  },
+grandTotal:{
+fontSize:44,
+fontWeight:"900",
+color:"#22c55e"
+},
 
-  errorText: {
-    color: "#ef4444",
-    fontWeight: "800",
-  },
+breakdown:{
+flexDirection:"row",
+gap:20,
+marginTop:10
+},
 
-  changeText: {
-    color: "#22c55e",
-    fontWeight: "900",
-  },
+breakLabel:{
+color:"#64748b",
+fontSize:12
+},
 
-  confirmBtn: {
-    flexDirection: "row",
-    backgroundColor: "rgba(34,197,94,0.85)",
-    padding: 15,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+breakValue:{
+color:"#fff",
+fontSize:18,
+fontWeight:"800"
+},
 
-  disabledBtn: {
-    backgroundColor: "#555",
-  },
+methodRow:{
+flexDirection:"row",
+gap:8,
+marginBottom:14
+},
 
-  confirmText: {
-    color: "#052b12",
-    fontWeight: "900",
-  },
+methodCard:{
+flex:1,
+height:60,
+borderRadius:12,
+backgroundColor:"rgba(255,255,255,0.05)",
+justifyContent:"center",
+alignItems:"center"
+},
 
-  centerBox: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
+activeMethod:{
+backgroundColor:"#22c55e"
+},
 
-  processingText: {
-    marginTop: 10,
-    color: "#fff",
-    fontWeight: "700",
-  },
+methodText:{
+color:"#94a3b8",
+fontSize:12,
+fontWeight:"800"
+},
 
-  successText: {
-    color: "#22c55e",
-    fontSize: 22,
-    fontWeight: "900",
-  },
+cashInputBox:{
+flexDirection:"row",
+alignItems:"center",
+backgroundColor:"rgba(255,255,255,0.05)",
+borderRadius:12,
+height:55,
+paddingHorizontal:14,
+marginBottom:10
+},
 
-  successSub: {
-    color: "#fff",
-    marginTop: 10,
-  },
+currency:{
+color:"#94a3b8",
+fontSize:22,
+marginRight:6
+},
+
+cashInput:{
+flex:1,
+color:"#fff",
+fontSize:28,
+fontWeight:"900"
+},
+
+quickRow:{
+flexDirection:"row",
+flexWrap:"wrap",
+gap:8
+},
+
+quickBtn:{
+backgroundColor:"rgba(255,255,255,0.05)",
+padding:10,
+borderRadius:10
+},
+
+quickText:{
+color:"#fff",
+fontWeight:"800"
+},
+
+changeBox:{
+marginTop:12
+},
+
+changeLabel:{
+color:"#94a3b8"
+},
+
+changeValue:{
+fontSize:32,
+fontWeight:"900",
+color:"#22c55e"
+},
+
+microActions:{
+flexDirection:"row",
+gap:10,
+marginTop:12
+},
+
+utilBtn:{
+flexDirection:"row",
+alignItems:"center",
+gap:6,
+backgroundColor:"rgba(255,255,255,0.08)",
+padding:10,
+borderRadius:10
+},
+
+utilText:{
+color:"#fff",
+fontSize:12
+},
+
+confirmBtn:{
+marginTop:14,
+backgroundColor:"#22c55e",
+height:50,
+borderRadius:12,
+flexDirection:"row",
+alignItems:"center",
+justifyContent:"center",
+gap:8
+},
+
+confirmText:{
+color:"#052b12",
+fontWeight:"900",
+fontSize:15
+},
+
+disabled:{
+backgroundColor:"rgba(34,197,94,0.4)"
+},
+
+statusCard:{
+flex:1,
+borderRadius:20,
+padding:16
+},
+
+waitBox:{
+flex:1,
+justifyContent:"center",
+alignItems:"center"
+},
+
+waitText:{
+color:"#fff",
+fontWeight:"800",
+marginTop:10
+},
+
+waitSub:{
+color:"#64748b",
+fontSize:12
+},
+
+successBox:{
+flex:1,
+alignItems:"center",
+gap:10
+},
+
+successTitle:{
+color:"#22c55e",
+fontSize:20,
+fontWeight:"900"
+},
+
+receiptRow:{
+flexDirection:"row",
+justifyContent:"space-between",
+width:"100%"
+},
+
+receiptLabel:{
+color:"#94a3b8"
+},
+
+receiptValue:{
+color:"#fff",
+fontWeight:"800"
+},
+
+doneBtn:{
+marginTop:10,
+backgroundColor:"#22c55e",
+padding:12,
+borderRadius:10
+},
+
+doneText:{
+color:"#052b12",
+fontWeight:"900"
+}
+
 });

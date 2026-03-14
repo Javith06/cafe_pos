@@ -161,28 +161,27 @@ export default function Category() {
 
       switch (tableData.status) {
         case 'HOLD':
-          bgColor = "rgba(59, 130, 246, 0.85)"; // Blue
-          borderColor = "rgba(96, 165, 250, 0.5)";
+          bgColor = "rgba(37, 99, 235, 1)"; // Solid Blue
+          borderColor = "#60a5fa";
           isHeld = true;
           break;
 
-
         case 'SENT':
           if (minutes >= 60) {
-            bgColor = "rgba(239, 68, 68, 0.85)"; // Red (Active > 1hr)
-            borderColor = "rgba(248, 113, 113, 0.5)";
+            bgColor = "rgba(220, 38, 38, 1)"; // Solid Red (Active > 1hr)
+            borderColor = "#ef4444";
           } else {
-            bgColor = "rgba(34, 197, 94, 0.85)"; // Green
-            borderColor = "rgba(74, 222, 128, 0.5)";
+            bgColor = "rgba(21, 128, 61, 1)"; // Deep Green (Reference Image)
+            borderColor = "#4ade80"; // Bright green border
           }
           break;
         case 'BILL_REQUESTED':
-          bgColor = "rgba(245, 158, 11, 0.85)"; // Yellow
-          borderColor = "rgba(251, 191, 36, 0.5)";
+          bgColor = "rgba(180, 83, 9, 1)"; // Solid Dark Orange
+          borderColor = "#fbbf24";
           break;
         default:
-          bgColor = "rgba(255,255,255,0.05)"; // Grey
-          borderColor = "rgba(255,255,255,0.25)";
+          bgColor = "rgba(30, 41, 59, 0.8)"; // Dark Slate Grey
+          borderColor = "rgba(255, 255, 255, 0.25)";
       }
 
       const time = new Date(tableData.startTime);
@@ -202,6 +201,7 @@ export default function Category() {
             width: itemSize,
             height: itemSize,
             borderColor,
+            backgroundColor: bgColor, // Apply color here for full occupancy
           },
         ]}
         onPress={() => {
@@ -224,10 +224,8 @@ export default function Category() {
         }}
       >
 
-        <BlurView
-          intensity={width < 900 ? 65 : 40}
-          tint="dark"
-          style={{ flex: 1, backgroundColor: bgColor }}
+        <View
+          style={{ flex: 1 }}
         >
           <View style={styles.tableContent}>
 
@@ -241,10 +239,9 @@ export default function Category() {
 
 
             <Text
-
               style={[
                 styles.tableNumber,
-                { fontSize: numberFont, color: tableNoColor },
+                { fontSize: numberFont, color: "#ffffff" },
               ]}
             >
               {item.label}
@@ -252,22 +249,18 @@ export default function Category() {
 
             {tableData && (
               <>
-                <Text style={[styles.timeText, { fontSize: smallFont }]}>
+                <Text style={[styles.timeText, { fontSize: smallFont, color: "#ffffff" }]}>
                   {timeText}
                 </Text>
 
-                <Text style={[styles.orderText, { fontSize: smallFont }]}>
+                <Text style={[styles.orderText, { fontSize: smallFont, color: borderColor }]}>
                   {orderText}
-                </Text>
-
-                <Text style={[styles.billText, { fontSize: smallFont }]}>
-                  ${billAmount.toFixed(2)}
                 </Text>
               </>
             )}
 
           </View>
-        </BlurView>
+        </View>
 
       </TouchableOpacity>
     );
@@ -483,8 +476,7 @@ const styles = StyleSheet.create({
   },
 
   orderText: {
-    color: "#a7f3d0",
-    fontWeight: "600",
+    fontWeight: "700",
   },
 
   billText: {
