@@ -4,47 +4,45 @@ import { useRouter } from "expo-router";
 import React, { useMemo } from "react";
 
 import {
-  Dimensions,
   FlatList,
   ImageBackground,
   Pressable,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 
-import { CartItem, useCartStore } from "./cartStore";
-import { getNextOrderId } from "./orderIdStore";
-import { updateTableStatus, getTables } from "./tableStatusStore";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-
-import { OrderItem, useActiveOrdersStore } from "./activeOrdersStore";
-
-import { useOrderContextStore } from "./orderContextStore";
+import { OrderItem, useActiveOrdersStore } from "../stores/activeOrdersStore";
+import { CartItem, useCartStore } from "../stores/cartStore";
+import { useOrderContextStore } from "../stores/orderContextStore";
+import { getNextOrderId } from "../stores/orderIdStore";
+import { getTables, updateTableStatus } from "../stores/tableStatusStore";
 
 export default function CartScreen() {
   const router = useRouter();
-  
-  // Zustand Hooks
-  const orderContext = useOrderContextStore((state) => state.currentOrder);
-  const carts = useCartStore((state) => state.carts);
-  const currentContextId = useCartStore((state) => state.currentContextId);
-  const clearCart = useCartStore((state) => state.clearCart);
-  const removeFromCartGlobal = useCartStore((state) => state.removeFromCartGlobal);
-  const addToCartGlobal = useCartStore((state) => state.addToCartGlobal);
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 768;
+
+  const orderContext = useOrderContextStore((s) => s.currentOrder);
+
+  const carts = useCartStore((s) => s.carts);
+  const currentContextId = useCartStore((s) => s.currentContextId);
+  const clearCart = useCartStore((s) => s.clearCart);
+  const removeFromCartGlobal = useCartStore((s) => s.removeFromCartGlobal);
+  const addToCartGlobal = useCartStore((s) => s.addToCartGlobal);
 
   const cart = currentContextId ? carts[currentContextId] || [] : [];
-  
-  const activeOrders = useActiveOrdersStore((state) => state.activeOrders);
-  const appendOrder = useActiveOrdersStore((state) => state.appendOrder);
-  const markItemsSent = useActiveOrdersStore((state) => state.markItemsSent);
 
-  const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
+  const activeOrders = useActiveOrdersStore((s) => s.activeOrders);
+  const appendOrder = useActiveOrdersStore((s) => s.appendOrder);
+  const markItemsSent = useActiveOrdersStore((s) => s.markItemsSent);
 
-  // Find active order for this context
   const activeOrder = useMemo(() => {
     if (!orderContext) return undefined;
-    
+
     return activeOrders.find((o) => {
       if (orderContext.orderType === "DINE_IN") {
         return (
@@ -53,26 +51,19 @@ export default function CartScreen() {
           o.context.tableNo === orderContext.tableNo
         );
       }
+
       if (orderContext.orderType === "TAKEAWAY") {
         return (
           o.context.orderType === "TAKEAWAY" &&
           o.context.takeawayNo === orderContext.takeawayNo
         );
       }
+
       return false;
     });
   }, [activeOrders, orderContext]);
 
-  const currentTableData = useMemo(() => {
-    if (orderContext?.orderType !== "DINE_IN") return undefined;
-    const tables = getTables();
-    return tables.find(t => t.section === orderContext.section && t.tableNo === orderContext.tableNo);
-  }, [orderContext]);
-
-
-  // COMBINE SENT ITEMS AND NEW ITEMS FOR THE TICKET VIEW
   const displayItems = useMemo(() => {
-    // Cast to slightly generic type to handle both
     const sentItems: (OrderItem | CartItem)[] = activeOrder?.items || [];
     return [...sentItems, ...cart];
   }, [activeOrder, cart]);
@@ -83,35 +74,51 @@ export default function CartScreen() {
     }, 0);
   }, [displayItems]);
 
+  const currentTableData = useMemo(() => {
+    if (orderContext?.orderType !== "DINE_IN") return undefined;
+
+    const tables = getTables();
+
+    return tables.find(
+      (t) =>
+        t.section === orderContext.section &&
+        t.tableNo === orderContext.tableNo,
+    );
+  }, [orderContext]);
+
   if (!orderContext) {
     router.replace("/(tabs)/category");
     return null;
   }
-
-  /* ================= SEND ORDER ================= */
 
   const sendOrder = () => {
     const context = orderContext;
 
     if (!context || cart.length === 0) return;
 
-    // Use append logic. If there's an active order, append. Else create new one.
     let targetOrderId = activeOrder?.orderId;
-    if (!targetOrderId) {
-      targetOrderId = getNextOrderId();
-    }
+
+    if (!targetOrderId) targetOrderId = getNextOrderId();
 
     appendOrder(targetOrderId, context, cart);
     markItemsSent(targetOrderId);
 
-    /* mark table active */
     if (context.orderType === "DINE_IN") {
-      updateTableStatus(context.section!, context.tableNo!, targetOrderId, 'SENT');
+      updateTableStatus(
+        context.section!,
+        context.tableNo!,
+        targetOrderId,
+        "SENT",
+      );
+
       clearCart();
+
       router.replace(`/(tabs)/category?section=${context.section}`);
     } else if (context.orderType === "TAKEAWAY") {
-      updateTableStatus("TAKEAWAY", context.takeawayNo!, targetOrderId, 'SENT');
+      updateTableStatus("TAKEAWAY", context.takeawayNo!, targetOrderId, "SENT");
+
       clearCart();
+
       router.replace(`/(tabs)/category?section=TAKEAWAY`);
     } else {
       clearCart();
@@ -120,20 +127,22 @@ export default function CartScreen() {
   };
 
   return (
-    <View style={{ flex: 1 }}>
+    <SafeAreaView style={{ flex: 1 }}>
       <ImageBackground
-        source={require("../assets/images/a13.jpg")}
-        style={{ width: SCREEN_W, height: SCREEN_H }}
+        source={require("../assets/images/a4.jpg")}
+        style={{ flex: 1 }}
         resizeMode="cover"
       >
         <View style={styles.overlay}>
-          {/* TOP BAR */}
-
-          <BlurView intensity={40} tint="dark" style={styles.topBar}>
-
-
-            <View style={styles.topRightGroup}>
-              <Pressable style={styles.back} onPress={() => { clearCart(); router.back(); }}>
+          <View style={[styles.container, isTablet && styles.containerTablet]}>
+            <View style={styles.topBar}>
+              <Pressable
+                style={styles.back}
+                onPress={() => {
+                  clearCart();
+                  router.back();
+                }}
+              >
                 <Text style={styles.topBtnText}>Back</Text>
               </Pressable>
 
@@ -141,407 +150,368 @@ export default function CartScreen() {
                 <Text style={styles.topBtnText}>Clear Cart</Text>
               </Pressable>
             </View>
-          </BlurView>
 
-          {/* ORDER HEADER */}
-
-          {orderContext.orderType === "DINE_IN" && (
             <Text style={styles.contextText}>
-              DINE-IN | {orderContext.section} | Table {orderContext.tableNo}
+              {orderContext.orderType === "DINE_IN"
+                ? `DINE-IN • ${orderContext.section} • Table ${orderContext.tableNo}`
+                : `TAKEAWAY • Order ${orderContext.takeawayNo}`}
             </Text>
-          )}
 
-          {orderContext.orderType === "TAKEAWAY" && (
-            <Text style={styles.contextText}>
-              TAKEAWAY | Order {orderContext.takeawayNo}
-            </Text>
-          )}
+            <Text style={styles.title}>CART</Text>
 
-          <Text style={styles.title}>CART</Text>
+            <FlatList
+              data={displayItems}
+              keyExtractor={(i, index) => i.lineItemId + index}
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingBottom: 20 }}
+              renderItem={({ item }) => {
+                const isSent = "status" in item && item.status === "SENT";
 
-          {/* COMBINED ITEMS LIST */}
+                return (
+                  <BlurView intensity={40} tint="dark" style={styles.row}>
+                    <View style={styles.itemInfo}>
+                      <View style={styles.nameRow}>
+                        <Text style={[styles.name, isSent && styles.sentName]}>
+                          {item.name}
+                        </Text>
+                        {isSent ? (
+                          <View style={styles.sentBadge}>
+                            <Ionicons
+                              name="checkmark-circle"
+                              size={12}
+                              color="#a7f3d0"
+                            />
+                            <Text style={styles.sentBadgeText}>SENT</Text>
+                          </View>
+                        ) : (
+                          <View style={styles.newBadge}>
+                            <Ionicons name="ellipse" size={8} color="#60a5fa" />
+                            <Text style={styles.newBadgeText}>NEW</Text>
+                          </View>
+                        )}
+                      </View>
 
-          <FlatList
-            data={displayItems}
-            keyExtractor={(i, index) => i.lineItemId + index}
-            contentContainerStyle={{ paddingBottom: 20 }}
-            ListEmptyComponent={
-              <Text style={styles.emptyText}>Cart is Empty</Text>
-            }
-            renderItem={({ item }) => {
-              // Quick check if item is from ActiveOrder store (has status prop) or Cart store (missing status prop)
-              const isSent = "status" in item && item.status === "SENT";
+                      {"spicy" in item &&
+                        item.spicy &&
+                        item.spicy !== "Medium" && (
+                          <Text style={styles.modifier}>
+                            Spicy: {item.spicy}
+                          </Text>
+                        )}
 
-              return (
-                <BlurView intensity={40} tint="dark" style={styles.row}>
-                  <View style={styles.itemInfo}>
-                    <View
-                      style={{ flexDirection: "row", alignItems: "center" }}
-                    >
-                      <Text style={[styles.name, isSent && styles.sentName]}>{item.name}</Text>
-
-                      {isSent ? (
-                        <View style={styles.badgeRow}>
-                          <Ionicons name="checkmark-circle" size={14} color="#a7f3d0" />
-                          <Text style={styles.sentBadgeText}>SENT</Text>
-                        </View>
-                      ) : (
-                        <View style={styles.badgeRow}>
-                          <Ionicons name="ellipse" size={10} color="#60a5fa" />
-                          <Text style={styles.newBadgeText}>NEW</Text>
-                        </View>
+                      {"oil" in item && item.oil && item.oil !== "Normal" && (
+                        <Text style={styles.modifier}>Oil: {item.oil}</Text>
                       )}
+
+                      {"salt" in item &&
+                        item.salt &&
+                        item.salt !== "Normal" && (
+                          <Text style={styles.modifier}>Salt: {item.salt}</Text>
+                        )}
+
+                      {"sugar" in item &&
+                        item.sugar &&
+                        item.sugar !== "Normal" && (
+                          <Text style={styles.modifier}>
+                            Sugar: {item.sugar}
+                          </Text>
+                        )}
+
+                      {"note" in item && item.note && (
+                        <Text style={styles.modifier}>Note: {item.note}</Text>
+                      )}
+
+                      <Text style={styles.qty}>Qty: {item.qty}</Text>
+
+                      <Text style={styles.price}>
+                        ${(item.price || 0).toFixed(2)}
+                      </Text>
                     </View>
 
-                    {/* Modifiers Display Example */}
-                    <View style={styles.modifierContainer}>
-                       {item.spicy && item.spicy !== "Medium" && <Text style={styles.modifierText}>Spicy: {item.spicy}</Text>}
-                       {item.oil && item.oil !== "Normal" && <Text style={styles.modifierText}>Oil: {item.oil}</Text>}
-                       {item.salt && item.salt !== "Normal" && <Text style={styles.modifierText}>Salt: {item.salt}</Text>}
-                       {item.sugar && item.sugar !== "Normal" && <Text style={styles.modifierText}>Sugar: {item.sugar}</Text>}
-                       {item.note && <Text style={styles.modifierText}>Note: {item.note}</Text>}
-                    </View>
+                    {!isSent && (
+                      <View style={styles.actionRow}>
+                        <Pressable
+                          style={styles.plus}
+                          onPress={() => addToCartGlobal(item as CartItem)}
+                        >
+                          <Ionicons name="add" size={22} color="#fff" />
+                        </Pressable>
 
-                    <Text style={styles.qty}>Qty: {item.qty}</Text>
+                        <Pressable
+                          style={styles.minus}
+                          onPress={() => removeFromCartGlobal(item.lineItemId)}
+                        >
+                          <Ionicons name="remove" size={22} color="#fff" />
+                        </Pressable>
+                      </View>
+                    )}
+                  </BlurView>
+                );
+              }}
+            />
 
-                    <Text style={styles.price}>
-                      ${(item.price || 0).toFixed(2)}
-                    </Text>
-                  </View>
+            <View style={styles.divider} />
 
-                  {/* Actions: Only allow editing for NEW unsent items */}
-                  {!isSent && (
-                    <View style={styles.actionRow}>
-                      <Pressable
-                        style={styles.plus}
-                        onPress={() => addToCartGlobal(item as CartItem)}
-                      >
-                        <Ionicons name="add" size={24} color="#fff" />
-                      </Pressable>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Subtotal</Text>
+              <Text style={styles.summaryValue}>${subtotal.toFixed(2)}</Text>
+            </View>
 
-                      <Pressable
-                        style={styles.minus}
-                        onPress={() => removeFromCartGlobal(item.lineItemId)}
-                      >
-                        <Ionicons name="remove" size={24} color="#fff" />
-                      </Pressable>
-                    </View>
-                  )}
-                </BlurView>
-              );
-            }}
-          />
+            <View style={styles.divider} />
 
-          <View style={styles.divider} />
-
-          {/* SUBTOTAL */}
-
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>Cart Total</Text>
-            <Text style={styles.summaryValue}>${subtotal.toFixed(2)}</Text>
-          </View>
-
-          <View style={styles.divider} />
-
-          {/* ACTION BUTTONS */}
-
-          <View style={styles.bottomButtons}>
-            {/* If cart has items, show Hold and Send */}
-            {cart.length > 0 && (
-              <>
-                <Pressable
-                  style={[styles.holdBtn, { backgroundColor: "#3b82f6" }]} // BLUE for HOLD
-                  onPress={() => {
-                    let targetOrderId = activeOrder?.orderId;
-                    if (!targetOrderId) {
-                      targetOrderId = getNextOrderId();
-                    }
-                    if (orderContext.orderType === "DINE_IN") {
-                      updateTableStatus(orderContext.section!, orderContext.tableNo!, targetOrderId, 'HOLD');
-                      router.replace(`/(tabs)/category?section=${orderContext.section}`);
-                    } else if (orderContext.orderType === "TAKEAWAY") {
-                      router.replace(`/(tabs)/category?section=TAKEAWAY`);
-                    } else {
-                      router.replace("/(tabs)/category");
-                    }
-                  }}
-                >
-                  <Text style={styles.sendText}>Hold</Text>
-                </Pressable>
- 
-                <Pressable
-                  style={styles.sendBtn}
-                  onPress={sendOrder}
-                >
-                  <Text style={styles.sendText}>Send</Text>
-                </Pressable>
-              </>
-            )}
- 
-            {/* If no new items, check table status for Checkout or Proceed */}
-            {cart.length === 0 && activeOrder && (
-              <>
-                {(!currentTableData || currentTableData.status === 'SENT' || currentTableData.status === 'HOLD') ? (
+            <View style={styles.bottomButtons}>
+              {/* If cart has items, show Hold and Send */}
+              {cart.length > 0 && (
+                <>
                   <Pressable
-                    style={[styles.holdBtn, { backgroundColor: "#f59e0b" }]} // YELLOW for Checkout
+                    style={[styles.btn, { backgroundColor: "#3b82f6" }]}
                     onPress={() => {
+                      let targetOrderId = activeOrder?.orderId;
+                      if (!targetOrderId) targetOrderId = getNextOrderId();
+
                       if (orderContext.orderType === "DINE_IN") {
-                        updateTableStatus(orderContext.section!, orderContext.tableNo!, activeOrder.orderId, 'BILL_REQUESTED');
-                        router.replace(`/(tabs)/category?section=${orderContext.section}`);
-                      } else {
-                        router.push("/summary");
+                        updateTableStatus(
+                          orderContext.section!,
+                          orderContext.tableNo!,
+                          targetOrderId,
+                          "HOLD",
+                        );
+                        router.replace(
+                          `/(tabs)/category?section=${orderContext.section}`,
+                        );
+                      } else if (orderContext.orderType === "TAKEAWAY") {
+                        router.replace(`/(tabs)/category?section=TAKEAWAY`);
                       }
                     }}
                   >
-                    <Text style={styles.sendText}>Checkout</Text>
+                    <Text style={styles.btnText}>Hold</Text>
                   </Pressable>
-                ) : (
-                  <Pressable
-                    style={styles.billBtn}
-                    onPress={() => router.push("/summary")}
-                  >
-                    <Text style={styles.billText}>Proceed</Text>
-                  </Pressable>
-                )}
-              </>
-            )}
-          </View>
 
+                  <Pressable
+                    style={[styles.btn, { backgroundColor: "#22c55e" }]}
+                    onPress={sendOrder}
+                  >
+                    <Text style={[styles.btnText, { color: "#052b12" }]}>
+                      Send
+                    </Text>
+                  </Pressable>
+                </>
+              )}
+
+              {/* If no new items, check table status for Checkout or Proceed */}
+              {cart.length === 0 && activeOrder && (
+                <>
+                  {!currentTableData ||
+                  currentTableData.status === "SENT" ||
+                  currentTableData.status === "HOLD" ? (
+                    <Pressable
+                      style={[styles.btn, { backgroundColor: "#f59e0b" }]} // YELLOW for Checkout
+                      onPress={() => {
+                        if (orderContext.orderType === "DINE_IN") {
+                          updateTableStatus(
+                            orderContext.section!,
+                            orderContext.tableNo!,
+                            activeOrder.orderId,
+                            "BILL_REQUESTED",
+                          );
+                          router.replace(
+                            `/(tabs)/category?section=${orderContext.section}`,
+                          );
+                        } else {
+                          router.push("/summary");
+                        }
+                      }}
+                    >
+                      <Text style={styles.btnText}>Checkout</Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      style={[styles.btn, { backgroundColor: "#0ea5e9" }]} // SKY BLUE for Proceed
+                      onPress={() => router.push("/summary")}
+                    >
+                      <Text style={styles.btnText}>Proceed</Text>
+                    </Pressable>
+                  )}
+                </>
+              )}
+            </View>
+          </View>
         </View>
       </ImageBackground>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)" },
+
+  container: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.25)",
-    padding: 20,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    paddingTop: 10,
+  },
+
+  containerTablet: {
+    maxWidth: 700,
+    alignSelf: "center",
+    width: "100%",
+    paddingTop: 20,
   },
 
   topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    padding: 12,
-    borderRadius: 16,
     marginBottom: 20,
-    overflow: "hidden",
-  },
-
-  topRightGroup: {
-    flexDirection: "row",
-    gap: 10,
+    backgroundColor: "transparent",
+    zIndex: 2,
+    elevation: 2,
   },
 
   back: {
-    backgroundColor: "rgba(255,255,255,0.3)",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 8,
   },
 
   clear: {
-    backgroundColor: "#ef4444",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: "rgba(239,68,68,0.15)",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 8,
   },
 
-  topBtnText: {
-    color: "#fff",
-    fontWeight: "700",
-  },
-
-  holdListBtn: {
-    backgroundColor: "#f59e0b",
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-
-  holdText: {
-    color: "#000",
-    fontWeight: "900",
-    fontSize: 20,
-  },
+  topBtnText: { color: "#fff", fontWeight: "900", fontSize: 14 },
 
   contextText: {
-    color: "#9ef01a",
-    marginTop: 10,
+    color: "#cbd5e1",
+    marginBottom: 6,
     fontWeight: "800",
+    fontSize: 14,
   },
 
   title: {
-    color: "#9ef01a",
-    fontSize: 24,
-    fontWeight: "bold",
-    marginVertical: 15,
-  },
-
-  emptyText: {
     color: "#fff",
-    textAlign: "center",
+    fontSize: 28,
+    fontWeight: "900",
+    marginBottom: 20,
   },
 
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
-    padding: 16,
-    borderRadius: 18,
-    marginBottom: 10,
+    alignItems: "center",
+    padding: 18,
+    borderRadius: 20,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
     overflow: "hidden",
   },
 
-  itemInfo: {
-    flex: 1,
+  itemInfo: { flex: 1 },
+
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 4,
   },
 
   name: {
     color: "#fff",
-    fontWeight: "bold",
-    fontSize: 18,
-  },
-  
-  sentName: {
-     color: "#a3a3a3",
-  },
-
-  qty: {
-    color: "#9ef01a",
-    marginTop: 5,
-  },
-
-  price: {
-    color: "#fff",
-    marginTop: 4,
     fontWeight: "900",
+    fontSize: 17,
   },
 
-  actionRow: {
+  sentName: { color: "#94a3b8" },
+
+  sentBadge: {
     flexDirection: "row",
-    gap: 10,
+    alignItems: "center",
+    backgroundColor: "rgba(34,197,94,0.15)",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 4,
   },
+
+  sentBadgeText: { color: "#a7f3d0", fontSize: 10, fontWeight: "900" },
+
+  newBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(59,130,246,0.15)",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 4,
+  },
+
+  newBadgeText: { color: "#93c5fd", fontSize: 10, fontWeight: "900" },
+
+  modifier: {
+    color: "#94a3b8",
+    fontSize: 13,
+    marginTop: 2,
+    fontWeight: "600",
+  },
+
+  qty: { color: "#cbd5e1", marginTop: 6, fontWeight: "800", fontSize: 14 },
+
+  price: { color: "#22c55e", marginTop: 4, fontWeight: "900", fontSize: 16 },
+
+  actionRow: { flexDirection: "row", gap: 12 },
 
   plus: {
     backgroundColor: "#22c55e",
-    width: 45,
-    height: 45,
-    borderRadius: 10,
+    width: 46,
+    height: 46,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
   },
 
   minus: {
     backgroundColor: "#ef4444",
-    width: 45,
-    height: 45,
-    borderRadius: 10,
+    width: 46,
+    height: 46,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
-  },
-
-  btnText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 20,
-  },
-  
-  badgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginLeft: 10,
-  },
-  
-  sentBadgeText: {
-    color: "#a7f3d0",
-    marginLeft: 4,
-    fontWeight: "bold",
-    fontSize: 12,
-  },
-  
-  newBadgeText: {
-    color: "#93c5fd",
-    marginLeft: 4,
-    fontWeight: "bold",
-    fontSize: 12,
-  },
-
-  modifierContainer: {
-     marginTop: 4,
-     marginBottom: 4,
-  },
-  
-  modifierText: {
-     color: "#9ca3af",
-     fontSize: 12,
   },
 
   divider: {
     height: 1,
     backgroundColor: "rgba(255,255,255,0.2)",
-    marginVertical: 15,
+    marginVertical: 20,
   },
 
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
   },
 
-  summaryLabel: {
-    color: "#fff",
-    fontWeight: "700",
-  },
+  summaryLabel: { color: "#fff", fontWeight: "900", fontSize: 16 },
 
   summaryValue: {
-    color: "#9ef01a",
+    color: "#22c55e",
     fontWeight: "900",
+    fontSize: 22,
   },
 
-  bottomButtons: {
-    flexDirection: "row",
-    gap: 12,
-  },
+  bottomButtons: { flexDirection: "row", gap: 12, marginTop: 10 },
 
-  holdBtn: {
+  btn: {
     flex: 1,
-    backgroundColor: "#f59e0b",
-    padding: 16,
-    borderRadius: 12,
+    paddingVertical: 18,
+    borderRadius: 14,
     alignItems: "center",
+    justifyContent: "center",
   },
 
-  sendBtn: {
-    flex: 1,
-    backgroundColor: "#22c55e",
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  
-  disabledBtn: {
-    backgroundColor: "#166534",
-    opacity: 0.5,
-  },
-
-  billBtn: {
-    flex: 1,
-    backgroundColor: "#3b82f6",
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-
-  sendText: {
-    color: "#052b12",
-    fontWeight: "900",
-    fontSize: 20,
-  },
-
-  billText: {
-    color: "#fff",
-    fontWeight: "900",
-    fontSize: 20,
-  },
+  btnText: { color: "#fff", fontWeight: "900", fontSize: 20 },
 });

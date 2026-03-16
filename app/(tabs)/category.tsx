@@ -1,22 +1,23 @@
+import { Ionicons } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   FlatList,
   ImageBackground,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   useWindowDimensions,
   View,
-  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { useActiveOrdersStore } from "../activeOrdersStore";
-import { getContextId, useCartStore } from "../cartStore";
-import { setOrderContext } from "../orderContextStore";
-import { getTables } from "../tableStatusStore";
+import { useActiveOrdersStore } from "../../stores/activeOrdersStore";
+import { getContextId, useCartStore } from "../../stores/cartStore";
+import { setOrderContext } from "../../stores/orderContextStore";
+import { getTables } from "../../stores/tableStatusStore";
 
 type TableItem = {
   id: string;
@@ -49,7 +50,6 @@ const TAKEAWAY_TABLES: TableItem[] = [
 const SECTIONS = ["SECTION_1", "SECTION_2", "SECTION_3", "TAKEAWAY"];
 
 export default function Category() {
-
   const { width } = useWindowDimensions();
   const router = useRouter();
   const { section: urlSection } = useLocalSearchParams<{ section?: string }>();
@@ -60,7 +60,6 @@ export default function Category() {
   const [, forceUpdate] = useState(0);
 
   const carts = useCartStore((state) => state.carts);
-
 
   useEffect(() => {
     if (urlSection && SECTIONS.includes(urlSection)) {
@@ -75,84 +74,80 @@ export default function Category() {
     return () => clearInterval(timer);
   }, []);
 
-  /* ---------------- Responsive Grid ---------------- */
-
   let columns = 10;
   if (width < 600) columns = 4;
   else if (width < 900) columns = 5;
   else if (width < 1200) columns = 8;
   else columns = 10;
 
-
-
   const GAP = 12;
   const PADDING = 20;
 
   const availableGridWidth = width - PADDING * 2;
   const itemSize = (availableGridWidth - GAP * (columns - 1)) / columns;
- 
+
   useEffect(() => {
-    // Auto-scroll logic: find index of active tab and scroll to approx position
     const index = SECTIONS.indexOf(activeTab);
     if (index !== -1 && sectionScrollRef.current) {
-      // Estimated scroll: 120 is approx width of a tab button + margin
       sectionScrollRef.current.scrollTo({ x: index * 100, animated: true });
     }
   }, [activeTab]);
 
-
-
   const numberFont = Math.max(12, Math.min(22, itemSize * 0.32));
   const smallFont = Math.max(9, Math.min(16, itemSize * 0.18));
-
-
 
   const currentTables =
     activeTab === "TAKEAWAY" ? TAKEAWAY_TABLES : DINE_IN_TABLES;
 
-  /* ---------------- Table Card ---------------- */
-
   const renderItem = ({ item }: { item: TableItem }) => {
-
     const tables = getTables();
     const activeOrders = useActiveOrdersStore.getState().activeOrders;
 
     const tableData = tables.find(
-      (t) => t.section === activeTab && t.tableNo === item.label
+      (t) => t.section === activeTab && t.tableNo === item.label,
     );
 
     let borderColor = "rgba(255,255,255,0.25)";
     let bgColor = "rgba(255,255,255,0.05)";
-    let tableNoColor = "#ffffff";
     let timeText = "";
     let orderText = "";
     let billAmount = 0;
-    let isHeld = false;
     let minutes = 0;
 
+    let statusIcon: any = null;
+    let statusColor = "#fff";
+
     if (tableData) {
-
-
-      const activeOrder = activeOrders.find((o: any) => 
-        o.context.orderType === (activeTab === "TAKEAWAY" ? "TAKEAWAY" : "DINE_IN") &&
-        (activeTab === "TAKEAWAY" ? o.context.takeawayNo === item.label : (o.context.section === activeTab && o.context.tableNo === item.label))
+      const activeOrder = activeOrders.find(
+        (o: any) =>
+          o.context.orderType ===
+            (activeTab === "TAKEAWAY" ? "TAKEAWAY" : "DINE_IN") &&
+          (activeTab === "TAKEAWAY"
+            ? o.context.takeawayNo === item.label
+            : o.context.section === activeTab &&
+              o.context.tableNo === item.label),
       );
-      
+
       if (activeOrder) {
-        billAmount = activeOrder.items.reduce((sum: number, i: any) => sum + (i.price || 0) * i.qty, 0);
+        billAmount = activeOrder.items.reduce(
+          (sum: number, i: any) => sum + (i.price || 0) * i.qty,
+          0,
+        );
       }
 
-      // Add Cart Subtotal (Held / New items)
       const contextId = getContextId({
         orderType: activeTab === "TAKEAWAY" ? "TAKEAWAY" : "DINE_IN",
         section: activeTab,
         tableNo: item.label,
-        takeawayNo: item.label
+        takeawayNo: item.label,
       });
-      
+
       if (contextId) {
         const cartItems = carts[contextId] || [];
-        const cartSubtotal = cartItems.reduce((sum: number, i: any) => sum + (i.price || 0) * i.qty, 0);
+        const cartSubtotal = cartItems.reduce(
+          (sum: number, i: any) => sum + (i.price || 0) * i.qty,
+          0,
+        );
         billAmount += cartSubtotal;
       }
 
@@ -160,28 +155,39 @@ export default function Category() {
       minutes = Math.floor(elapsedMs / 60000);
 
       switch (tableData.status) {
-        case 'HOLD':
-          bgColor = "rgba(37, 99, 235, 1)"; // Solid Blue
+        case "HOLD":
+          bgColor = "rgba(37, 99, 235, 0.7)";
           borderColor = "#60a5fa";
-          isHeld = true;
+          statusIcon = "pause-circle";
+          statusColor = "#93c5fd";
           break;
 
-        case 'SENT':
+        case "SENT":
           if (minutes >= 60) {
-            bgColor = "rgba(220, 38, 38, 1)"; // Solid Red (Active > 1hr)
-            borderColor = "#ef4444";
+            bgColor = "rgba(220, 38, 38, 0.7)";
+            borderColor = "#f87171";
+            statusIcon = "warning";
+            statusColor = "#fca5a5";
           } else {
-            bgColor = "rgba(21, 128, 61, 1)"; // Deep Green (Reference Image)
-            borderColor = "#4ade80"; // Bright green border
+            bgColor = "rgba(21, 128, 61, 0.7)";
+            borderColor = "#4ade80";
+            statusIcon = "checkmark-circle";
+            statusColor = "#a7f3d0";
           }
           break;
-        case 'BILL_REQUESTED':
-          bgColor = "rgba(180, 83, 9, 1)"; // Solid Dark Orange
+
+        case "BILL_REQUESTED":
+          bgColor = "rgba(180, 83, 9, 0.7)";
           borderColor = "#fbbf24";
+          statusIcon = "receipt";
+          statusColor = "#fde68a";
           break;
+
         default:
-          bgColor = "rgba(30, 41, 59, 0.8)"; // Dark Slate Grey
-          borderColor = "rgba(255, 255, 255, 0.25)";
+          bgColor = "rgba(30, 41, 59, 0.8)";
+          borderColor = "rgba(255,255,255,0.25)";
+          statusIcon = "person";
+          statusColor = "#94a3b8";
       }
 
       const time = new Date(tableData.startTime);
@@ -201,11 +207,10 @@ export default function Category() {
             width: itemSize,
             height: itemSize,
             borderColor,
-            backgroundColor: bgColor, // Apply color here for full occupancy
+            backgroundColor: bgColor,
           },
         ]}
         onPress={() => {
-
           if (activeTab === "TAKEAWAY") {
             setOrderContext({
               orderType: "TAKEAWAY",
@@ -220,59 +225,32 @@ export default function Category() {
           }
 
           router.push("/menu/thai_kitchen");
-
         }}
       >
+        <View style={styles.tableContent}>
+          <Text style={[styles.tableNumber, { fontSize: numberFont }]}>
+            {item.label}
+          </Text>
 
-        <View
-          style={{ flex: 1 }}
-        >
-          <View style={styles.tableContent}>
+          {tableData && (
+            <View style={styles.tableInfo}>
+              <Text style={[styles.timeText, { fontSize: smallFont }]}>
+                {timeText}
+              </Text>
 
-            {isHeld && minutes >= 60 && (
-              <View style={styles.holdRibbonContainer}>
-                <View style={styles.holdRibbon}>
-                  <Text style={styles.holdRibbonText}>HOLD</Text>
-                </View>
-              </View>
-            )}
+              <Text style={[styles.orderText, { fontSize: smallFont }]}>
+                {orderText}
+              </Text>
 
-
-            <Text
-              style={[
-                styles.tableNumber,
-                { fontSize: numberFont, color: "#ffffff" },
-              ]}
-            >
-              {item.label}
-            </Text>
-
-            {tableData && (
-              <>
-                <Text style={[styles.timeText, { fontSize: smallFont, color: "#ffffff" }]}>
-                  {timeText}
-                </Text>
-
-                <Text style={[styles.orderText, { fontSize: smallFont, color: borderColor }]}>
-                  {orderText}
-                </Text>
-
-                <Text style={[styles.billText, { fontSize: smallFont, color: "#ffffff" }]}>
-                  ${billAmount.toFixed(2)}
-                </Text>
-              </>
-            )}
-
-          </View>
+              <Text style={[styles.billText, { fontSize: smallFont + 1 }]}>
+                ${billAmount.toFixed(2)}
+              </Text>
+            </View>
+          )}
         </View>
-
       </TouchableOpacity>
     );
-
   };
-
-
-  /* ---------------- UI ---------------- */
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }}>
@@ -281,61 +259,37 @@ export default function Category() {
         style={styles.background}
         resizeMode="cover"
       >
-
         <View style={styles.overlay} />
 
         <BlurView intensity={35} tint="dark" style={styles.topNavContainer}>
- 
           <ScrollView
             ref={sectionScrollRef}
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.tabsScrollContent}
-            style={styles.tabsScrollView}
           >
             <View style={styles.tabsWrapper}>
+              {SECTIONS.map((section) => {
+                const isActive = activeTab === section;
 
-            {SECTIONS.map((section) => {
-
-              const isActive = activeTab === section;
-
-              let displayName = section.replace("_", " ");
-
-              if (width < 600) {
-                if (section.startsWith("SECTION_")) {
-                  displayName = section.replace("SECTION_", "S-");
-                } else if (section === "TAKEAWAY") {
-                  displayName = "T/A";
-                }
-              }
-
-              return (
-                <TouchableOpacity
-                  key={section}
-                  onPress={() => setActiveTab(section)}
-                  style={[
-                    styles.tabBtn,
-                    isActive && styles.activeTabBtn,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.tabText,
-                      isActive && styles.activeTabText,
-                    ]}
+                return (
+                  <TouchableOpacity
+                    key={section}
+                    onPress={() => setActiveTab(section)}
+                    style={[styles.tabBtn, isActive && styles.activeTabBtn]}
                   >
-                    {displayName}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-
+                    <Text
+                      style={[styles.tabText, isActive && styles.activeTabText]}
+                    >
+                      {section.replace("_", " ")}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </ScrollView>
 
-
           <View style={styles.navRightGroup}>
-
             <TouchableOpacity
               style={styles.headerActionBtn}
               onPress={() => router.push("/TimeEntry")}
@@ -349,9 +303,7 @@ export default function Category() {
             >
               <Text style={styles.headerActionText}>Logout</Text>
             </TouchableOpacity>
-
           </View>
-
         </BlurView>
 
         <FlatList
@@ -368,14 +320,12 @@ export default function Category() {
           }}
           showsVerticalScrollIndicator={false}
         />
-
       </ImageBackground>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-
   background: {
     flex: 1,
     width: "100%",
@@ -393,21 +343,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingVertical: 12,
-    overflow: "hidden",
   },
 
   tabsWrapper: {
     flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
     gap: 12,
   },
-  tabsScrollView: {
-    flex: 1,
-  },
+
   tabsScrollContent: {
     alignItems: "center",
-    paddingVertical: 10,
   },
 
   tabBtn: {
@@ -415,19 +359,15 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     backgroundColor: "rgba(255,255,255,0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
   },
 
   activeTabBtn: {
     backgroundColor: "rgba(167,243,208,0.2)",
-    borderColor: "#a7f3d0",
   },
 
   tabText: {
     color: "#e5e7eb",
     fontWeight: "700",
-    fontSize: 16,
   },
 
   activeTabText: {
@@ -469,57 +409,27 @@ const styles = StyleSheet.create({
   },
 
   tableNumber: {
-    fontWeight: "800",
-    marginBottom: 4,
+    fontWeight: "900",
+    color: "#fff",
+    marginBottom: 2,
+  },
+
+  tableInfo: {
+    alignItems: "center",
   },
 
   timeText: {
     color: "#fff",
-    fontWeight: "500",
-    marginBottom: 1,
+    fontWeight: "600",
   },
 
   orderText: {
+    color: "#fff",
     fontWeight: "700",
   },
 
   billText: {
     color: "#fff",
-    fontWeight: "800",
-    marginTop: 1,
-  },
-
-  holdRibbonContainer: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: 60,
-    height: 60,
-    overflow: "hidden",
-    zIndex: 20,
-  },
-  holdRibbon: {
-    position: "absolute",
-    top: 8,
-    left: -20,
-    width: 80,
-    height: 22,
-    backgroundColor: "#f97316", // Orange
-    transform: [{ rotate: "-45deg" }],
-    justifyContent: "center",
-    alignItems: "center",
-    elevation: 4,
-    shadowColor: "#000",
-    shadowOpacity: 0.3,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-  },
-  holdRibbonText: {
-    color: "#fff",
-    fontSize: 9,
     fontWeight: "900",
-    letterSpacing: 0.5,
   },
-
 });
-

@@ -2,8 +2,8 @@ import { BlurView } from "expo-blur";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import CartSidebar from "../../components/CartSidebar";
-import { addToCartGlobal, getCart } from "../cartStore";
-import { getOrderContext } from "../orderContextStore";
+import { addToCartGlobal, getCart } from "../../stores/cartStore";
+import { getOrderContext } from "../../stores/orderContextStore";
 
 import {
     FlatList,
@@ -288,7 +288,7 @@ export default function WesternKitchen() {
     if (!orderContext) {
       router.replace("/(tabs)/category");
     } else {
-      const { setCurrentContext, getContextId } = require("../cartStore");
+      const { setCurrentContext, getContextId } = require("../../stores/cartStore");
       setCurrentContext(getContextId(orderContext));
     }
   }, [orderContext, router]);

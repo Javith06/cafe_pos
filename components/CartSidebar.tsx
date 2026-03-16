@@ -10,11 +10,11 @@ import {
   View,
 } from "react-native";
 
-import { OrderItem, useActiveOrdersStore } from "../app/activeOrdersStore";
-import { CartItem, useCartStore } from "../app/cartStore";
-import { useOrderContextStore } from "../app/orderContextStore";
-import { getNextOrderId } from "../app/orderIdStore";
-import { updateTableStatus, getTables } from "../app/tableStatusStore";
+import { OrderItem, useActiveOrdersStore } from "../stores/activeOrdersStore";
+import { CartItem, useCartStore } from "../stores/cartStore";
+import { useOrderContextStore } from "../stores/orderContextStore";
+import { getNextOrderId } from "../stores/orderIdStore";
+import { updateTableStatus, getTables } from "../stores/tableStatusStore";
 
 interface CartSidebarProps {
   width?: DimensionValue;

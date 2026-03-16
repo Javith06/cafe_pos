@@ -17,8 +17,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import CartSidebar from "../../components/CartSidebar";
-import { addToCartGlobal, getCart } from "../cartStore";
-import { getOrderContext } from "../orderContextStore";
+import { addToCartGlobal, getCart } from "../../stores/cartStore";
+import { getOrderContext } from "../../stores/orderContextStore";
 
 /* ================= KITCHENS ================= */
 const KITCHENS = [
@@ -390,7 +390,7 @@ export default function IndianKitchen() {
     if (!orderContext) {
       router.replace("/(tabs)/category");
     } else {
-      const { setCurrentContext, getContextId } = require("../cartStore");
+      const { setCurrentContext, getContextId } = require("../../stores/cartStore");
       setCurrentContext(getContextId(orderContext));
     }
   }, [orderContext, router]);

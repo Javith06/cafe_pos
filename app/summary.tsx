@@ -2,17 +2,19 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useMemo } from "react";
 import {
-    Dimensions,
-    FlatList,
-    ImageBackground,
-    Pressable,
-    StyleSheet,
-    Text,
-    View,
+  FlatList,
+  ImageBackground,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  useWindowDimensions,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { findActiveOrder } from "./activeOrdersStore";
-import { getOrderContext } from "./orderContextStore";
+import { findActiveOrder } from "../stores/activeOrdersStore";
+import { getOrderContext } from "../stores/orderContextStore";
 
 export default function SummaryScreen() {
   const router = useRouter();
@@ -24,7 +26,7 @@ export default function SummaryScreen() {
     return activeOrder ? activeOrder.items : [];
   }, [activeOrder]);
 
-  const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
+  const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
 
   /* ================= CALCULATIONS ================= */
 
@@ -54,99 +56,142 @@ export default function SummaryScreen() {
   return (
     <View style={{ flex: 1 }}>
       <ImageBackground
-        source={require("../assets/images/003.jpg")}
+        source={require("../assets/images/a4.jpg")}
         style={{ width: SCREEN_W, height: SCREEN_H }}
         resizeMode="cover"
       >
-        <View style={[styles.overlay, { backgroundColor: "rgba(0,0,0,0.35)" }]}>
-          <View style={styles.headerBar}>
-            <Pressable style={styles.backBtn} onPress={() => {
-              // Note: We don't clearCart here because we might want to edit the cart.
-              // We'll let cart.tsx handle its own unmount or back button if needed.
-              router.back();
-            }}>
-              <Text style={styles.backBtnText}>Back</Text>
-            </Pressable>
-            
-            <View style={styles.headerInfo}>
-              {context.orderType === "DINE_IN" ? (
-                <Text style={styles.contextText}>
-                  DINE-IN | {context.section} | Table {context.tableNo}
-                </Text>
-              ) : (
-                <Text style={styles.contextText}>
-                  TAKEAWAY | Order {context.takeawayNo}
-                </Text>
-              )}
-              <Text style={styles.title}>ORDER SUMMARY</Text>
-            </View>
-          </View>
+        <SafeAreaView style={styles.safeArea}>
+          <View
+            style={[
+              styles.overlay,
+              { backgroundColor: "rgba(0,0,0,0.35)" },
+            ]}
+          >
+            <View style={styles.headerBar}>
+              <Pressable
+                style={styles.backBtn}
+                onPress={() => {
+                  // Note: We don't clearCart here because we might want to edit the cart.
+                  // We'll let cart.tsx handle its own unmount or back button if needed.
+                  router.back();
+                }}
+              >
+                <Text style={styles.backBtnText}>Back</Text>
+              </Pressable>
 
-          <View style={styles.listContainer}>
-            <FlatList
-              data={cart}
-              showsVerticalScrollIndicator={false}
-              keyExtractor={(item, index) => item.id + index}
-              renderItem={({ item }) => (
-                <View style={styles.row}>
-                  <View style={styles.rowContent}>
-                    <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-                    
-                    <View style={styles.subInfoRow}>
-                      <Text style={styles.qty}>Qty: {item.qty}</Text>
-                      {(item.spicy && item.spicy !== "Medium") || (item.oil && item.oil !== "Normal") || (item.salt && item.salt !== "Normal") || (item.sugar && item.sugar !== "Normal") || item.note ? (
-                        <Text style={styles.sub} numberOfLines={1}>
-                          {[
-                            item.spicy && item.spicy !== "Medium" ? `Spicy: ${item.spicy}` : "",
-                            item.oil && item.oil !== "Normal" ? `Oil: ${item.oil}` : "",
-                            item.salt && item.salt !== "Normal" ? `Salt: ${item.salt}` : "",
-                            item.sugar && item.sugar !== "Normal" ? `Sugar: ${item.sugar}` : "",
-                            item.note ? `Note: ${item.note}` : ""
-                          ].filter(Boolean).join(" | ")}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </View>
+              <TouchableOpacity
+                style={[
+                  styles.backBtn,
+                  { backgroundColor: "rgba(34,197,94,0.15)" },
+                ]}
+                onPress={() => router.push("/kds")}
+              >
+                <Text style={[styles.backBtnText, { color: "#22c55e" }]}>
+                  KDS Demo
+                </Text>
+              </TouchableOpacity>
 
-                  <Text style={styles.price}>
-                    ${((item.price || 0) * item.qty).toFixed(2)}
+              <View style={styles.headerInfo}>
+                {context.orderType === "DINE_IN" ? (
+                  <Text style={styles.contextText}>
+                    DINE-IN | {context.section} | Table {context.tableNo}
                   </Text>
-                </View>
-              )}
-            />
-          </View>
+                ) : (
+                  <Text style={styles.contextText}>
+                    TAKEAWAY | Order {context.takeawayNo}
+                  </Text>
+                )}
+                <Text style={styles.title}>ORDER SUMMARY</Text>
+              </View>
+            </View>
 
-          <View style={styles.totalsContainer}>
-            <View style={styles.divider} />
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Total Items</Text>
-              <Text style={styles.summaryValue}>{totalItems}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Subtotal</Text>
-              <Text style={styles.summaryValue}>${subtotal.toFixed(2)}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>GST (9%)</Text>
-              <Text style={styles.summaryValue}>${gst.toFixed(2)}</Text>
-            </View>
-            <View style={styles.divider} />
-            <View style={styles.summaryRow}>
-              <Text style={styles.grandLabel}>Grand Total</Text>
-              <Text style={styles.grandValue}>${grandTotal.toFixed(2)}</Text>
-            </View>
-          </View>
+            <View style={styles.listContainer}>
+              <FlatList
+                data={cart}
+                showsVerticalScrollIndicator={false}
+                keyExtractor={(item, index) => item.id + index}
+                renderItem={({ item }) => (
+                  <View style={styles.row}>
+                    <View style={styles.rowContent}>
+                      <Text style={styles.name} numberOfLines={1}>
+                        {item.name}
+                      </Text>
 
-          <View style={styles.bottomFixed}>
-            <Pressable
-              style={styles.proceedBtn}
-              onPress={() => router.push("/payment")}
-            >
-              <Ionicons name="card-outline" size={24} color="#052b12" style={{marginRight: 8}} />
-              <Text style={styles.proceedText}>Proceed to Payment</Text>
-            </Pressable>
+                      <View style={styles.subInfoRow}>
+                        <Text style={styles.qty}>Qty: {item.qty}</Text>
+                        {(item.spicy && item.spicy !== "Medium") ||
+                        (item.oil && item.oil !== "Normal") ||
+                        (item.salt && item.salt !== "Normal") ||
+                        (item.sugar && item.sugar !== "Normal") ||
+                        item.note ? (
+                          <Text style={styles.sub} numberOfLines={1}>
+                            {[
+                              item.spicy && item.spicy !== "Medium"
+                                ? `Spicy: ${item.spicy}`
+                                : "",
+                              item.oil && item.oil !== "Normal"
+                                ? `Oil: ${item.oil}`
+                                : "",
+                              item.salt && item.salt !== "Normal"
+                                ? `Salt: ${item.salt}`
+                                : "",
+                              item.sugar && item.sugar !== "Normal"
+                                ? `Sugar: ${item.sugar}`
+                                : "",
+                              item.note ? `Note: ${item.note}` : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" | ")}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+
+                    <Text style={styles.price}>
+                      ${((item.price || 0) * item.qty).toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+              />
+            </View>
+
+            <View style={styles.totalsContainer}>
+              <View style={styles.divider} />
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Total Items</Text>
+                <Text style={styles.summaryValue}>{totalItems}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Subtotal</Text>
+                <Text style={styles.summaryValue}>${subtotal.toFixed(2)}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>GST (9%)</Text>
+                <Text style={styles.summaryValue}>${gst.toFixed(2)}</Text>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.summaryRow}>
+                <Text style={styles.grandLabel}>Grand Total</Text>
+                <Text style={styles.grandValue}>${grandTotal.toFixed(2)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.bottomFixed}>
+              <Pressable
+                style={styles.proceedBtn}
+                onPress={() => router.push("/payment")}
+              >
+                <Ionicons
+                  name="card-outline"
+                  size={24}
+                  color="#052b12"
+                  style={{ marginRight: 8 }}
+                />
+                <Text style={styles.proceedText}>Proceed to Payment</Text>
+              </Pressable>
+            </View>
           </View>
-        </View>
+        </SafeAreaView>
       </ImageBackground>
     </View>
   );
@@ -155,9 +200,12 @@ export default function SummaryScreen() {
 /* ================= STYLES ================= */
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+  },
   overlay: {
     flex: 1,
-    paddingTop: 40,
+    paddingTop: 10,
     paddingHorizontal: 20,
     paddingBottom: 20,
   },
@@ -186,11 +234,11 @@ const styles = StyleSheet.create({
   contextText: {
     color: "#d7ff9a",
     fontWeight: "800",
-    fontSize: 12,
+    fontSize: 14,
   },
   title: {
     color: "#e5e7eb",
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: "bold",
   },
 
@@ -203,7 +251,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(17, 24, 39, 0.75)",
     paddingHorizontal: 16,
-    height: 65,
+    height: 70,
     borderRadius: 12,
     marginBottom: 8,
     borderWidth: 1,

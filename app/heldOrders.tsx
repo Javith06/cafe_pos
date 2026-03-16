@@ -4,8 +4,8 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { Dimensions, FlatList, ImageBackground, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { addToCartGlobal, clearCart } from "./cartStore";
-import { getHeldOrders, removeHeldOrder } from "./heldOrdersStore";
+import { addToCartGlobal, clearCart } from "../stores/cartStore";
+import { getHeldOrders, removeHeldOrder } from "../stores/heldOrdersStore";
 
 const getHeldTime = (time: number) => {
   const diff = Date.now() - time;
