@@ -17,7 +17,13 @@ import { addToCartGlobal, getCart } from "../../stores/cartStore";
 
 const API = "http://localhost:3000";
 
-/* ================= TYPES ================= */
+const kitchenIcons: Record<string, string> = {
+  "THAI KITCHEN": "🍜",
+  "INDIAN KITCHEN": "🍛",
+  "SOUTH INDIAN": "🍲",
+  "WESTERN KITCHEN": "🍔",
+  DRINKS: "🥤",
+};
 
 type Kitchen = {
   KitchenTypeId: number;
@@ -47,36 +53,39 @@ export default function MenuScreen() {
   const [selectedGroup, setSelectedGroup] = useState("");
 
   const [cart, setCart] = useState(getCart());
-
-  const listRef = useRef<FlatList>(null);
-
-  /* ================= RESPONSIVE ================= */
+  const listRef = useRef<FlatList<Dish>>(null);
 
   let columns = 2;
   if (width > 800) columns = 3;
   if (width > 1200) columns = 4;
 
-  /* ================= LOAD ================= */
-
   useEffect(() => {
     fetch(`${API}/kitchens`)
       .then(res => res.json())
       .then(data => {
-        setKitchens(data);
-        if (data.length > 0) loadGroups(data[0].KitchenTypeName);
-      });
+        const safe = Array.isArray(data) ? data : [];
+        setKitchens(safe);
+        if (safe.length > 0) loadGroups(safe[0].KitchenTypeName);
+      })
+      .catch(err => console.log("KITCHEN ERROR:", err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadGroups = async (kitchen: string) => {
     setSelectedKitchen(kitchen);
+    setSelectedGroup("");
+    setGroups([]);
+    setItems([]);
 
-    const res = await fetch(`${API}/dishgroups`);
-    const data = await res.json();
+    try {
+      const res = await fetch(`${API}/dishgroups/${kitchen}`);
+      const data = await res.json();
+      const safe = Array.isArray(data) ? data : [];
 
-    setGroups(data);
-
-    if (data.length > 0) {
-      loadDishes(data[0].DishGroupId);
+      setGroups(safe);
+      if (safe.length > 0) loadDishes(safe[0].DishGroupId);
+    } catch (err) {
+      console.log("GROUP ERROR:", err);
     }
   };
 
@@ -85,12 +94,13 @@ export default function MenuScreen() {
 
     fetch(`${API}/dishes/${groupId}`)
       .then(res => res.json())
-      .then(data => setItems(data || []));
+      .then(data => setItems(Array.isArray(data) ? data : []))
+      .catch(err => console.log("DISH ERROR:", err));
 
-    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    });
   };
-
-  /* ================= CART ================= */
 
   const totalItems = useMemo(
     () => cart.reduce((s: number, i: any) => s + (i.qty || 0), 0),
@@ -103,39 +113,40 @@ export default function MenuScreen() {
       name: item.Name,
       price: item.Price ?? 0,
     });
-
     setCart([...getCart()]);
   };
 
   const getImage = (name: string) => {
     const file =
       name.replace(/[()]/g, "").replace(/\s+/g, "_").toLowerCase() + ".jpg";
-
     return { uri: `${API}/images/${file}` };
   };
 
-  /* ================= UI ================= */
-
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }}>
-      <View style={{ flex: 1, flexDirection: width > 900 ? "row" : "column" }}>
-
-        {/* MAIN */}
+    <SafeAreaView style={styles.safe}>
+      <View style={[styles.page, { flexDirection: width > 900 ? "row" : "column" }]}>
         <BlurView intensity={40} tint="dark" style={styles.main}>
-
-          {/* HEADER */}
           <View style={styles.header}>
-            <Text style={styles.title}>{selectedKitchen}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.title} numberOfLines={1}>
+                {selectedKitchen}
+              </Text>
+              {!!totalItems && (
+                <Text style={styles.subTitle} numberOfLines={1}>
+                  {totalItems} item{totalItems === 1 ? "" : "s"} in cart
+                </Text>
+              )}
+            </View>
 
             <TouchableOpacity
               onPress={() => router.replace("/(tabs)/category")}
               style={styles.backBtn}
+              activeOpacity={0.8}
             >
-              <Text style={{ color: "#fff" }}>Back</Text>
+              <Text style={styles.backText}>Back</Text>
             </TouchableOpacity>
           </View>
 
-          {/* KITCHENS */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -144,17 +155,17 @@ export default function MenuScreen() {
           >
             {kitchens.map(k => {
               const active = k.KitchenTypeName === selectedKitchen;
-
               return (
                 <TouchableOpacity
                   key={k.KitchenTypeId}
-                  style={[
-                    styles.kitchenCard,
-                    active && styles.kitchenActive,
-                  ]}
+                  style={[styles.kitchenCard, active && styles.kitchenActive]}
                   onPress={() => loadGroups(k.KitchenTypeName)}
+                  activeOpacity={0.85}
                 >
-                  <Text style={styles.kitchenText}>
+                  <Text style={styles.kitchenIcon}>
+                    {kitchenIcons[k.KitchenTypeName] || "🍽️"}
+                  </Text>
+                  <Text style={styles.kitchenText} numberOfLines={2}>
                     {k.KitchenTypeName}
                   </Text>
                 </TouchableOpacity>
@@ -162,7 +173,6 @@ export default function MenuScreen() {
             })}
           </ScrollView>
 
-          {/* GROUPS */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -171,17 +181,14 @@ export default function MenuScreen() {
           >
             {groups.map(g => {
               const active = g.DishGroupId === selectedGroup;
-
               return (
                 <TouchableOpacity
                   key={g.DishGroupId}
-                  style={[
-                    styles.chip,
-                    active && styles.activeChip,
-                  ]}
+                  style={[styles.chip, active && styles.activeChip]}
                   onPress={() => loadDishes(g.DishGroupId)}
+                  activeOpacity={0.85}
                 >
-                  <Text style={{ color: "#fff" }}>
+                  <Text style={styles.chipText} numberOfLines={1}>
                     {g.DishGroupName}
                   </Text>
                 </TouchableOpacity>
@@ -189,148 +196,188 @@ export default function MenuScreen() {
             })}
           </ScrollView>
 
-          {/* GRID */}
           <FlatList
             ref={listRef}
             data={items}
             numColumns={columns}
             key={columns}
             keyExtractor={i => i.DishId}
-            columnWrapperStyle={{ gap: 10 }}
-            contentContainerStyle={{
-              gap: 10,                 
-              paddingTop: 5,       
-              paddingBottom: 80,
-              flexGrow: 1,
-            }}
-            style={{
-              marginTop: 0,         
-                        }}
-            ListHeaderComponent={null}
+            columnWrapperStyle={columns > 1 ? styles.gridRow : undefined}
+            contentContainerStyle={styles.gridContent}
             ListEmptyComponent={
-              <Text style={{ color: "#777", textAlign: "center", marginTop: 20 }}>
-                No items
-              </Text>
+              <View style={styles.emptyWrap}>
+                <Text style={styles.emptyText}>No items</Text>
+              </View>
             }
             renderItem={({ item }) => (
-              <View style={{ flex: 1 }}>
-                <TouchableOpacity
-                  style={styles.card}
-                  onPress={() => addItem(item)}
-                >
-                  <Image
-                    source={getImage(item.Name)}
-                    style={styles.image}
-                  />
-
-                  <View style={styles.cardContent}>
-                    <Text style={styles.name} numberOfLines={2}>
-                      {item.Name}
-                    </Text>
-
-                    <Text style={styles.price}>
-                      ₹ {item.Price}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                style={[styles.card, { flex: 1 }]}
+                onPress={() => addItem(item)}
+                activeOpacity={0.9}
+              >
+                <Image source={getImage(item.Name)} style={styles.image} />
+                <View style={styles.cardContent}>
+                  <Text style={styles.name} numberOfLines={2}>
+                    {item.Name}
+                  </Text>
+                  <Text style={styles.price} numberOfLines={1}>
+                    ₹ {item.Price ?? 0}
+                  </Text>
+                </View>
+              </TouchableOpacity>
             )}
           />
         </BlurView>
 
-        {/* SIDEBAR */}
         {width > 900 && <CartSidebar width={350} />}
       </View>
     </SafeAreaView>
   );
 }
 
-/* ================= STYLES ================= */
-
 const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+
+  page: {
+    flex: 1,
+  },
+
   main: {
     flex: 1,
-    paddingTop: 0,
-    paddingHorizontal: 10,
-    paddingBottom: 6,
+    paddingHorizontal: 14,
+    paddingTop: 6,
   },
 
   header: {
-    height: 30,
+    minHeight: 56,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
+    justifyContent: "space-between",
+    gap: 12,
+    paddingBottom: 6,
   },
 
   title: {
     color: "#22c55e",
     fontWeight: "800",
-    fontSize: 14,
+    fontSize: 16,
+  },
+
+  subTitle: {
+    color: "rgba(255,255,255,0.6)",
+    fontSize: 12,
+    marginTop: 2,
   },
 
   backBtn: {
-    backgroundColor: "#333",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+
+  backText: {
+    color: "#fff",
+    fontWeight: "700",
   },
 
   kitchenScroll: {
-    height: 50,
-    flexGrow: 0,
-    marginBottom: 15,
+    height: 82,
+    marginBottom: 6,
   },
 
   kitchenRow: {
     gap: 10,
-    paddingVertical: 0,
+    paddingRight: 6,
+    alignItems: "center",
   },
 
   kitchenCard: {
-    width: 100,
-    height: 50,
-    borderRadius: 12,
+    width: 112,
+    height: 72,
+    borderRadius: 16,
     backgroundColor: "rgba(255,255,255,0.08)",
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
   },
 
   kitchenActive: {
     backgroundColor: "#22c55e",
+    borderColor: "rgba(34,197,94,0.75)",
+    shadowColor: "#22c55e",
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+
+  kitchenIcon: {
+    fontSize: 20,
+    marginBottom: 2,
   },
 
   kitchenText: {
     color: "#fff",
     fontWeight: "700",
-    fontSize: 12,
+    fontSize: 11,
     textAlign: "center",
+    lineHeight: 13,
   },
 
   groupScroll: {
-    height: 35,
-    flexGrow: 0,
-    marginBottom: 4,
+    height: 44,
+    marginBottom: 10,
   },
 
   groupRow: {
     flexDirection: "row",
-    alignItems: "center",
     gap: 10,
-    paddingVertical: 2,     
+    paddingRight: 6,
+    alignItems: "center",
   },
 
   chip: {
-    minWidth: 90,
-    height: 35,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    paddingHorizontal: 12,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.10)",
     justifyContent: "center",
     alignItems: "center",
   },
 
   activeChip: {
     backgroundColor: "#22c55e",
+  },
+
+  chipText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 12,
+    maxWidth: 140,
+  },
+
+  gridRow: {
+    gap: 10,
+  },
+
+  gridContent: {
+    gap: 10,
+    paddingBottom: 18,
+  },
+
+  emptyWrap: {
+    paddingTop: 40,
+    alignItems: "center",
+  },
+
+  emptyText: {
+    color: "rgba(255,255,255,0.45)",
+    textAlign: "center",
   },
 
   card: {
@@ -345,18 +392,21 @@ const styles = StyleSheet.create({
   },
 
   cardContent: {
-    padding: 8,
+    padding: 10,
+    gap: 4,
   },
 
   name: {
     color: "#111",
-    fontWeight: "600",
+    fontWeight: "700",
     fontSize: 13,
+    lineHeight: 16,
   },
 
   price: {
     color: "#22c55e",
-    fontWeight: "800",
+    fontWeight: "900",
     fontSize: 13,
   },
 });
+
