@@ -305,7 +305,7 @@ export default function CartScreen() {
                   currentTableData.status === "SENT" ||
                   currentTableData.status === "HOLD" ? (
                     <Pressable
-                      style={[styles.btn, { backgroundColor: "#f59e0b" }]} // YELLOW for Checkout
+                      style={[styles.btn, { backgroundColor: "#f59e0b" }]} 
                       onPress={() => {
                         if (orderContext.orderType === "DINE_IN") {
                           updateTableStatus(
@@ -326,7 +326,7 @@ export default function CartScreen() {
                     </Pressable>
                   ) : (
                     <Pressable
-                      style={[styles.btn, { backgroundColor: "#0ea5e9" }]} // SKY BLUE for Proceed
+                      style={[styles.btn, { backgroundColor: "#0ea5e9" }]} 
                       onPress={() => router.push("/summary")}
                     >
                       <Text style={styles.btnText}>Proceed</Text>

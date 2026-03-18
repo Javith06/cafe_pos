@@ -8,12 +8,14 @@ const PORT = 3000;
 app.use(cors());
 app.use(express.json());
 
-/* ROOT */
+                  /* ROOT */
+
 app.get("/", (req, res) => {
   res.send("POS Backend Running");
 });
 
-/* KITCHENS */
+                  /* KITCHENS */
+
 app.get("/kitchens", async (req, res) => {
   try {
     const pool = await poolPromise;
@@ -34,7 +36,8 @@ app.get("/kitchens", async (req, res) => {
   }
 });
 
-/* DISH GROUPS */
+                /* DISH GROUPS */
+
 app.get("/dishgroups", async (req, res) => {
   try {
     const pool = await poolPromise;
@@ -52,7 +55,8 @@ app.get("/dishgroups", async (req, res) => {
   }
 });
 
-/* DISHES */
+                      /* DISHES */
+
 app.get("/dishes/:groupId", async (req, res) => {
   try {
     const pool = await poolPromise;
@@ -79,7 +83,7 @@ app.get("/dishes/:groupId", async (req, res) => {
   }
 });
 
-/* MODIFIERS */
+                        /* MODIFIERS */
 app.get("/modifiers/:dishId", async (req, res) => {
   try {
     const pool = await poolPromise;

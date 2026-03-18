@@ -16,7 +16,7 @@ const dbConfig = {
 const poolPromise = new sql.ConnectionPool(dbConfig)
   .connect()
   .then(pool => {
-    console.log("✅ Connected to MSSQL (Office DB)");
+    console.log("✅ Connected to MSSQL macha....");
     return pool;
   })
   .catch(err => {
