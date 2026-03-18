@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 0,
+    marginBottom: 10,
   },
 
   title: {
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    paddingVertical: 0,     
+    paddingVertical: 2,     
   },
 
   chip: {

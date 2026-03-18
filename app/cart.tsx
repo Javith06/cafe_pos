@@ -86,8 +86,13 @@ export default function CartScreen() {
     );
   }, [orderContext]);
 
+  React.useEffect(() => {
+    if (!orderContext) {
+      router.replace("/(tabs)/category");
+    }
+  }, [orderContext, router]);
+
   if (!orderContext) {
-    router.replace("/(tabs)/category");
     return null;
   }
 
