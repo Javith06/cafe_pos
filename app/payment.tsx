@@ -15,10 +15,18 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { findActiveOrder, useActiveOrdersStore } from "../stores/activeOrdersStore";
+import {
+  findActiveOrder,
+  useActiveOrdersStore,
+} from "../stores/activeOrdersStore";
 import { clearCart } from "../stores/cartStore";
-import { clearOrderContext, getOrderContext } from "../stores/orderContextStore";
+import {
+  clearOrderContext,
+  getOrderContext,
+} from "../stores/orderContextStore";
 import { clearTable } from "../stores/tableStatusStore";
+
+import UniversalPrinter from "../components/UniversalPrinter";
 
 export default function PaymentScreen() {
   const closeActiveOrder = useActiveOrdersStore((s) => s.closeActiveOrder);
@@ -60,10 +68,29 @@ export default function PaymentScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  const confirmPayment = () => {
+  const confirmPayment = async () => {
     if (method === "CASH" && paidNum < total) return;
 
     setProcessing(true);
+
+    const orderData = {
+      id: activeOrder?.orderId,
+      items: cart.map((item) => ({
+        name: item.name,
+        quantity: item.qty,
+        price: item.price,
+      })),
+      total,
+      paymentMethod: method,
+      cashPaid: paidNum,
+      change,
+    };
+
+    try {
+      await UniversalPrinter.smartPrint(orderData);
+    } catch (e) {
+      console.log("❌ Print error:", e);
+    }
 
     setTimeout(() => {
       router.replace({
@@ -73,7 +100,6 @@ export default function PaymentScreen() {
           paidNum: paidNum.toFixed(2),
           change: change.toFixed(2),
           method,
-
           orderId: activeOrder?.orderId ?? "",
           tableNo: context?.tableNo ?? "",
           section: context?.section ?? "",
@@ -85,18 +111,26 @@ export default function PaymentScreen() {
       if (activeOrder) {
         closeActiveOrder(activeOrder.orderId);
       }
+
       if (context) {
-        if (context.orderType === "DINE_IN" && context.section && context.tableNo) {
+        if (
+          context.orderType === "DINE_IN" &&
+          context.section &&
+          context.tableNo
+        ) {
           clearTable(context.section, context.tableNo);
-        } else if (context.orderType === "TAKEAWAY" && context.takeawayNo) {
+        }
+
+        if (context.orderType === "TAKEAWAY" && context.takeawayNo) {
           clearTable("TAKEAWAY", context.takeawayNo);
         }
       }
+
       clearCart();
       clearOrderContext();
 
       setProcessing(false);
-    }, 1200);
+    }, 800);
   };
 
   const renderItem = ({ item }: { item: any }) => (
@@ -121,8 +155,6 @@ export default function PaymentScreen() {
         <View style={styles.overlay} />
 
         <View style={styles.container}>
-          {/* HEADER */}
-
           <View style={styles.header}>
             <TouchableOpacity
               onPress={() => router.back()}
@@ -136,7 +168,6 @@ export default function PaymentScreen() {
               <Text style={styles.orderTitle}>
                 Order #{activeOrder?.orderId}
               </Text>
-
               <Text style={styles.orderSub}>
                 {context?.orderType === "DINE_IN"
                   ? `Table ${context?.tableNo} • ${context?.section}`
@@ -152,38 +183,24 @@ export default function PaymentScreen() {
             </Text>
           </View>
 
-          {/* MAIN LAYOUT */}
-
           <View
             style={[styles.mainLayout, !showOrderPanel && styles.mobileLayout]}
           >
-            {/* LEFT PANEL */}
-
             <BlurView intensity={40} tint="dark" style={styles.leftPane}>
               <Text style={styles.sectionLabel}>Grand Total</Text>
-
-              <Text
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                style={styles.grandTotal}
-              >
-                ${total.toFixed(2)}
-              </Text>
+              <Text style={styles.grandTotal}>${total.toFixed(2)}</Text>
 
               <View style={styles.breakdown}>
                 <View>
                   <Text style={styles.breakLabel}>Subtotal</Text>
                   <Text style={styles.breakValue}>${subtotal.toFixed(2)}</Text>
                 </View>
-
                 <View>
                   <Text style={styles.breakLabel}>Tax</Text>
                   <Text style={styles.breakValue}>${tax.toFixed(2)}</Text>
                 </View>
               </View>
             </BlurView>
-
-            {/* PAYMENT PANEL */}
 
             <BlurView intensity={40} tint="dark" style={styles.centerPane}>
               <Text style={styles.sectionLabel}>Payment Method</Text>
@@ -208,7 +225,6 @@ export default function PaymentScreen() {
                       size={22}
                       color={method === m.id ? "#052b12" : "#94a3b8"}
                     />
-
                     <Text
                       style={[
                         styles.methodText,
@@ -225,7 +241,6 @@ export default function PaymentScreen() {
                 <>
                   <View style={styles.cashInputBox}>
                     <Text style={styles.currency}>$</Text>
-
                     <TextInput
                       style={styles.cashInput}
                       keyboardType="numeric"
@@ -278,8 +293,6 @@ export default function PaymentScreen() {
               </TouchableOpacity>
             </BlurView>
 
-            {/* ORDER PANEL */}
-
             {showOrderPanel && (
               <BlurView intensity={40} tint="dark" style={styles.rightPane}>
                 <Text style={styles.receiptTitle}>Order Items</Text>
@@ -311,109 +324,35 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.45)",
   },
-
-  container: {
-    flex: 1,
-    padding: 16,
-  },
-
+  container: { flex: 1, padding: 16 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 12,
   },
+  backBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
+  backText: { color: "#fff", fontWeight: "700" },
+  orderInfo: { alignItems: "center" },
+  orderTitle: { color: "#fff", fontWeight: "900", fontSize: 16 },
+  orderSub: { color: "#94a3b8", fontSize: 12 },
+  dateTime: { color: "#94a3b8" },
 
-  backBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
+  mainLayout: { flex: 1, flexDirection: "row", gap: 16 },
+  mobileLayout: { flexDirection: "column" },
 
-  backText: {
-    color: "#fff",
-    fontWeight: "700",
-  },
+  leftPane: { flex: 0.7, padding: 16, borderRadius: 18 },
+  centerPane: { flex: 2, padding: 16, borderRadius: 18 },
+  rightPane: { flex: 1, padding: 16, borderRadius: 18 },
 
-  orderInfo: {
-    alignItems: "center",
-  },
+  sectionLabel: { color: "#94a3b8", marginBottom: 6 },
+  grandTotal: { fontSize: 40, fontWeight: "900", color: "#22c55e" },
 
-  orderTitle: {
-    color: "#fff",
-    fontWeight: "900",
-    fontSize: 16,
-  },
+  breakdown: { flexDirection: "row", gap: 20 },
+  breakLabel: { color: "#64748b" },
+  breakValue: { color: "#fff", fontSize: 18, fontWeight: "800" },
 
-  orderSub: {
-    color: "#94a3b8",
-    fontSize: 12,
-  },
-
-  dateTime: {
-    color: "#94a3b8",
-  },
-
-  mainLayout: {
-    flex: 1,
-    flexDirection: "row",
-    gap: 16,
-  },
-
-  mobileLayout: {
-    flexDirection: "column",
-  },
-
-  leftPane: {
-    flex: 0.7,
-    padding: 16,
-    borderRadius: 18,
-  },
-
-  centerPane: {
-    flex: 2,
-    padding: 16,
-    borderRadius: 18,
-  },
-
-  rightPane: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 18,
-  },
-
-  sectionLabel: {
-    color: "#94a3b8",
-    marginBottom: 6,
-  },
-
-  grandTotal: {
-    fontSize: 40,
-    fontWeight: "900",
-    color: "#22c55e",
-  },
-
-  breakdown: {
-    flexDirection: "row",
-    gap: 20,
-  },
-
-  breakLabel: {
-    color: "#64748b",
-  },
-
-  breakValue: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "800",
-  },
-
-  methodRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 12,
-  },
-
+  methodRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
   methodCard: {
     flex: 1,
     height: 64,
@@ -422,11 +361,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
-  activeMethod: {
-    backgroundColor: "#22c55e",
-  },
-
+  activeMethod: { backgroundColor: "#22c55e" },
   methodText: {
     marginTop: 4,
     fontWeight: "800",
@@ -443,18 +378,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     marginBottom: 12,
   },
-
-  currency: {
-    color: "#94a3b8",
-    fontSize: 24,
-  },
-
-  cashInput: {
-    flex: 1,
-    color: "#fff",
-    fontSize: 30,
-    fontWeight: "900",
-  },
+  currency: { color: "#94a3b8", fontSize: 24 },
+  cashInput: { flex: 1, color: "#fff", fontSize: 30, fontWeight: "900" },
 
   quickGrid: {
     flexDirection: "row",
@@ -462,7 +387,6 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 12,
   },
-
   quickBtn: {
     backgroundColor: "rgba(255,255,255,0.08)",
     paddingVertical: 18,
@@ -471,26 +395,11 @@ const styles = StyleSheet.create({
     minWidth: "30%",
     alignItems: "center",
   },
+  quickText: { color: "#fff", fontWeight: "900", fontSize: 18 },
 
-  quickText: {
-    color: "#fff",
-    fontWeight: "900",
-    fontSize: 18,
-  },
-
-  changeBox: {
-    marginBottom: 12,
-  },
-
-  changeLabel: {
-    color: "#94a3b8",
-  },
-
-  changeValue: {
-    fontSize: 36,
-    fontWeight: "900",
-    color: "#22c55e",
-  },
+  changeBox: { marginBottom: 12 },
+  changeLabel: { color: "#94a3b8" },
+  changeValue: { fontSize: 36, fontWeight: "900", color: "#22c55e" },
 
   confirmBtn: {
     backgroundColor: "#22c55e",
@@ -501,16 +410,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
   },
-
-  confirmText: {
-    color: "#052b12",
-    fontWeight: "900",
-    fontSize: 16,
-  },
-
-  disabled: {
-    backgroundColor: "rgba(34,197,94,0.4)",
-  },
+  confirmText: { color: "#052b12", fontWeight: "900", fontSize: 16 },
+  disabled: { backgroundColor: "rgba(34,197,94,0.4)" },
 
   receiptTitle: {
     color: "#fff",
@@ -518,28 +419,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 10,
   },
-
   itemRow: {
     flexDirection: "row",
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.1)",
   },
-
-  itemQty: {
-    width: 30,
-    color: "#94a3b8",
-  },
-
-  itemName: {
-    flex: 1,
-    color: "#fff",
-  },
-
-  itemPrice: {
-    color: "#22c55e",
-    fontWeight: "800",
-  },
+  itemQty: { width: 30, color: "#94a3b8" },
+  itemName: { flex: 1, color: "#fff" },
+  itemPrice: { color: "#22c55e", fontWeight: "800" },
 
   receiptTotalRow: {
     flexDirection: "row",
@@ -549,15 +437,6 @@ const styles = StyleSheet.create({
     borderTopColor: "rgba(255,255,255,0.2)",
     paddingTop: 10,
   },
-
-  receiptTotalLabel: {
-    color: "#fff",
-    fontWeight: "800",
-  },
-
-  receiptTotalValue: {
-    color: "#22c55e",
-    fontWeight: "900",
-    fontSize: 18,
-  },
+  receiptTotalLabel: { color: "#fff", fontWeight: "800" },
+  receiptTotalValue: { color: "#22c55e", fontWeight: "900", fontSize: 18 },
 });
