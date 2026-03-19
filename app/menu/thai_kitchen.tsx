@@ -247,12 +247,12 @@ const styles = StyleSheet.create({
 
   main: {
     flex: 1,
-    paddingHorizontal: 14,
-    paddingTop: 6,
+    paddingHorizontal: 16,
+    paddingTop: 10,
   },
 
   header: {
-    minHeight: 56,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -285,8 +285,8 @@ const styles = StyleSheet.create({
   },
 
   kitchenScroll: {
-    height: 82,
-    marginBottom: 6,
+    height: 94,
+    marginBottom: 2,
   },
 
   kitchenRow: {
@@ -296,15 +296,15 @@ const styles = StyleSheet.create({
   },
 
   kitchenCard: {
-    width: 112,
-    height: 72,
-    borderRadius: 16,
+    width: 124,
+    height: 84,
+    borderRadius: 18,
     backgroundColor: "rgba(255,255,255,0.08)",
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.10)",
+    borderColor: "rgba(255,255,255,0.12)",
   },
 
   kitchenActive: {
