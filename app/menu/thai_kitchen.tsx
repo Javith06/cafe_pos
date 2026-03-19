@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
   Image,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,7 +14,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import CartSidebar from "../../components/CartSidebar";
-import { addToCartGlobal, getCart } from "../../stores/cartStore";
+import { addToCartGlobal, getCart, CartItem, setCurrentContext } from "../../stores/cartStore";
+import { useOrderContextStore, OrderContext } from "../../stores/orderContextStore"; // ✅ Import OrderContext here
 
 const API = "http://localhost:3000";
 
@@ -23,6 +25,7 @@ const kitchenIcons: Record<string, string> = {
   "SOUTH INDIAN": "🍲",
   "WESTERN KITCHEN": "🍔",
   DRINKS: "🥤",
+  FISH: "🐟",
 };
 
 type Kitchen = {
@@ -37,7 +40,14 @@ type Group = {
 
 type Dish = {
   DishId: string;
+  DishIntId: number;  
   Name: string;
+  Price?: number;
+};
+
+type Modifier = {
+  ModifierId: string;
+  ModifierName: string;
   Price?: number;
 };
 
@@ -52,23 +62,68 @@ export default function MenuScreen() {
   const [selectedKitchen, setSelectedKitchen] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("");
 
-  const [cart, setCart] = useState(getCart());
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [cartVersion, setCartVersion] = useState(0);
+
+  const [modifiers, setModifiers] = useState<Modifier[]>([]);
+  const [showModifier, setShowModifier] = useState(false);
+  const [selectedDish, setSelectedDish] = useState<Dish | null>(null);
+  const [selectedModifierIds, setSelectedModifierIds] = useState<string[]>([]);
+
   const listRef = useRef<FlatList<Dish>>(null);
+  
+  // Get order context from store
+  const orderContext = useOrderContextStore((state) => state.currentOrder);
+  const setOrderContext = useOrderContextStore((state) => state.setOrderContext);
 
+  // Responsive columns - 4 dishes on large screens
   let columns = 2;
-  if (width > 800) columns = 3;
-  if (width > 1200) columns = 4;
+  if (width > 1200) {
+    columns = 4;
+  } else if (width > 800) {
+    columns = 3;
+  }
+  
+  const gap = 12;
+  const horizontalPadding = 32;
+  const cardWidth = (width - horizontalPadding - (gap * (columns - 1))) / columns;
 
+  // Set context ID for cart when orderContext changes
+  useEffect(() => {
+    if (orderContext) {
+      const contextId = getContextId(orderContext);
+      setCurrentContext(contextId);
+      console.log("Cart context set to:", contextId);
+    } else {
+      setCurrentContext(null);
+    }
+  }, [orderContext]);
+
+  // Load kitchens
   useEffect(() => {
     fetch(`${API}/kitchens`)
-      .then(res => res.json())
-      .then(data => {
+      .then((res) => res.json())
+      .then((data) => {
         const safe = Array.isArray(data) ? data : [];
         setKitchens(safe);
-        if (safe.length > 0) loadGroups(safe[0].KitchenTypeName);
+        if (safe.length > 0 && orderContext) {
+          loadGroups(safe[0].KitchenTypeName);
+        }
       })
-      .catch(err => console.log("KITCHEN ERROR:", err));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      .catch((err) => console.log("KITCHEN ERROR:", err));
+  }, []);
+
+  // Load cart and subscribe to changes
+  useEffect(() => {
+    setCart(getCart());
+    
+    const interval = setInterval(() => {
+      const currentCart = getCart();
+      setCart([...currentCart]);
+      setCartVersion(v => v + 1);
+    }, 100);
+    
+    return () => clearInterval(interval);
   }, []);
 
   const loadGroups = async (kitchen: string) => {
@@ -81,7 +136,6 @@ export default function MenuScreen() {
       const res = await fetch(`${API}/dishgroups/${kitchen}`);
       const data = await res.json();
       const safe = Array.isArray(data) ? data : [];
-
       setGroups(safe);
       if (safe.length > 0) loadDishes(safe[0].DishGroupId);
     } catch (err) {
@@ -93,9 +147,9 @@ export default function MenuScreen() {
     setSelectedGroup(groupId);
 
     fetch(`${API}/dishes/${groupId}`)
-      .then(res => res.json())
-      .then(data => setItems(Array.isArray(data) ? data : []))
-      .catch(err => console.log("DISH ERROR:", err));
+      .then((res) => res.json())
+      .then((data) => setItems(Array.isArray(data) ? data : []))
+      .catch((err) => console.log("DISH ERROR:", err));
 
     requestAnimationFrame(() => {
       listRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -103,133 +157,306 @@ export default function MenuScreen() {
   };
 
   const totalItems = useMemo(
-    () => cart.reduce((s: number, i: any) => s + (i.qty || 0), 0),
-    [cart]
+    () => cart.reduce((s, i) => s + (i.qty || 0), 0),
+    [cart, cartVersion]
   );
 
-  const addItem = (item: Dish) => {
+  const openModifiers = async (dish: Dish) => {
+    if (!orderContext) {
+      alert("Please select a table/counter first");
+      router.push("/(tabs)/category");
+      return;
+    }
+
+    setSelectedDish(dish);
+    setSelectedModifierIds([]);
+
+    try {
+      const res = await fetch(`${API}/modifiers`);
+      const data = await res.json();
+
+      if (Array.isArray(data) && data.length > 0) {
+        setModifiers(data);
+        setShowModifier(true);
+      } else {
+        addToCartGlobal({
+          id: dish.DishId,
+          name: dish.Name,
+          price: dish.Price ?? 0,
+        });
+      }
+    } catch (err) {
+      addToCartGlobal({
+        id: dish.DishId,
+        name: dish.Name,
+        price: dish.Price ?? 0,
+      });
+    }
+  };
+
+  const toggleModifier = (modifierId: string) => {
+    setSelectedModifierIds((prev) =>
+      prev.includes(modifierId)
+        ? prev.filter((id) => id !== modifierId)
+        : [...prev, modifierId]
+    );
+  };
+
+  const addWithModifiers = () => {
+    if (!selectedDish) return;
+
+    const selectedModifiers = modifiers.filter(m => 
+      selectedModifierIds.includes(m.ModifierId)
+    );
+
     addToCartGlobal({
-      id: item.DishId,
-      name: item.Name,
-      price: item.Price ?? 0,
+      id: selectedDish.DishId,
+      name: selectedDish.Name,
+      price: selectedDish.Price ?? 0,
+      modifiers: selectedModifiers,
     });
-    setCart([...getCart()]);
+
+    setShowModifier(false);
+    setSelectedModifierIds([]);
   };
 
   const getImage = (name: string) => {
-    const file =
-      name.replace(/[()]/g, "").replace(/\s+/g, "_").toLowerCase() + ".jpg";
+    const file = name.replace(/[()]/g, "").replace(/\s+/g, "_").toLowerCase() + ".jpg";
     return { uri: `${API}/images/${file}` };
   };
+
+  const getContextId = (context: OrderContext) => {
+    if (context.orderType === "DINE_IN") {
+      return `DINE_IN_${context.section}_${context.tableNo}`;
+    }
+    if (context.orderType === "TAKEAWAY") {
+      return `TAKEAWAY_${context.takeawayNo}`;
+    }
+    return null;
+  };
+
+  const goToCart = () => {
+    router.push("/cart");
+  };
+
+  // If no order context, show message
+  if (!orderContext) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.noContextContainer}>
+          <Text style={styles.noContextText}>No Active Order Context</Text>
+          <Text style={styles.noContextSubText}>Please select a table from category screen</Text>
+          <TouchableOpacity 
+            style={styles.goBackButton}
+            onPress={() => router.replace("/(tabs)/category")}
+          >
+            <Text style={styles.goBackText}>Go to Categories</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
       <View style={[styles.page, { flexDirection: width > 900 ? "row" : "column" }]}>
         <BlurView intensity={40} tint="dark" style={styles.main}>
+          {/* Header */}
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
               <Text style={styles.title} numberOfLines={1}>
-                {selectedKitchen}
+                {selectedKitchen || "Select Kitchen"}
               </Text>
-              {!!totalItems && (
-                <Text style={styles.subTitle} numberOfLines={1}>
-                  {totalItems} item{totalItems === 1 ? "" : "s"} in cart
-                </Text>
+              {totalItems > 0 && (
+                <TouchableOpacity onPress={goToCart}>
+                  <Text style={styles.subTitle} numberOfLines={1}>
+                    🛒 {totalItems} item{totalItems === 1 ? "" : "s"} in cart
+                  </Text>
+                </TouchableOpacity>
               )}
             </View>
 
             <TouchableOpacity
               onPress={() => router.replace("/(tabs)/category")}
               style={styles.backBtn}
-              activeOpacity={0.8}
             >
               <Text style={styles.backText}>Back</Text>
             </TouchableOpacity>
           </View>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.kitchenRow}
-            style={styles.kitchenScroll}
-          >
-            {kitchens.map(k => {
-              const active = k.KitchenTypeName === selectedKitchen;
-              return (
-                <TouchableOpacity
-                  key={k.KitchenTypeId}
-                  style={[styles.kitchenCard, active && styles.kitchenActive]}
-                  onPress={() => loadGroups(k.KitchenTypeName)}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.kitchenIcon}>
-                    {kitchenIcons[k.KitchenTypeName] || "🍽️"}
-                  </Text>
-                  <Text style={styles.kitchenText} numberOfLines={2}>
-                    {k.KitchenTypeName}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+          {/* Order Context Display */}
+          <View style={styles.contextContainer}>
+            <Text style={styles.contextText}>
+              {orderContext.orderType === "DINE_IN" 
+                ? `DINE-IN | ${orderContext.section} | Table ${orderContext.tableNo}`
+                : `TAKEAWAY | Order ${orderContext.takeawayNo}`}
+            </Text>
+          </View>
 
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.groupRow}
-            style={styles.groupScroll}
-          >
-            {groups.map(g => {
-              const active = g.DishGroupId === selectedGroup;
-              return (
-                <TouchableOpacity
-                  key={g.DishGroupId}
-                  style={[styles.chip, active && styles.activeChip]}
-                  onPress={() => loadDishes(g.DishGroupId)}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.chipText} numberOfLines={1}>
-                    {g.DishGroupName}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+          {/* Kitchens */}
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionLabel}>KITCHENS</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.kitchenRow}
+            >
+              {kitchens.map((k) => {
+                const active = k.KitchenTypeName === selectedKitchen;
+                return (
+                  <TouchableOpacity
+                    key={k.KitchenTypeId}
+                    style={[styles.kitchenCard, active && styles.kitchenActive]}
+                    onPress={() => loadGroups(k.KitchenTypeName)}
+                  >
+                    <Text style={styles.kitchenIcon}>
+                      {kitchenIcons[k.KitchenTypeName] || "🍽️"}
+                    </Text>
+                    <Text style={styles.kitchenText} numberOfLines={2}>
+                      {k.KitchenTypeName}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
 
-          <FlatList
-            ref={listRef}
-            data={items}
-            numColumns={columns}
-            key={columns}
-            keyExtractor={i => i.DishId}
-            columnWrapperStyle={columns > 1 ? styles.gridRow : undefined}
-            contentContainerStyle={styles.gridContent}
-            ListEmptyComponent={
-              <View style={styles.emptyWrap}>
-                <Text style={styles.emptyText}>No items</Text>
-              </View>
-            }
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[styles.card, { flex: 1 }]}
-                onPress={() => addItem(item)}
-                activeOpacity={0.9}
+          {/* Groups */}
+          {groups.length > 0 && (
+            <View style={styles.sectionContainer}>
+              <Text style={styles.sectionLabel}>CATEGORIES</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.groupRow}
               >
-                <Image source={getImage(item.Name)} style={styles.image} />
-                <View style={styles.cardContent}>
-                  <Text style={styles.name} numberOfLines={2}>
-                    {item.Name}
-                  </Text>
-                  <Text style={styles.price} numberOfLines={1}>
-                    ₹ {item.Price ?? 0}
-                  </Text>
+                {groups.map((g) => {
+                  const active = g.DishGroupId === selectedGroup;
+                  return (
+                    <TouchableOpacity
+                      key={g.DishGroupId}
+                      style={[styles.chip, active && styles.activeChip]}
+                      onPress={() => loadDishes(g.DishGroupId)}
+                    >
+                      <Text style={styles.chipText} numberOfLines={1}>
+                        {g.DishGroupName}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Dishes Grid - 4 per row */}
+          <View style={[styles.sectionContainer, { flex: 1 }]}>
+            <Text style={styles.sectionLabel}>DISHES</Text>
+            <FlatList
+              ref={listRef}
+              data={items}
+              numColumns={columns}
+              key={`grid-${columns}`}
+              keyExtractor={(i) => i.DishId}
+              columnWrapperStyle={columns > 1 ? { 
+                justifyContent: 'flex-start',
+                gap: gap,
+                marginBottom: gap
+              } : undefined}
+              contentContainerStyle={styles.gridContent}
+              showsVerticalScrollIndicator={true}
+              ListEmptyComponent={
+                <View style={styles.emptyWrap}>
+                  <Text style={styles.emptyText}>No items available</Text>
                 </View>
-              </TouchableOpacity>
-            )}
-          />
+              }
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[styles.card, { width: cardWidth }]}
+                  onPress={() => openModifiers(item)}
+                  activeOpacity={0.9}
+                >
+                  <Image source={getImage(item.Name)} style={styles.image} />
+                  <View style={styles.cardContent}>
+                    <Text style={styles.name} numberOfLines={2}>
+                      {item.Name}
+                    </Text>
+                    <Text style={styles.price} numberOfLines={1}>
+                      ₹ {item.Price?.toFixed(2) ?? '0.00'}
+                    </Text>
+                    <TouchableOpacity 
+                      style={styles.addButton}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        openModifiers(item);
+                      }}
+                    >
+                      <Text style={styles.addButtonText}>ADD</Text>
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
         </BlurView>
 
-        {width > 900 && <CartSidebar width={350} />}
+        {/* Cart Sidebar for wide screens */}
+        {width > 900 && <CartSidebar width={350} key={`cart-${cartVersion}`} />}
+
+        {/* Mobile Cart Button */}
+        {width <= 900 && totalItems > 0 && (
+          <TouchableOpacity style={styles.mobileCartButton} onPress={goToCart}>
+            <Text style={styles.mobileCartText}>
+              🛒 View Cart ({totalItems})
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Modifier Modal */}
+        <Modal
+          visible={showModifier}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowModifier(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>
+                Select modifiers for {selectedDish?.Name}
+              </Text>
+
+              {modifiers.map((mod) => (
+                <TouchableOpacity
+                  key={mod.ModifierId}
+                  style={styles.modifierRow}
+                  onPress={() => toggleModifier(mod.ModifierId)}
+                >
+                  <Text style={styles.modifierName}>{mod.ModifierName}</Text>
+                  <View style={styles.checkbox}>
+                    {selectedModifierIds.includes(mod.ModifierId) && (
+                      <Text style={styles.checkmark}>✓</Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              ))}
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalBtn, styles.cancelBtn]}
+                  onPress={() => setShowModifier(false)}
+                >
+                  <Text style={styles.btnText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalBtn, styles.addBtn]}
+                  onPress={addWithModifiers}
+                >
+                  <Text style={styles.btnText}>Add to Cart</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     </SafeAreaView>
   );
@@ -240,64 +467,104 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#000",
   },
-
   page: {
     flex: 1,
   },
-
   main: {
     flex: 1,
-    paddingHorizontal: 14,
-    paddingTop: 6,
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
-
+  noContextContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#000",
+    padding: 20,
+  },
+  noContextText: {
+    color: "#ff4444",
+    fontSize: 24,
+    fontWeight: "bold",
+    marginBottom: 10,
+  },
+  noContextSubText: {
+    color: "#fff",
+    fontSize: 16,
+    marginBottom: 20,
+    textAlign: "center",
+  },
+  goBackButton: {
+    backgroundColor: "#22c55e",
+    paddingHorizontal: 30,
+    paddingVertical: 15,
+    borderRadius: 12,
+  },
+  goBackText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  contextContainer: {
+    backgroundColor: "rgba(34,197,94,0.15)",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  contextText: {
+    color: "#22c55e",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  sectionContainer: {
+    marginBottom: 16,
+  },
+  sectionLabel: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
   header: {
-    minHeight: 56,
+    minHeight: 60,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
-    paddingBottom: 6,
+    marginBottom: 8,
   },
-
   title: {
     color: "#22c55e",
     fontWeight: "800",
-    fontSize: 16,
+    fontSize: 20,
   },
-
   subTitle: {
     color: "rgba(255,255,255,0.6)",
-    fontSize: 12,
+    fontSize: 13,
     marginTop: 2,
   },
-
   backBtn: {
     backgroundColor: "rgba(255,255,255,0.12)",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
   },
-
   backText: {
     color: "#fff",
     fontWeight: "700",
+    fontSize: 14,
   },
-
-  kitchenScroll: {
-    height: 82,
-    marginBottom: 6,
-  },
-
   kitchenRow: {
-    gap: 10,
-    paddingRight: 6,
-    alignItems: "center",
+    gap: 12,
+    paddingRight: 8,
+    paddingBottom: 4,
   },
-
   kitchenCard: {
-    width: 112,
-    height: 72,
+    width: 110,
+    height: 80,
     borderRadius: 16,
     backgroundColor: "rgba(255,255,255,0.08)",
     justifyContent: "center",
@@ -306,107 +573,183 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.10)",
   },
-
   kitchenActive: {
     backgroundColor: "#22c55e",
-    borderColor: "rgba(34,197,94,0.75)",
-    shadowColor: "#22c55e",
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 5,
+    borderColor: "#22c55e",
   },
-
   kitchenIcon: {
-    fontSize: 20,
-    marginBottom: 2,
+    fontSize: 24,
+    marginBottom: 4,
   },
-
   kitchenText: {
     color: "#fff",
     fontWeight: "700",
     fontSize: 11,
     textAlign: "center",
-    lineHeight: 13,
   },
-
-  groupScroll: {
-    height: 44,
-    marginBottom: 10,
-  },
-
   groupRow: {
-    flexDirection: "row",
     gap: 10,
-    paddingRight: 6,
-    alignItems: "center",
+    paddingRight: 8,
+    paddingBottom: 4,
   },
-
   chip: {
-    paddingHorizontal: 12,
-    height: 36,
-    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: "rgba(255,255,255,0.10)",
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
   },
-
   activeChip: {
     backgroundColor: "#22c55e",
+    borderColor: "#22c55e",
   },
-
   chipText: {
     color: "#fff",
-    fontWeight: "700",
-    fontSize: 12,
-    maxWidth: 140,
+    fontWeight: "600",
+    fontSize: 13,
   },
-
-  gridRow: {
-    gap: 10,
-  },
-
   gridContent: {
-    gap: 10,
-    paddingBottom: 18,
+    paddingBottom: 20,
   },
-
   emptyWrap: {
-    paddingTop: 40,
+    paddingTop: 60,
     alignItems: "center",
   },
-
   emptyText: {
     color: "rgba(255,255,255,0.45)",
-    textAlign: "center",
+    fontSize: 16,
   },
-
   card: {
     backgroundColor: "#fff",
-    borderRadius: 14,
+    borderRadius: 16,
     overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-
   image: {
     width: "100%",
-    height: 110,
+    height: 120,
+    resizeMode: "cover",
   },
-
   cardContent: {
-    padding: 10,
+    padding: 12,
     gap: 4,
   },
-
   name: {
     color: "#111",
     fontWeight: "700",
-    fontSize: 13,
-    lineHeight: 16,
+    fontSize: 14,
   },
-
   price: {
     color: "#22c55e",
     fontWeight: "900",
-    fontSize: 13,
+    fontSize: 15,
+  },
+  addButton: {
+    backgroundColor: "#22c55e",
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 8,
+    alignItems: "center",
+  },
+  addButtonText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 12,
+  },
+  mobileCartButton: {
+    position: "absolute",
+    bottom: 20,
+    left: 20,
+    right: 20,
+    backgroundColor: "#22c55e",
+    paddingVertical: 16,
+    borderRadius: 30,
+    alignItems: "center",
+    shadowColor: "#22c55e",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  mobileCartText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    width: "85%",
+    maxWidth: 400,
+    backgroundColor: "#1e1e1e",
+    borderRadius: 24,
+    padding: 24,
+  },
+  modalTitle: {
+    color: "#22c55e",
+    fontSize: 18,
+    fontWeight: "bold",
+    marginBottom: 20,
+    textAlign: "center",
+  },
+  modifierRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#333",
+  },
+  modifierName: {
+    color: "#fff",
+    fontSize: 16,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#22c55e",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  checkmark: {
+    color: "#22c55e",
+    fontSize: 16,
+    fontWeight: "bold",
+  },
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 24,
+    gap: 12,
+  },
+  modalBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  cancelBtn: {
+    backgroundColor: "#333",
+  },
+  addBtn: {
+    backgroundColor: "#22c55e",
+  },
+  btnText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 15,
   },
 });
-

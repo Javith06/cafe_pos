@@ -16,11 +16,14 @@ app.get("/", (req, res) => {
 
 /* ================= KITCHENS ================= */
 
+const sql = require("mssql"); 
 app.get("/kitchens", async (req, res) => {
   try {
     const pool = await poolPromise;
 
-    const result = await pool.request().query(`
+    const result = await pool.request()
+          .input("dishId", sql.VarChar, req.params.dishId) 
+      .query(`
       SELECT 
         ROW_NUMBER() OVER (ORDER BY CategoryName) AS KitchenTypeId,
         CategoryName AS KitchenTypeName
@@ -69,20 +72,18 @@ app.get("/dishes/:groupId", async (req, res) => {
   try {
     const pool = await poolPromise;
 
+    console.log("GROUP ID:", req.params.groupId);
+
     const result = await pool.request()
       .input("groupId", req.params.groupId)
       .query(`
         SELECT 
-          d.DishId,
+          d.DishId,               
           d.Name,
-          d.DishCode,
-          ISNULL(p.Amount,0) AS Price
+          d.SordCode AS DishIntId,  
+          0 AS Price
         FROM DishMaster d
-        LEFT JOIN DishDishGroup dg 
-          ON d.DishId = dg.DishId
-        LEFT JOIN DishPriceList p 
-          ON d.DishId = p.DishId
-        WHERE dg.DishGroupId = @groupId
+        WHERE d.DishGroupId = @groupId
           AND d.IsActive = 1
       `);
 
@@ -94,28 +95,29 @@ app.get("/dishes/:groupId", async (req, res) => {
   }
 });
 
-/* ================= MODIFIERS ================= */
 
-app.get("/modifiers/:dishId", async (req, res) => {
+
+app.get("/modifiers", async (req, res) => {
   try {
     const pool = await poolPromise;
 
     const result = await pool.request()
-      .input("dishId", req.params.dishId)
       .query(`
-        SELECT ModifierId, ModifierName
-        FROM DishModifiers
-        WHERE DishId = @dishId
+        SELECT 
+          m.ModifierId,
+          m.ModifierName
+        FROM DishModifiers dm, ModifierMaster m
+        WHERE dm.ModifierId = m.ModifierId
+          AND dm.DishId = 58   -- 🔥 HARDCODE
       `);
 
     res.json(result.recordset);
 
   } catch (err) {
     console.error("MODIFIER ERROR:", err);
-    res.status(500).send(err.message);
+    res.status(500).json({ error: err.message });
   }
 });
-
 /* ================= SERVER ================= */
 
 app.listen(PORT, () => {

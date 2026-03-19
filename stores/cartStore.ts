@@ -1,9 +1,15 @@
 import { v4 as uuidv4 } from "uuid";
 import { create } from "zustand";
 
+export type Modifier = {
+  ModifierId: string;
+  ModifierName: string;
+  Price?: number;
+};
+
 export type CartItem = {
-  lineItemId: string; // Unique ID for this specific cart instance
-  id: string; // Product ID
+  lineItemId: string;
+  id: string;
   name: string;
   price?: number;
   qty: number;
@@ -13,6 +19,8 @@ export type CartItem = {
   salt?: string;
   sugar?: string;
   note?: string;
+
+  modifiers?: Modifier[];
 };
 
 type CartState = {
@@ -40,9 +48,16 @@ export const useCartStore = create<CartState>((set, get) => ({
 
   addToCartGlobal: (item) => {
     const { carts, currentContextId } = get();
-    if (!currentContextId) return; // Prevent adding if no context
+    if (!currentContextId) return;
 
     const currentCart = carts[currentContextId] || [];
+
+    // Helper to compare modifiers by ID
+    const areModifiersEqual = (mods1?: Modifier[], mods2?: Modifier[]) => {
+      const ids1 = (mods1 || []).map(m => m.ModifierId).sort().join('|');
+      const ids2 = (mods2 || []).map(m => m.ModifierId).sort().join('|');
+      return ids1 === ids2;
+    };
 
     const existing = currentCart.find(
       (p) =>
@@ -51,10 +66,12 @@ export const useCartStore = create<CartState>((set, get) => ({
         p.oil === item.oil &&
         p.salt === item.salt &&
         p.sugar === item.sugar &&
-        p.note === item.note
+        p.note === item.note &&
+        areModifiersEqual(p.modifiers, item.modifiers)
     );
 
     if (existing) {
+      console.log("✅ Item exists, incrementing qty");
       set({
         carts: {
           ...carts,
@@ -66,6 +83,8 @@ export const useCartStore = create<CartState>((set, get) => ({
         },
       });
     } else {
+          console.log("🆕 New item, adding to cart");  // Add this debug line
+
       set({
         carts: {
           ...carts,
@@ -81,7 +100,6 @@ export const useCartStore = create<CartState>((set, get) => ({
 
     const currentCart = carts[currentContextId] || [];
     const item = currentCart.find((p) => p.lineItemId === lineItemId);
-
     if (!item) return;
 
     if (item.qty > 1) {
@@ -95,10 +113,10 @@ export const useCartStore = create<CartState>((set, get) => ({
       });
     } else {
       set({
-         carts: {
-           ...carts,
-           [currentContextId]: currentCart.filter((p) => p.lineItemId !== lineItemId),
-         },
+        carts: {
+          ...carts,
+          [currentContextId]: currentCart.filter((p) => p.lineItemId !== lineItemId),
+        },
       });
     }
   },
@@ -106,7 +124,6 @@ export const useCartStore = create<CartState>((set, get) => ({
   clearCart: () => {
     const { carts, currentContextId } = get();
     if (!currentContextId) return;
-    
     set({
       carts: {
         ...carts,
@@ -118,21 +135,20 @@ export const useCartStore = create<CartState>((set, get) => ({
   clearAllCarts: () => set({ carts: {}, currentContextId: null }),
 }));
 
-// Helper to generate context ID
-export const getContextId = (context?: { orderType: string, section?: string, tableNo?: string, takeawayNo?: string } | null) => {
+// Helper for context ID
+export const getContextId = (context?: { orderType: string; section?: string; tableNo?: string; takeawayNo?: string } | null) => {
   if (!context) return null;
   if (context.orderType === "DINE_IN") return `DINE_IN_${context.section}_${context.tableNo}`;
   if (context.orderType === "TAKEAWAY") return `TAKEAWAY_${context.takeawayNo}`;
   return null;
-}
+};
 
-// Backwards compatibility functions, though it's recommended to use hooks directly in React components.
+// Direct functions for non-hook usage
 export const getCart = () => useCartStore.getState().getCart();
 export const addToCartGlobal = (item: Omit<CartItem, "qty" | "lineItemId">) => useCartStore.getState().addToCartGlobal(item);
 export const removeFromCartGlobal = (lineItemId: string) => useCartStore.getState().removeFromCartGlobal(lineItemId);
 export const clearCart = () => useCartStore.getState().clearCart();
 export const setCurrentContext = (contextId: string | null) => useCartStore.getState().setCurrentContext(contextId);
 
-export const subscribeCart = (listener: () => void) => {
-  return useCartStore.subscribe(listener);
-};
+export const subscribeCart = (listener: () => void) => useCartStore.subscribe(listener);
+
