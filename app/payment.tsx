@@ -24,12 +24,13 @@ import {
   clearOrderContext,
   getOrderContext,
 } from "../stores/orderContextStore";
-import { clearTable } from "../stores/tableStatusStore";
+import { useTableStatusStore } from "../stores/tableStatusStore";
 
 import UniversalPrinter from "../components/UniversalPrinter";
 
 export default function PaymentScreen() {
   const closeActiveOrder = useActiveOrdersStore((s) => s.closeActiveOrder);
+  const clearTable = useTableStatusStore((s) => s.clearTable);
   const router = useRouter();
   const { width, height } = useWindowDimensions();
 

@@ -22,7 +22,6 @@ app.get("/kitchens", async (req, res) => {
     const pool = await poolPromise;
 
     const result = await pool.request()
-          .input("dishId", sql.VarChar, req.params.dishId) 
       .query(`
       SELECT 
         ROW_NUMBER() OVER (ORDER BY CategoryName) AS KitchenTypeId,

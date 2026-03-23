@@ -14,7 +14,7 @@ import { OrderItem, useActiveOrdersStore } from "../stores/activeOrdersStore";
 import { CartItem, useCartStore } from "../stores/cartStore";
 import { useOrderContextStore } from "../stores/orderContextStore";
 import { getNextOrderId } from "../stores/orderIdStore";
-import { updateTableStatus, getTables } from "../stores/tableStatusStore";
+import { useTableStatusStore } from "../stores/tableStatusStore";
 
 interface CartSidebarProps {
   width?: DimensionValue;
@@ -104,11 +104,13 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
     }
   };
 
+  const tables = useTableStatusStore((s) => s.tables);
+  const updateTableStatus = useTableStatusStore((s) => s.updateTableStatus);
+
   const currentTableData = useMemo(() => {
     if (orderContext?.orderType !== "DINE_IN") return undefined;
-    const tables = getTables();
     return tables.find(t => t.section === orderContext.section && t.tableNo === orderContext.tableNo);
-  }, [orderContext]);
+  }, [orderContext, tables]);
 
 
   return (

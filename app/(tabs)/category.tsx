@@ -17,7 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useActiveOrdersStore } from "../../stores/activeOrdersStore";
 import { getContextId, useCartStore } from "../../stores/cartStore";
 import { setOrderContext } from "../../stores/orderContextStore";
-import { getTables } from "../../stores/tableStatusStore";
+import { clearTable, useTableStatusStore } from "../../stores/tableStatusStore";
 
 type TableItem = {
   id: string;
@@ -57,22 +57,18 @@ export default function Category() {
   const [activeTab, setActiveTab] = useState<string>("SECTION_1");
   const sectionScrollRef = useRef<ScrollView>(null);
 
-  const [, forceUpdate] = useState(0);
+  const closeActiveOrder = useActiveOrdersStore((s) => s.closeActiveOrder);
+  const clearTable = useTableStatusStore((s) => s.clearTable);
 
-  const carts = useCartStore((state) => state.carts);
+  const tables = useTableStatusStore((s) => s.tables);
+  const activeOrders = useActiveOrdersStore((s) => s.activeOrders);
+  const carts = useCartStore((s) => s.carts);
 
   useEffect(() => {
     if (urlSection && SECTIONS.includes(urlSection)) {
       setActiveTab(urlSection);
     }
   }, [urlSection]);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      forceUpdate((v) => v + 1);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   let columns = 10;
   if (width < 600) columns = 4;
@@ -100,8 +96,6 @@ export default function Category() {
     activeTab === "TAKEAWAY" ? TAKEAWAY_TABLES : DINE_IN_TABLES;
 
   const renderItem = ({ item }: { item: TableItem }) => {
-    const tables = getTables();
-    const activeOrders = useActiveOrdersStore.getState().activeOrders;
 
     const tableData = tables.find(
       (t) => t.section === activeTab && t.tableNo === item.label,

@@ -19,7 +19,7 @@ import { OrderItem, useActiveOrdersStore } from "../stores/activeOrdersStore";
 import { CartItem, useCartStore } from "../stores/cartStore";
 import { useOrderContextStore } from "../stores/orderContextStore";
 import { getNextOrderId } from "../stores/orderIdStore";
-import { getTables, updateTableStatus } from "../stores/tableStatusStore";
+import { useTableStatusStore } from "../stores/tableStatusStore";
 
 export default function CartScreen() {
   const router = useRouter();
@@ -74,17 +74,18 @@ export default function CartScreen() {
     }, 0);
   }, [displayItems]);
 
+  const tables = useTableStatusStore((s) => s.tables);
+  const updateTableStatus = useTableStatusStore((s) => s.updateTableStatus);
+
   const currentTableData = useMemo(() => {
     if (orderContext?.orderType !== "DINE_IN") return undefined;
-
-    const tables = getTables();
 
     return tables.find(
       (t) =>
         t.section === orderContext.section &&
         t.tableNo === orderContext.tableNo,
     );
-  }, [orderContext]);
+  }, [orderContext, tables]);
 
   React.useEffect(() => {
     if (!orderContext) {

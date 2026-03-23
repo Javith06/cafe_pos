@@ -80,43 +80,36 @@ app.get("/dishgroups", async (req, res) => {
   }
 
 });
-// app.get("/dishgroups/:kitchen", async (req, res) => {
+app.get("/dishgroups/:kitchen", async (req, res) => {
+  const kitchen = req.params.kitchen;
+  console.log("Kitchen received:", kitchen);
 
-//   const kitchen = req.params.kitchen;
-//   console.log("Kitchen received:", kitchen);
+  try {
+    const pool = await poolPromise;
 
-//   try {
+    const result = await pool.request()
+      .input("kitchen", sql.VarChar, kitchen)
+      .query(`
+        SELECT
+          DishGroupId,
+          DishGroupName
+        FROM DishGroupMaster
+        WHERE KitchenTypeName = @kitchen
+        AND IsActive = 1
+        ORDER BY SortCode
+      `);
 
-//     const pool = await poolPromise;
+    console.log("Rows returned:", result.recordset.length);
+    res.json(result.recordset);
 
-//     const result = await pool.request()
-//       .input("kitchen", sql.VarChar, kitchen)
-//       .query(`
-//         SELECT
-//           DishGroupId,
-//           DishGroupName
-//         FROM DishGroupMaster
-//         WHERE KitchenTypeName = @kitchen
-//         AND IsActive = 1
-//         ORDER BY SortCode
-//       `);
-
-//     console.log("Rows returned:", result.recordset.length);
-
-//     res.json(result.recordset);
-
-//   } catch (err) {
-
-//     console.error("DishGroup API Error:", err);
-
-//     res.status(500).json({
-//       error: "Failed to fetch dish groups",
-//       details: err.message
-//     });
-
-//   }
-
-// });
+  } catch (err) {
+    console.error("DishGroup API Error:", err);
+    res.status(500).json({
+      error: "Failed to fetch dish groups",
+      details: err.message
+    });
+  }
+});
 
 /* -------- GET DISHES BY GROUP -------- */
 

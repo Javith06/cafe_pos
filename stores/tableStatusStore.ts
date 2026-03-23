@@ -1,6 +1,8 @@
+import { create } from 'zustand';
+
 export type TableStatusType = 'EMPTY' | 'HOLD' | 'SENT' | 'BILL_REQUESTED';
 
-type TableStatus = {
+export type TableStatus = {
   section: string;
   tableNo: string;
   orderId: string;
@@ -8,44 +10,76 @@ type TableStatus = {
   status: TableStatusType;
 };
 
-let tables: TableStatus[] = [];
+type TableStatusState = {
+  tables: TableStatus[];
+  updateTableStatus: (
+    section: string,
+    tableNo: string,
+    orderId: string,
+    status: TableStatusType,
+    startTime?: number
+  ) => void;
+  clearTable: (section: string, tableNo: string) => void;
+  getTables: () => TableStatus[];
+};
 
-/* ================= GET TABLES ================= */
+export const useTableStatusStore = create<TableStatusState>((set, get) => ({
+  tables: [],
 
-export const getTables = () => tables;
+  updateTableStatus: (section, tableNo, orderId, status, startTime) => {
+    set((state) => {
+      const existingIndex = state.tables.findIndex(
+        (t) => t.section === section && t.tableNo === tableNo
+      );
 
-/* ================= UPDATE TABLE STATUS ================= */
+      if (existingIndex > -1) {
+        const updatedTables = [...state.tables];
+        updatedTables[existingIndex] = {
+          ...updatedTables[existingIndex],
+          orderId,
+          status,
+          startTime: startTime || updatedTables[existingIndex].startTime,
+        };
+        return { tables: updatedTables };
+      } else {
+        return {
+          tables: [
+            ...state.tables,
+            {
+              section,
+              tableNo,
+              orderId,
+              startTime: startTime || Date.now(),
+              status,
+            },
+          ],
+        };
+      }
+    });
+  },
 
+  clearTable: (section, tableNo) => {
+    set((state) => ({
+      tables: state.tables.filter(
+        (t) => !(t.section === section && t.tableNo === tableNo)
+      ),
+    }));
+  },
+
+  getTables: () => get().tables,
+}));
+
+// Legacy wrappers for compatibility if needed, but components should use useTableStatusStore
+export const getTables = () => useTableStatusStore.getState().getTables();
 export const updateTableStatus = (
   section: string,
   tableNo: string,
   orderId: string,
   status: TableStatusType,
   startTime?: number
-) => {
-  const existing = tables.find(
-    (t) => t.section === section && t.tableNo === tableNo,
-  );
-
-  if (existing) {
-    existing.orderId = orderId;
-    existing.status = status;
-    if (startTime) existing.startTime = startTime;
-    else if (status === 'SENT' && (existing.status === 'EMPTY' || existing.status === 'HOLD')) {
-        // Only reset startTime if it's a new session or moving from hold to sent
-    }
-  } else {
-    tables.push({
-      section,
-      tableNo,
-      orderId,
-      startTime: startTime || Date.now(),
-      status: status,
-    });
-  }
-};
-
-/* ================= LEGACY WRAPPERS ================= */
+) => useTableStatusStore.getState().updateTableStatus(section, tableNo, orderId, status, startTime);
+export const clearTable = (section: string, tableNo: string) => 
+  useTableStatusStore.getState().clearTable(section, tableNo);
 
 export const setTableActive = (
   section: string,
@@ -61,13 +95,5 @@ export const setTableHold = (
   orderId: string,
 ) => {
   updateTableStatus(section, tableNo, orderId, 'HOLD', Date.now());
-};
-
-/* ================= CLEAR TABLE ================= */
-
-export const clearTable = (section: string, tableNo: string) => {
-  tables = tables.filter(
-    (t) => !(t.section === section && t.tableNo === tableNo),
-  );
 };
 

@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import CartSidebar from "../../components/CartSidebar";
 import { addToCartGlobal, getCart, CartItem, setCurrentContext } from "../../stores/cartStore";
-import { useOrderContextStore, OrderContext } from "../../stores/orderContextStore"; // ✅ Import OrderContext here
+import { useOrderContextStore, OrderContext } from "../../stores/orderContextStore";
 
 const API = "http://localhost:3000";
 
@@ -25,7 +25,7 @@ const kitchenIcons: Record<string, string> = {
   "SOUTH INDIAN": "🍲",
   "WESTERN KITCHEN": "🍔",
   DRINKS: "🥤",
-  FISH: "🐟",
+  FISH: "🐟",  
 };
 
 type Kitchen = {
@@ -43,12 +43,57 @@ type Dish = {
   DishIntId: number;  
   Name: string;
   Price?: number;
+  imagename?: string;
+  imageid?: number;
 };
 
 type Modifier = {
   ModifierId: string;
   ModifierName: string;
   Price?: number;
+};
+
+// Image Component with Error Handling
+const DishImage = ({ dish, style }: { dish: Dish; style: any }) => {
+  const [error, setError] = useState(false);
+  const API = "http://localhost:3000";
+
+  const getImageUrl = () => {
+    if (error) return null;
+    
+    if (dish.imagename) {
+      const fileName = dish.imagename.replace(/[()]/g, "").replace(/\s+/g, "_").toLowerCase();
+      return { uri: `${API}/images/${fileName}` };
+    }
+    
+    const fileName = dish.Name.replace(/[()]/g, "").replace(/\s+/g, "_").toLowerCase() + ".jpg";
+    return { uri: `${API}/images/${fileName}` };
+  };
+
+  if (error) {
+    return (
+      <View style={[style, styles.imagePlaceholder]}>
+        <Text style={styles.placeholderText}>🍽️</Text>
+      </View>
+    );
+  }
+
+  const imageUrl = getImageUrl();
+  if (!imageUrl) {
+    return (
+      <View style={[style, styles.imagePlaceholder]}>
+        <Text style={styles.placeholderText}>🍽️</Text>
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={imageUrl}
+      style={style}
+      onError={() => setError(true)}
+    />
+  );
 };
 
 export default function MenuScreen() {
@@ -72,11 +117,10 @@ export default function MenuScreen() {
 
   const listRef = useRef<FlatList<Dish>>(null);
   
-  // Get order context from store
   const orderContext = useOrderContextStore((state) => state.currentOrder);
   const setOrderContext = useOrderContextStore((state) => state.setOrderContext);
 
-  // Responsive columns - 4 dishes on large screens
+  // Responsive columns
   let columns = 2;
   if (width > 1200) {
     columns = 4;
@@ -87,6 +131,16 @@ export default function MenuScreen() {
   const gap = 12;
   const horizontalPadding = 32;
   const cardWidth = (width - horizontalPadding - (gap * (columns - 1))) / columns;
+
+  const getContextId = (context: OrderContext) => {
+    if (context.orderType === "DINE_IN") {
+      return `DINE_IN_${context.section}_${context.tableNo}`;
+    }
+    if (context.orderType === "TAKEAWAY") {
+      return `TAKEAWAY_${context.takeawayNo}`;
+    }
+    return null;
+  };
 
   // Set context ID for cart when orderContext changes
   useEffect(() => {
@@ -132,9 +186,12 @@ export default function MenuScreen() {
     setGroups([]);
     setItems([]);
 
+    console.log("Fetching dish groups for kitchen:", kitchen);
     try {
       const res = await fetch(`${API}/dishgroups/${kitchen}`);
+      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
       const data = await res.json();
+      console.log(`Groups received for ${kitchen}:`, data.length);
       const safe = Array.isArray(data) ? data : [];
       setGroups(safe);
       if (safe.length > 0) loadDishes(safe[0].DishGroupId);
@@ -145,10 +202,17 @@ export default function MenuScreen() {
 
   const loadDishes = (groupId: string) => {
     setSelectedGroup(groupId);
+    console.log("Fetching dishes for group:", groupId);
 
     fetch(`${API}/dishes/${groupId}`)
-      .then((res) => res.json())
-      .then((data) => setItems(Array.isArray(data) ? data : []))
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        console.log(`Dishes received for group ${groupId}:`, data.length);
+        setItems(Array.isArray(data) ? data : []);
+      })
       .catch((err) => console.log("DISH ERROR:", err));
 
     requestAnimationFrame(() => {
@@ -218,21 +282,6 @@ export default function MenuScreen() {
 
     setShowModifier(false);
     setSelectedModifierIds([]);
-  };
-
-  const getImage = (name: string) => {
-    const file = name.replace(/[()]/g, "").replace(/\s+/g, "_").toLowerCase() + ".jpg";
-    return { uri: `${API}/images/${file}` };
-  };
-
-  const getContextId = (context: OrderContext) => {
-    if (context.orderType === "DINE_IN") {
-      return `DINE_IN_${context.section}_${context.tableNo}`;
-    }
-    if (context.orderType === "TAKEAWAY") {
-      return `TAKEAWAY_${context.takeawayNo}`;
-    }
-    return null;
   };
 
   const goToCart = () => {
@@ -348,7 +397,7 @@ export default function MenuScreen() {
             </View>
           )}
 
-          {/* Dishes Grid - 4 per row */}
+          {/* Dishes Grid */}
           <View style={[styles.sectionContainer, { flex: 1 }]}>
             <Text style={styles.sectionLabel}>DISHES</Text>
             <FlatList
@@ -375,7 +424,7 @@ export default function MenuScreen() {
                   onPress={() => openModifiers(item)}
                   activeOpacity={0.9}
                 >
-                  <Image source={getImage(item.Name)} style={styles.image} />
+                  <DishImage dish={item} style={styles.image} />
                   <View style={styles.cardContent}>
                     <Text style={styles.name} numberOfLines={2}>
                       {item.Name}
@@ -636,6 +685,16 @@ const styles = StyleSheet.create({
     width: "100%",
     height: 120,
     resizeMode: "cover",
+  },
+  imagePlaceholder: {
+    backgroundColor: "#f0f0f0",
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
+    height: 120,
+  },
+  placeholderText: {
+    fontSize: 40,
   },
   cardContent: {
     padding: 12,
