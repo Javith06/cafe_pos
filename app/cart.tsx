@@ -17,6 +17,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { OrderItem, useActiveOrdersStore } from "../stores/activeOrdersStore";
 import { CartItem, useCartStore } from "../stores/cartStore";
+import { holdOrder } from "../stores/heldOrdersStore";
 import { useOrderContextStore } from "../stores/orderContextStore";
 import { getNextOrderId } from "../stores/orderIdStore";
 import { useTableStatusStore } from "../stores/tableStatusStore";
@@ -275,20 +276,27 @@ export default function CartScreen() {
                     style={[styles.btn, { backgroundColor: "#3b82f6" }]}
                     onPress={() => {
                       let targetOrderId = activeOrder?.orderId;
-                      if (!targetOrderId) targetOrderId = getNextOrderId();
+                      if (!targetOrderId) {
+                        targetOrderId = getNextOrderId();
+                      }
+
+                      // Update table status to HOLD
+                      if (orderContext.orderType === "DINE_IN") {
+                        updateTableStatus(orderContext.section!, orderContext.tableNo!, targetOrderId, 'HOLD');
+                        holdOrder(targetOrderId, cart, orderContext);
+                        clearCart();
+                      } else if (orderContext.orderType === "TAKEAWAY") {
+                        updateTableStatus("TAKEAWAY", orderContext.takeawayNo!, targetOrderId, 'HOLD');
+                        holdOrder(targetOrderId, cart, orderContext);
+                        clearCart();
+                      }
 
                       if (orderContext.orderType === "DINE_IN") {
-                        updateTableStatus(
-                          orderContext.section!,
-                          orderContext.tableNo!,
-                          targetOrderId,
-                          "HOLD",
-                        );
-                        router.replace(
-                          `/(tabs)/category?section=${orderContext.section}`,
-                        );
+                        router.replace(`/(tabs)/category?section=${orderContext.section}`);
                       } else if (orderContext.orderType === "TAKEAWAY") {
                         router.replace(`/(tabs)/category?section=TAKEAWAY`);
+                      } else {
+                        router.replace("/(tabs)/category");
                       }
                     }}
                   >
