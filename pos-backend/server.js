@@ -65,33 +65,34 @@ app.get("/dishgroups/:kitchenName", async (req, res) => {
   }
 });
 
-/* ================= DISHES ================= */
+    /* ================= DISHES ================= */
+
 app.get("/dishes/:groupId", async (req, res) => {
   try {
     const pool = await poolPromise;
-
-    console.log("GROUP ID:", req.params.groupId);
 
     const result = await pool.request()
       .input("groupId", req.params.groupId)
       .query(`
         SELECT 
-          d.DishId,               
+          d.DishId,
           d.Name,
-          d.SordCode AS DishIntId,  
-          d.Rate AS Price
+          ISNULL(p.Amount, 0) AS Price
         FROM DishMaster d
-        WHERE d.DishGroupId = @groupId
+        LEFT JOIN DishPriceList p 
+          ON d.DishId = p.DishId
+        WHERE d.DishGroupId = @groupId   -- ✅ direct match
           AND d.IsActive = 1
       `);
 
     res.json(result.recordset);
 
   } catch (err) {
-    console.error("DISH ERROR:", err);
+    console.error("🔥 DISH ERROR:", err);
     res.status(500).send(err.message);
   }
 });
+
 
 /* ================= MODIFIERS ================= */
 app.get("/modifiers/:dishId", async (req, res) => {
