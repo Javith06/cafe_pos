@@ -1,13 +1,12 @@
 {
   "expo": {
-    "name": "Smart_Cafe",
-    "slug": "Smart_Cafe",
+    "name": "POS",
+    "slug": "POS",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.jpeg",
+    "icon": "./assets/images/icon.jpg",
     "scheme": "restaurantapp",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
     },
@@ -18,7 +17,6 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.lokesh9976.Smart_Cafe"
     },

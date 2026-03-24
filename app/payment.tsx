@@ -74,24 +74,42 @@ export default function PaymentScreen() {
 
     setProcessing(true);
 
-    const orderData = {
-      id: activeOrder?.orderId,
-      items: cart.map((item) => ({
-        name: item.name,
-        quantity: item.qty,
-        price: item.price,
-      })),
-      total,
-      paymentMethod: method,
-      cashPaid: paidNum,
-      change,
+    // ✅ PRINT FUNCTION
+    const printBill = () => {
+      const html = `
+        <html>
+          <body>
+            <h2>POS BILL</h2>
+            <p>Order: ${activeOrder?.orderId}</p>
+
+            <hr/>
+
+            ${cart.map(i => `
+              <p>${i.qty} x ${i.name} - ₹${(i.price || 0) * i.qty}</p>
+            `).join("")}
+
+            <hr/>
+
+            <p>Total: ₹${total.toFixed(2)}</p>
+            <p>Paid: ₹${paidNum.toFixed(2)}</p>
+            <p>Change: ₹${change.toFixed(2)}</p>
+
+            <h4>Thank You!</h4>
+          </body>
+        </html>
+      `;
+
+      const win = window.open("", "", "width=300,height=600");
+
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+        win.print();
+      }
     };
 
-    try {
-      await UniversalPrinter.smartPrint(orderData);
-    } catch (e) {
-      console.log("❌ Print error:", e);
-    }
+    // ✅ CALL PRINT
+    printBill();
 
     setTimeout(() => {
       router.replace({
@@ -108,7 +126,7 @@ export default function PaymentScreen() {
         },
       });
 
-      // IMMEDIATE CLEANUP
+      // CLEANUP
       if (activeOrder) {
         closeActiveOrder(activeOrder.orderId);
       }
