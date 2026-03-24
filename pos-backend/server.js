@@ -80,20 +80,37 @@ app.get("/dishes/:groupId", async (req, res) => {
   try {
     const pool = await poolPromise;
 
-    const result = await pool.request().input("groupId", req.params.groupId)
+    const result = await pool.request()
+      .input("groupId", req.params.groupId)
       .query(`
         SELECT 
           d.DishId,
           d.Name,
-          ISNULL(p.Amount, 0) AS Price
+          ISNULL(p.Amount, 0) AS Price,
+          i.ImageName
         FROM DishMaster d
+
         LEFT JOIN DishPriceList p 
           ON d.DishId = p.DishId
+
+        LEFT JOIN ImageList i 
+          ON LOWER(i.ImageName) LIKE '%' + LOWER(
+            LTRIM(SUBSTRING(d.Name, CHARINDEX(')', d.Name) + 1, LEN(d.Name)))
+          ) + '%'
+
         WHERE d.DishGroupId = @groupId
           AND d.IsActive = 1
       `);
 
-    res.json(result.recordset);
+    const dishes = result.recordset.map(dish => ({
+      ...dish,
+      ImageUrl: dish.ImageName
+        ? `${req.protocol}://${req.get("host")}/images/${dish.ImageName}`
+        : `${req.protocol}://${req.get("host")}/images/default.png`
+    }));
+
+    res.json(dishes);
+
   } catch (err) {
     console.error("🔥 DISH ERROR:", err);
     res.status(500).send(err.message);
