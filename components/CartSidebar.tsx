@@ -15,6 +15,7 @@ import { CartItem, useCartStore } from "../stores/cartStore";
 import { useOrderContextStore } from "../stores/orderContextStore";
 import { getNextOrderId } from "../stores/orderIdStore";
 import { useTableStatusStore } from "../stores/tableStatusStore";
+import { holdOrder } from "../stores/heldOrdersStore";
 
 interface CartSidebarProps {
   width?: DimensionValue;
@@ -30,7 +31,9 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
   const addToCartGlobal = useCartStore((state) => state.addToCartGlobal);
   const clearCart = useCartStore((state) => state.clearCart);
 
-  const cart = currentContextId ? carts[currentContextId] || [] : [];
+  const cart = useMemo(() => {
+    return (currentContextId && carts[currentContextId]) || [];
+  }, [carts, currentContextId]);
 
   const activeOrders = useActiveOrdersStore((state) => state.activeOrders);
   const appendOrder = useActiveOrdersStore((state) => state.appendOrder);
@@ -234,6 +237,12 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
                       // Update table status to HOLD
                       if (orderContext.orderType === "DINE_IN") {
                         updateTableStatus(orderContext.section!, orderContext.tableNo!, targetOrderId, 'HOLD');
+                        holdOrder(targetOrderId, cart, orderContext);
+                        clearCart();
+                      } else if (orderContext.orderType === "TAKEAWAY") {
+                        updateTableStatus("TAKEAWAY", orderContext.takeawayNo!, targetOrderId, 'HOLD');
+                        holdOrder(targetOrderId, cart, orderContext);
+                        clearCart();
                       }
 
                       if (orderContext.orderType === "DINE_IN") {

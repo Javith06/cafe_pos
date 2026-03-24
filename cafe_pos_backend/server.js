@@ -10,6 +10,12 @@ const PORT = 3000;
 
 app.use(cors());
 app.use(express.json());
+ 
+// Request Logger
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
 
 /* -------- ROOT -------- */
 
@@ -91,15 +97,17 @@ app.get("/dishgroups/:kitchen", async (req, res) => {
       .input("kitchen", sql.VarChar, kitchen)
       .query(`
         SELECT
-          DishGroupId,
-          DishGroupName
-        FROM DishGroupMaster
-        WHERE KitchenTypeName = @kitchen
-        AND IsActive = 1
-        ORDER BY SortCode
+          a.DishGroupId,
+          a.DishGroupName
+        FROM DishGroupMaster a
+        JOIN CategoryMaster b 
+          ON a.CategoryId = b.CategoryId
+        WHERE b.CategoryName = @kitchen
+          AND a.IsActive = 1
+        ORDER BY a.DishGroupName
       `);
 
-    console.log("Rows returned:", result.recordset.length);
+    console.log("Groups returned:", result.recordset.length);
     res.json(result.recordset);
 
   } catch (err) {
@@ -122,16 +130,20 @@ app.get("/dishes/:groupId", async (req, res) => {
     const pool = await poolPromise;
 
     const result = await pool.request()
-      .input("groupId", sql.VarChar, groupId)   // FIX HERE
+      .input("groupId", sql.VarChar, groupId)
       .query(`
         SELECT
-        DishId,
-        Name,
-        DishCode,
-        0 AS Price
-        FROM DishMaster
-        WHERE DishGroupId = @groupId
-        ORDER BY Name
+          v.DishId,
+          v.Name,
+          v.SordCode AS DishIntId,
+          v.Amount AS Price,
+          d.DishImage AS imagename,
+          v.ImageId AS imageid
+        FROM Vw_DishPriceList v
+        JOIN DishMaster d ON v.DishId = d.DishId
+        WHERE v.DishGroupId = @groupId
+          AND v.IsActive = 1
+        ORDER BY v.Name
       `);
 
     res.json(result.recordset);
@@ -149,6 +161,8 @@ app.get("/dishes/:groupId", async (req, res) => {
 
 });
 
+
+
 /* -------- GET MODIFIERS BY DISH -------- */
 
 app.get("/modifiers/:dishId", async (req, res) => {
@@ -163,11 +177,12 @@ app.get("/modifiers/:dishId", async (req, res) => {
       .input("dishId", sql.VarChar, dishId)
       .query(`
         SELECT 
-        m.ModifierId,
-        m.ModifierName
+          m.ModifierID AS ModifierId,
+          m.ModifierName,
+          m.DishCost AS Price
         FROM DishModifier dm
         JOIN ModifierMaster m
-        ON dm.ModifierId = m.ModifierId
+          ON dm.ModifierId = m.ModifierID
         WHERE dm.DishId = @dishId
         ORDER BY m.ModifierName
       `);
@@ -190,7 +205,14 @@ app.get("/modifiers/:dishId", async (req, res) => {
 /* -------- SERVER START -------- */
 
 app.listen(PORT, () => {
-
   console.log(`🚀 Server running on port ${PORT}`);
+});
 
+// Diagnostic handlers
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
 });

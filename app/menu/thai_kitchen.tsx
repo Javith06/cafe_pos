@@ -155,17 +155,25 @@ export default function MenuScreen() {
 
   // Load kitchens
   useEffect(() => {
-    fetch(`${API}/kitchens`)
-      .then((res) => res.json())
-      .then((data) => {
-        const safe = Array.isArray(data) ? data : [];
-        setKitchens(safe);
-        if (safe.length > 0 && orderContext) {
-          loadGroups(safe[0].KitchenTypeName);
-        }
-      })
-      .catch((err) => console.log("KITCHEN ERROR:", err));
-  }, []);
+  fetch(`${API}/kitchens`)
+    .then((res) => res.json())
+    .then((data) => {
+      const safe = Array.isArray(data) ? data : [];
+      
+      // 🔥 FILTER OUT TEST1 KITCHEN - ADD THIS LINE 🔥
+      const filteredKitchens = safe.filter(k => 
+        k.KitchenTypeName !== 'TEST1' && 
+        !k.KitchenTypeName.includes('TEST')
+      );
+      
+      setKitchens(filteredKitchens);
+      
+      if (filteredKitchens.length > 0 && orderContext) {
+        loadGroups(filteredKitchens[0].KitchenTypeName);
+      }
+    })
+    .catch((err) => console.log("KITCHEN ERROR:", err));
+}, []);
 
   // Load cart and subscribe to changes
   useEffect(() => {
@@ -236,7 +244,7 @@ export default function MenuScreen() {
     setSelectedModifierIds([]);
 
     try {
-      const res = await fetch(`${API}/modifiers`);
+      const res = await fetch(`${API}/modifiers/${dish.DishId}`);
       const data = await res.json();
 
       if (Array.isArray(data) && data.length > 0) {

@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const { poolPromise } = require("./db");
 
 const app = express();
@@ -8,15 +9,15 @@ const PORT = 3000;
 app.use(cors());
 app.use(express.json());
 
-/* ROOT */
+// Serve static images (if you have images folder)
+app.use('/images', express.static(path.join(__dirname, '../assets/images')));
 
+/* ROOT */
 app.get("/", (req, res) => {
   res.send("POS Backend Running");
 });
 
 /* ================= KITCHENS ================= */
-
-const sql = require("mssql"); 
 app.get("/kitchens", async (req, res) => {
   try {
     const pool = await poolPromise;
@@ -39,7 +40,6 @@ app.get("/kitchens", async (req, res) => {
 });
 
 /* ================= DISH GROUPS (FILTER BY KITCHEN) ================= */
-
 app.get("/dishgroups/:kitchenName", async (req, res) => {
   try {
     const pool = await poolPromise;
@@ -66,7 +66,6 @@ app.get("/dishgroups/:kitchenName", async (req, res) => {
 });
 
 /* ================= DISHES ================= */
-
 app.get("/dishes/:groupId", async (req, res) => {
   try {
     const pool = await poolPromise;
@@ -80,7 +79,7 @@ app.get("/dishes/:groupId", async (req, res) => {
           d.DishId,               
           d.Name,
           d.SordCode AS DishIntId,  
-          0 AS Price
+          d.Rate AS Price
         FROM DishMaster d
         WHERE d.DishGroupId = @groupId
           AND d.IsActive = 1
@@ -94,20 +93,22 @@ app.get("/dishes/:groupId", async (req, res) => {
   }
 });
 
-
-
-app.get("/modifiers", async (req, res) => {
+/* ================= MODIFIERS ================= */
+app.get("/modifiers/:dishId", async (req, res) => {
   try {
     const pool = await poolPromise;
 
     const result = await pool.request()
+      .input("dishId", req.params.dishId)
       .query(`
         SELECT 
           m.ModifierId,
-          m.ModifierName
-        FROM DishModifiers dm, ModifierMaster m
-        WHERE dm.ModifierId = m.ModifierId
-          AND dm.DishId = 58   -- 🔥 HARDCODE
+          m.ModifierName,
+          m.Rate AS Price
+        FROM DishModifiers dm 
+        INNER JOIN ModifierMaster m 
+          ON dm.ModifierId = m.ModifierId
+        WHERE dm.DishId = @dishId
       `);
 
     res.json(result.recordset);
@@ -117,8 +118,8 @@ app.get("/modifiers", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-/* ================= SERVER ================= */
 
+/* ================= SERVER ================= */
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
