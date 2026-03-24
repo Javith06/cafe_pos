@@ -4,13 +4,13 @@ const path = require("path");
 const { poolPromise } = require("./db");
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
 
 // Serve static images (if you have images folder)
-app.use('/images', express.static(path.join(__dirname, '../assets/images')));
+app.use("/images", express.static(path.join(__dirname, "../assets/images")));
 
 /* ROOT */
 app.get("/", (req, res) => {
@@ -22,8 +22,7 @@ app.get("/kitchens", async (req, res) => {
   try {
     const pool = await poolPromise;
 
-    const result = await pool.request()
-      .query(`
+    const result = await pool.request().query(`
       SELECT 
         ROW_NUMBER() OVER (ORDER BY CategoryName) AS KitchenTypeId,
         CategoryName AS KitchenTypeName
@@ -32,7 +31,6 @@ app.get("/kitchens", async (req, res) => {
     `);
 
     res.json(result.recordset);
-
   } catch (err) {
     console.error("KITCHEN ERROR:", err);
     res.status(500).json({ error: err.message });
@@ -44,9 +42,9 @@ app.get("/dishgroups/:kitchenName", async (req, res) => {
   try {
     const pool = await poolPromise;
 
-    const result = await pool.request()
-      .input("kitchenName", req.params.kitchenName)
-      .query(`
+    const result = await pool
+      .request()
+      .input("kitchenName", req.params.kitchenName).query(`
         SELECT 
           a.DishGroupId,
           a.DishGroupName
@@ -58,21 +56,19 @@ app.get("/dishgroups/:kitchenName", async (req, res) => {
       `);
 
     res.json(result.recordset);
-
   } catch (err) {
     console.error("DISH GROUP ERROR:", err);
     res.status(500).send(err.message);
   }
 });
 
-    /* ================= DISHES ================= */
+/* ================= DISHES ================= */
 
 app.get("/dishes/:groupId", async (req, res) => {
   try {
     const pool = await poolPromise;
 
-    const result = await pool.request()
-      .input("groupId", req.params.groupId)
+    const result = await pool.request().input("groupId", req.params.groupId)
       .query(`
         SELECT 
           d.DishId,
@@ -86,21 +82,18 @@ app.get("/dishes/:groupId", async (req, res) => {
       `);
 
     res.json(result.recordset);
-
   } catch (err) {
     console.error("🔥 DISH ERROR:", err);
     res.status(500).send(err.message);
   }
 });
 
-
 /* ================= MODIFIERS ================= */
 app.get("/modifiers/:dishId", async (req, res) => {
   try {
     const pool = await poolPromise;
 
-    const result = await pool.request()
-      .input("dishId", req.params.dishId)
+    const result = await pool.request().input("dishId", req.params.dishId)
       .query(`
         SELECT 
           m.ModifierId,
@@ -113,7 +106,6 @@ app.get("/modifiers/:dishId", async (req, res) => {
       `);
 
     res.json(result.recordset);
-
   } catch (err) {
     console.error("MODIFIER ERROR:", err);
     res.status(500).json({ error: err.message });
@@ -121,6 +113,7 @@ app.get("/modifiers/:dishId", async (req, res) => {
 });
 
 /* ================= SERVER ================= */
+console.log("DB connected and server starting...");
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
