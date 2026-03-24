@@ -1,3 +1,6 @@
+console.log("PORT:", process.env.PORT);
+console.log("DB_SERVER:", process.env.DB_SERVER);
+
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
