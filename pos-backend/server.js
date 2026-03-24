@@ -16,6 +16,9 @@ app.use("/images", express.static(path.join(__dirname, "../assets/images")));
 app.get("/", (req, res) => {
   res.send("POS Backend Running");
 });
+app.get("/test", (req, res) => {
+  res.send("TEST OK");
+});
 
 /* ================= KITCHENS ================= */
 app.get("/kitchens", async (req, res) => {
@@ -113,6 +116,7 @@ app.get("/modifiers/:dishId", async (req, res) => {
 });
 
 /* ================= SERVER ================= */
+
 console.log("DB connected and server starting...");
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT}`);
