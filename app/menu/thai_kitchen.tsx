@@ -14,10 +14,18 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import CartSidebar from "../../components/CartSidebar";
-import { addToCartGlobal, getCart, CartItem, setCurrentContext } from "../../stores/cartStore";
-import { useOrderContextStore, OrderContext } from "../../stores/orderContextStore";
+import {
+  addToCartGlobal,
+  CartItem,
+  getCart,
+  setCurrentContext,
+} from "../../stores/cartStore";
+import {
+  OrderContext,
+  useOrderContextStore,
+} from "../../stores/orderContextStore";
 
-const API = "http://localhost:3000";
+const API = "https://cafepos-production-3428.up.railway.app";
 
 const kitchenIcons: Record<string, string> = {
   "THAI KITCHEN": "🍜",
@@ -25,7 +33,7 @@ const kitchenIcons: Record<string, string> = {
   "SOUTH INDIAN": "🍲",
   "WESTERN KITCHEN": "🍔",
   DRINKS: "🥤",
-  FISH: "🐟",  
+  FISH: "🐟",
 };
 
 type Kitchen = {
@@ -40,7 +48,7 @@ type Group = {
 
 type Dish = {
   DishId: string;
-  DishIntId: number;  
+  DishIntId: number;
   Name: string;
   Price?: number;
   imagename?: string;
@@ -56,17 +64,22 @@ type Modifier = {
 // Image Component with Error Handling
 const DishImage = ({ dish, style }: { dish: Dish; style: any }) => {
   const [error, setError] = useState(false);
-  const API = "http://localhost:3000";
+  const API = "https://cafepos-production-3428.up.railway.app";
 
   const getImageUrl = () => {
     if (error) return null;
-    
+
     if (dish.imagename) {
-      const fileName = dish.imagename.replace(/[()]/g, "").replace(/\s+/g, "_").toLowerCase();
+      const fileName = dish.imagename
+        .replace(/[()]/g, "")
+        .replace(/\s+/g, "_")
+        .toLowerCase();
       return { uri: `${API}/images/${fileName}` };
     }
-    
-    const fileName = dish.Name.replace(/[()]/g, "").replace(/\s+/g, "_").toLowerCase() + ".jpg";
+
+    const fileName =
+      dish.Name.replace(/[()]/g, "").replace(/\s+/g, "_").toLowerCase() +
+      ".jpg";
     return { uri: `${API}/images/${fileName}` };
   };
 
@@ -88,11 +101,7 @@ const DishImage = ({ dish, style }: { dish: Dish; style: any }) => {
   }
 
   return (
-    <Image
-      source={imageUrl}
-      style={style}
-      onError={() => setError(true)}
-    />
+    <Image source={imageUrl} style={style} onError={() => setError(true)} />
   );
 };
 
@@ -116,9 +125,11 @@ export default function MenuScreen() {
   const [selectedModifierIds, setSelectedModifierIds] = useState<string[]>([]);
 
   const listRef = useRef<FlatList<Dish>>(null);
-  
+
   const orderContext = useOrderContextStore((state) => state.currentOrder);
-  const setOrderContext = useOrderContextStore((state) => state.setOrderContext);
+  const setOrderContext = useOrderContextStore(
+    (state) => state.setOrderContext,
+  );
 
   // Responsive columns
   let columns = 2;
@@ -127,10 +138,10 @@ export default function MenuScreen() {
   } else if (width > 800) {
     columns = 3;
   }
-  
+
   const gap = 12;
   const horizontalPadding = 32;
-  const cardWidth = (width - horizontalPadding - (gap * (columns - 1))) / columns;
+  const cardWidth = (width - horizontalPadding - gap * (columns - 1)) / columns;
 
   const getContextId = (context: OrderContext) => {
     if (context.orderType === "DINE_IN") {
@@ -155,36 +166,37 @@ export default function MenuScreen() {
 
   // Load kitchens
   useEffect(() => {
-  fetch(`${API}/kitchens`)
-    .then((res) => res.json())
-    .then((data) => {
-      const safe = Array.isArray(data) ? data : [];
-      
-      // 🔥 FILTER OUT TEST1 KITCHEN - ADD THIS LINE 🔥
-      const filteredKitchens = safe.filter(k => 
-        k.KitchenTypeName !== 'TEST1' && 
-        !k.KitchenTypeName.includes('TEST')
-      );
-      
-      setKitchens(filteredKitchens);
-      
-      if (filteredKitchens.length > 0 && orderContext) {
-        loadGroups(filteredKitchens[0].KitchenTypeName);
-      }
-    })
-    .catch((err) => console.log("KITCHEN ERROR:", err));
-}, []);
+    fetch(`${API}/kitchens`)
+      .then((res) => res.json())
+      .then((data) => {
+        const safe = Array.isArray(data) ? data : [];
+
+        // 🔥 FILTER OUT TEST1 KITCHEN - ADD THIS LINE 🔥
+        const filteredKitchens = safe.filter(
+          (k) =>
+            k.KitchenTypeName !== "TEST1" &&
+            !k.KitchenTypeName.includes("TEST"),
+        );
+
+        setKitchens(filteredKitchens);
+
+        if (filteredKitchens.length > 0 && orderContext) {
+          loadGroups(filteredKitchens[0].KitchenTypeName);
+        }
+      })
+      .catch((err) => console.log("KITCHEN ERROR:", err));
+  }, []);
 
   // Load cart and subscribe to changes
   useEffect(() => {
     setCart(getCart());
-    
+
     const interval = setInterval(() => {
       const currentCart = getCart();
       setCart([...currentCart]);
-      setCartVersion(v => v + 1);
+      setCartVersion((v) => v + 1);
     }, 100);
-    
+
     return () => clearInterval(interval);
   }, []);
 
@@ -230,7 +242,7 @@ export default function MenuScreen() {
 
   const totalItems = useMemo(
     () => cart.reduce((s, i) => s + (i.qty || 0), 0),
-    [cart, cartVersion]
+    [cart, cartVersion],
   );
 
   const openModifiers = async (dish: Dish) => {
@@ -270,15 +282,15 @@ export default function MenuScreen() {
     setSelectedModifierIds((prev) =>
       prev.includes(modifierId)
         ? prev.filter((id) => id !== modifierId)
-        : [...prev, modifierId]
+        : [...prev, modifierId],
     );
   };
 
   const addWithModifiers = () => {
     if (!selectedDish) return;
 
-    const selectedModifiers = modifiers.filter(m => 
-      selectedModifierIds.includes(m.ModifierId)
+    const selectedModifiers = modifiers.filter((m) =>
+      selectedModifierIds.includes(m.ModifierId),
     );
 
     addToCartGlobal({
@@ -302,8 +314,10 @@ export default function MenuScreen() {
       <SafeAreaView style={styles.safe}>
         <View style={styles.noContextContainer}>
           <Text style={styles.noContextText}>No Active Order Context</Text>
-          <Text style={styles.noContextSubText}>Please select a table from category screen</Text>
-          <TouchableOpacity 
+          <Text style={styles.noContextSubText}>
+            Please select a table from category screen
+          </Text>
+          <TouchableOpacity
             style={styles.goBackButton}
             onPress={() => router.replace("/(tabs)/category")}
           >
@@ -316,7 +330,9 @@ export default function MenuScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={[styles.page, { flexDirection: width > 900 ? "row" : "column" }]}>
+      <View
+        style={[styles.page, { flexDirection: width > 900 ? "row" : "column" }]}
+      >
         <BlurView intensity={40} tint="dark" style={styles.main}>
           {/* Header */}
           <View style={styles.header}>
@@ -344,7 +360,7 @@ export default function MenuScreen() {
           {/* Order Context Display */}
           <View style={styles.contextContainer}>
             <Text style={styles.contextText}>
-              {orderContext.orderType === "DINE_IN" 
+              {orderContext.orderType === "DINE_IN"
                 ? `DINE-IN | ${orderContext.section} | Table ${orderContext.tableNo}`
                 : `TAKEAWAY | Order ${orderContext.takeawayNo}`}
             </Text>
@@ -414,11 +430,15 @@ export default function MenuScreen() {
               numColumns={columns}
               key={`grid-${columns}`}
               keyExtractor={(i) => i.DishId}
-              columnWrapperStyle={columns > 1 ? { 
-                justifyContent: 'flex-start',
-                gap: gap,
-                marginBottom: gap
-              } : undefined}
+              columnWrapperStyle={
+                columns > 1
+                  ? {
+                      justifyContent: "flex-start",
+                      gap: gap,
+                      marginBottom: gap,
+                    }
+                  : undefined
+              }
               contentContainerStyle={styles.gridContent}
               showsVerticalScrollIndicator={true}
               ListEmptyComponent={
@@ -438,9 +458,9 @@ export default function MenuScreen() {
                       {item.Name}
                     </Text>
                     <Text style={styles.price} numberOfLines={1}>
-                      ₹ {item.Price?.toFixed(2) ?? '0.00'}
+                      ₹ {item.Price?.toFixed(2) ?? "0.00"}
                     </Text>
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       style={styles.addButton}
                       onPress={(e) => {
                         e.stopPropagation();
