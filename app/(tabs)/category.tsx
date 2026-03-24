@@ -15,7 +15,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useActiveOrdersStore } from "../../stores/activeOrdersStore";
-import { getContextId, useCartStore } from "../../stores/cartStore";
+import { getContextId, setCartItemsGlobal, useCartStore } from "../../stores/cartStore";
+import { getHeldOrders, removeHeldOrder } from "../../stores/heldOrdersStore";
 import { setOrderContext } from "../../stores/orderContextStore";
 import { clearTable, useTableStatusStore } from "../../stores/tableStatusStore";
 
@@ -112,21 +113,17 @@ export default function Category() {
     let statusColor = "#fff";
 
     if (tableData) {
-      const activeOrder = activeOrders.find(
-        (o: any) =>
-          o.context.orderType ===
-            (activeTab === "TAKEAWAY" ? "TAKEAWAY" : "DINE_IN") &&
-          (activeTab === "TAKEAWAY"
-            ? o.context.takeawayNo === item.label
-            : o.context.section === activeTab &&
-              o.context.tableNo === item.label),
-      );
-
-      if (activeOrder) {
-        billAmount = activeOrder.items.reduce(
-          (sum: number, i: any) => sum + (i.price || 0) * i.qty,
-          0,
-        );
+      if (tableData.status === "HOLD") {
+        const helds = getHeldOrders();
+        const held = helds.find((h) => h.orderId === tableData.orderId);
+        if (held) {
+          billAmount = held.cart.reduce((sum: number, i: any) => sum + (i.price || 0) * i.qty, 0);
+        }
+      } else {
+        const activeOrder = activeOrders.find((o: any) => o.orderId === tableData.orderId);
+        if (activeOrder) {
+          billAmount = activeOrder.items.reduce((sum: number, i: any) => sum + (i.price || 0) * i.qty, 0);
+        }
       }
 
       const contextId = getContextId({
@@ -205,17 +202,32 @@ export default function Category() {
           },
         ]}
         onPress={() => {
+          let newContext: any;
           if (activeTab === "TAKEAWAY") {
-            setOrderContext({
+            newContext = {
               orderType: "TAKEAWAY",
               takeawayNo: item.label,
-            });
+            };
           } else {
-            setOrderContext({
+            newContext = {
               orderType: "DINE_IN",
               section: activeTab,
               tableNo: item.label,
-            });
+            };
+          }
+          
+          setOrderContext(newContext);
+
+          if (tableData && tableData.status === "HOLD") {
+            const helds = getHeldOrders();
+            const held = helds.find((h) => h.orderId === tableData.orderId);
+            if (held) {
+              const contextId = getContextId(newContext);
+              if (contextId) {
+                setCartItemsGlobal(contextId, held.cart);
+              }
+              removeHeldOrder(held.id);
+            }
           }
 
           router.push("/menu/thai_kitchen");

@@ -32,6 +32,7 @@ type CartState = {
   removeFromCartGlobal: (lineItemId: string) => void;
   clearCart: () => void;
   clearAllCarts: () => void;
+  setCartItems: (contextId: string, items: CartItem[]) => void;
 };
 
 export const useCartStore = create<CartState>((set, get) => ({
@@ -133,6 +134,15 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 
   clearAllCarts: () => set({ carts: {}, currentContextId: null }),
+
+  setCartItems: (contextId, items) => {
+    set((state) => ({
+      carts: {
+        ...state.carts,
+        [contextId]: items,
+      },
+    }));
+  },
 }));
 
 // Helper for context ID
@@ -149,6 +159,7 @@ export const addToCartGlobal = (item: Omit<CartItem, "qty" | "lineItemId">) => u
 export const removeFromCartGlobal = (lineItemId: string) => useCartStore.getState().removeFromCartGlobal(lineItemId);
 export const clearCart = () => useCartStore.getState().clearCart();
 export const setCurrentContext = (contextId: string | null) => useCartStore.getState().setCurrentContext(contextId);
+export const setCartItemsGlobal = (contextId: string, items: CartItem[]) => useCartStore.getState().setCartItems(contextId, items);
 
 export const subscribeCart = (listener: () => void) => useCartStore.subscribe(listener);
 

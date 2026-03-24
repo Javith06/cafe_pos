@@ -21,6 +21,8 @@ import { useOrderContextStore } from "../stores/orderContextStore";
 import { getNextOrderId } from "../stores/orderIdStore";
 import { useTableStatusStore } from "../stores/tableStatusStore";
 
+const STABLE_EMPTY_ARRAY: any[] = [];
+
 export default function CartScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -34,7 +36,7 @@ export default function CartScreen() {
   const removeFromCartGlobal = useCartStore((s) => s.removeFromCartGlobal);
   const addToCartGlobal = useCartStore((s) => s.addToCartGlobal);
 
-  const cart = currentContextId ? carts[currentContextId] || [] : [];
+  const cart = currentContextId ? carts[currentContextId] || STABLE_EMPTY_ARRAY : STABLE_EMPTY_ARRAY;
 
   const activeOrders = useActiveOrdersStore((s) => s.activeOrders);
   const appendOrder = useActiveOrdersStore((s) => s.appendOrder);

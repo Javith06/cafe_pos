@@ -17,8 +17,9 @@ import CartSidebar from "../../components/CartSidebar";
 import {
   addToCartGlobal,
   CartItem,
-  getCart,
+  getContextId,
   setCurrentContext,
+  useCartStore,
 } from "../../stores/cartStore";
 import {
   OrderContext,
@@ -64,7 +65,10 @@ type Modifier = {
 // Image Component with Error Handling
 const DishImage = ({ dish, style }: { dish: Dish; style: any }) => {
   const [error, setError] = useState(false);
-  const API = "https://cafepos-production-3428.up.railway.app";
+
+  useEffect(() => {
+    setError(false);
+  }, [dish.DishId]);
 
   const getImageUrl = () => {
     if (error) return null;
@@ -105,6 +109,8 @@ const DishImage = ({ dish, style }: { dish: Dish; style: any }) => {
   );
 };
 
+const STABLE_EMPTY_ARRAY: any[] = [];
+
 export default function MenuScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -116,9 +122,6 @@ export default function MenuScreen() {
   const [selectedKitchen, setSelectedKitchen] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("");
 
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [cartVersion, setCartVersion] = useState(0);
-
   const [modifiers, setModifiers] = useState<Modifier[]>([]);
   const [showModifier, setShowModifier] = useState(false);
   const [selectedDish, setSelectedDish] = useState<Dish | null>(null);
@@ -127,9 +130,6 @@ export default function MenuScreen() {
   const listRef = useRef<FlatList<Dish>>(null);
 
   const orderContext = useOrderContextStore((state) => state.currentOrder);
-  const setOrderContext = useOrderContextStore(
-    (state) => state.setOrderContext,
-  );
 
   // Responsive columns
   let columns = 2;
@@ -139,30 +139,31 @@ export default function MenuScreen() {
     columns = 3;
   }
 
+  let availableWidth = width;
+  if (width > 900) {
+    availableWidth = width - 350;
+  }
+
   const gap = 12;
-  const horizontalPadding = 32;
-  const cardWidth = (width - horizontalPadding - gap * (columns - 1)) / columns;
+  const horizontalPadding = 56;
+  const cardWidth = (availableWidth - horizontalPadding - gap * (columns - 1)) / columns;
 
-  const getContextId = (context: OrderContext) => {
-    if (context.orderType === "DINE_IN") {
-      return `DINE_IN_${context.section}_${context.tableNo}`;
-    }
-    if (context.orderType === "TAKEAWAY") {
-      return `TAKEAWAY_${context.takeawayNo}`;
-    }
-    return null;
-  };
-
-  // Set context ID for cart when orderContext changes
+  // Set context ID for cart when orderContext changes avoiding infinite loop
   useEffect(() => {
-    if (orderContext) {
-      const contextId = getContextId(orderContext);
-      setCurrentContext(contextId);
-      console.log("Cart context set to:", contextId);
-    } else {
-      setCurrentContext(null);
+    const newId = getContextId(orderContext);
+    const existingId = useCartStore.getState().currentContextId;
+
+    if (existingId !== newId) {
+      setCurrentContext(newId);
+      console.log("Cart context set to:", newId);
     }
   }, [orderContext]);
+
+  // Use stable selector for cart instead of setInterval
+  const cart = useCartStore((s) => {
+    const id = s.currentContextId;
+    return id ? s.carts[id] || STABLE_EMPTY_ARRAY : STABLE_EMPTY_ARRAY;
+  });
 
   // Load kitchens
   useEffect(() => {
@@ -171,7 +172,7 @@ export default function MenuScreen() {
       .then((data) => {
         const safe = Array.isArray(data) ? data : [];
 
-        // 🔥 FILTER OUT TEST1 KITCHEN - ADD THIS LINE 🔥
+        // FILTER OUT TEST1 KITCHEN
         const filteredKitchens = safe.filter(
           (k) =>
             k.KitchenTypeName !== "TEST1" &&
@@ -185,19 +186,6 @@ export default function MenuScreen() {
         }
       })
       .catch((err) => console.log("KITCHEN ERROR:", err));
-  }, []);
-
-  // Load cart and subscribe to changes
-  useEffect(() => {
-    setCart(getCart());
-
-    const interval = setInterval(() => {
-      const currentCart = getCart();
-      setCart([...currentCart]);
-      setCartVersion((v) => v + 1);
-    }, 100);
-
-    return () => clearInterval(interval);
   }, []);
 
   const loadGroups = async (kitchen: string) => {
@@ -242,7 +230,7 @@ export default function MenuScreen() {
 
   const totalItems = useMemo(
     () => cart.reduce((s, i) => s + (i.qty || 0), 0),
-    [cart, cartVersion],
+    [cart],
   );
 
   const openModifiers = async (dish: Dish) => {
@@ -315,13 +303,13 @@ export default function MenuScreen() {
         <View style={styles.noContextContainer}>
           <Text style={styles.noContextText}>No Active Order Context</Text>
           <Text style={styles.noContextSubText}>
-            Please select a table from category screen
+            Please select a table from P.O.S Dashboard
           </Text>
           <TouchableOpacity
             style={styles.goBackButton}
             onPress={() => router.replace("/(tabs)/category")}
           >
-            <Text style={styles.goBackText}>Go to Categories</Text>
+            <Text style={styles.goBackText}>Go to P.O.S Dashboard</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -440,7 +428,7 @@ export default function MenuScreen() {
                   : undefined
               }
               contentContainerStyle={styles.gridContent}
-              showsVerticalScrollIndicator={true}
+              showsVerticalScrollIndicator={false}
               ListEmptyComponent={
                 <View style={styles.emptyWrap}>
                   <Text style={styles.emptyText}>No items available</Text>
@@ -458,7 +446,7 @@ export default function MenuScreen() {
                       {item.Name}
                     </Text>
                     <Text style={styles.price} numberOfLines={1}>
-                      ₹ {item.Price?.toFixed(2) ?? "0.00"}
+                      $ {item.Price?.toFixed(2) ?? "0.00"}
                     </Text>
                     <TouchableOpacity
                       style={styles.addButton}
@@ -477,7 +465,7 @@ export default function MenuScreen() {
         </BlurView>
 
         {/* Cart Sidebar for wide screens */}
-        {width > 900 && <CartSidebar width={350} key={`cart-${cartVersion}`} />}
+        {width > 900 && <CartSidebar width={350} />}
 
         {/* Mobile Cart Button */}
         {width <= 900 && totalItems > 0 && (
