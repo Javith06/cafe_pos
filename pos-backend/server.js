@@ -7,25 +7,25 @@ const { poolPromise } = require("./db");
 
 const app = express();
 
-// ✅ IMPORTANT: Railway PORT (no fallback for debugging)
-const PORT = process.env.PORT;
+// ✅ Works for BOTH local & Railway
+const PORT = process.env.PORT || 3000;
 
-// 🔍 DEBUG LOGS (keep for now)
-console.log("PORT:", process.env.PORT);
+// 🔍 Debug logs (safe)
+console.log("PORT:", PORT);
 console.log("DB_SERVER:", process.env.DB_SERVER);
 
 app.use(cors());
 app.use(express.json());
 
-// Serve static images
+// ✅ Serve static images (make sure folder exists)
 app.use("/images", express.static(path.join(__dirname, "assets/images")));
 
-/* ROOT */
+/* ================= ROOT ================= */
 app.get("/", (req, res) => {
   res.send("POS Backend Running");
 });
 
-/* TEST ROUTE */
+/* ================= TEST ================= */
 app.get("/test", (req, res) => {
   res.send("TEST OK");
 });
@@ -126,13 +126,8 @@ app.get("/modifiers/:dishId", async (req, res) => {
 
 /* ================= SERVER ================= */
 
-if (!PORT) {
-  console.error("❌ PORT is undefined. Railway not injecting PORT.");
-  process.exit(1);
-}
-
-console.log("DB connected and server starting...");
+console.log("🚀 Starting server...");
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`✅ Server running on port ${PORT}`);
 });
