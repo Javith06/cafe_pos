@@ -1,5 +1,4 @@
-console.log("PORT:", process.env.PORT);
-console.log("DB_SERVER:", process.env.DB_SERVER);
+require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
@@ -7,18 +6,26 @@ const path = require("path");
 const { poolPromise } = require("./db");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+
+// ✅ IMPORTANT: Railway PORT (no fallback for debugging)
+const PORT = process.env.PORT;
+
+// 🔍 DEBUG LOGS (keep for now)
+console.log("PORT:", process.env.PORT);
+console.log("DB_SERVER:", process.env.DB_SERVER);
 
 app.use(cors());
 app.use(express.json());
 
-// Serve static images (if you have images folder)
-app.use("/images", express.static(path.join(__dirname, "../assets/images")));
+// Serve static images
+app.use("/images", express.static(path.join(__dirname, "assets/images")));
 
 /* ROOT */
 app.get("/", (req, res) => {
   res.send("POS Backend Running");
 });
+
+/* TEST ROUTE */
 app.get("/test", (req, res) => {
   res.send("TEST OK");
 });
@@ -43,7 +50,7 @@ app.get("/kitchens", async (req, res) => {
   }
 });
 
-/* ================= DISH GROUPS (FILTER BY KITCHEN) ================= */
+/* ================= DISH GROUPS ================= */
 app.get("/dishgroups/:kitchenName", async (req, res) => {
   try {
     const pool = await poolPromise;
@@ -69,7 +76,6 @@ app.get("/dishgroups/:kitchenName", async (req, res) => {
 });
 
 /* ================= DISHES ================= */
-
 app.get("/dishes/:groupId", async (req, res) => {
   try {
     const pool = await poolPromise;
@@ -83,7 +89,7 @@ app.get("/dishes/:groupId", async (req, res) => {
         FROM DishMaster d
         LEFT JOIN DishPriceList p 
           ON d.DishId = p.DishId
-        WHERE d.DishGroupId = @groupId   -- ✅ direct match
+        WHERE d.DishGroupId = @groupId
           AND d.IsActive = 1
       `);
 
@@ -120,7 +126,13 @@ app.get("/modifiers/:dishId", async (req, res) => {
 
 /* ================= SERVER ================= */
 
+if (!PORT) {
+  console.error("❌ PORT is undefined. Railway not injecting PORT.");
+  process.exit(1);
+}
+
 console.log("DB connected and server starting...");
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
