@@ -52,12 +52,12 @@ type Dish = {
   DishIntId: number;
   Name: string;
   Price?: number;
-  imagename?: string;
+  ImageBase64?: string;
   imageid?: number;
 };
 
 type Modifier = {
-  ModifierId: string;
+  ModifierID: string;
   ModifierName: string;
   Price?: number;
 };
@@ -73,13 +73,9 @@ const DishImage = ({ dish, style }: { dish: Dish; style: any }) => {
   const getImageUrl = () => {
     if (error) return null;
 
-    if (dish.imagename) {
-      const fileName = dish.imagename
-        .replace(/[()]/g, "")
-        .replace(/\s+/g, "_")
-        .toLowerCase();
-      return { uri: `${API}/images/${fileName}` };
-    }
+  if (dish.ImageBase64) {
+  return { uri: dish.ImageBase64 };
+}
 
     const fileName =
       dish.Name.replace(/[()]/g, "").replace(/\s+/g, "_").toLowerCase() +
@@ -186,7 +182,7 @@ export default function MenuScreen() {
         }
       })
       .catch((err) => console.log("KITCHEN ERROR:", err));
-  }, []);
+  }, [orderContext]);
 
   const loadGroups = async (kitchen: string) => {
     setSelectedKitchen(kitchen);
@@ -199,34 +195,51 @@ export default function MenuScreen() {
       const res = await fetch(`${API}/dishgroups/${kitchen}`);
       if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
       const data = await res.json();
+      console.log("MODIFIERS API:", data);
       console.log(`Groups received for ${kitchen}:`, data.length);
       const safe = Array.isArray(data) ? data : [];
-      setGroups(safe);
-      if (safe.length > 0) loadDishes(safe[0].DishGroupId);
-    } catch (err) {
+      setGroups([...safe]);
+        if (safe.length > 0) {
+          loadDishes(safe[0].DishGroupId);
+        } else {
+          setItems([]);
+        }    } catch (err) {
       console.log("GROUP ERROR:", err);
     }
   };
 
-  const loadDishes = (groupId: string) => {
-    setSelectedGroup(groupId);
-    console.log("Fetching dishes for group:", groupId);
+  const loadDishes = async (groupId: string) => {
+  setSelectedGroup(groupId);
 
-    fetch(`${API}/dishes/${groupId}`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-        return res.json();
-      })
-      .then((data) => {
-        console.log(`Dishes received for group ${groupId}:`, data.length);
-        setItems(Array.isArray(data) ? data : []);
-      })
-      .catch((err) => console.log("DISH ERROR:", err));
+  // ✅ clear old data
+  setItems([]);
 
-    requestAnimationFrame(() => {
-      listRef.current?.scrollToOffset({ offset: 0, animated: true });
-    });
-  };
+  console.log("Fetching dishes for group:", groupId);
+
+  try {
+    const res = await fetch(`${API}/dishes/${groupId}`);
+    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+
+    const data = await res.json();
+    console.log(`Dishes received for group ${groupId}:`, data.length);
+
+    const safe = Array.isArray(data) ? data : [];
+
+    // ✅ remove duplicates
+    const uniqueData = Array.from(
+      new Map(safe.map(item => [item.DishId, item])).values()
+    );
+
+    setItems(uniqueData);
+
+  } catch (err) {
+    console.log("DISH ERROR:", err);
+  }
+
+  requestAnimationFrame(() => {
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+  });
+};
 
   const totalItems = useMemo(
     () => cart.reduce((s, i) => s + (i.qty || 0), 0),
@@ -234,37 +247,27 @@ export default function MenuScreen() {
   );
 
   const openModifiers = async (dish: Dish) => {
-    if (!orderContext) {
-      alert("Please select a table/counter first");
-      router.push("/(tabs)/category");
-      return;
-    }
+  if (!orderContext) {
+    alert("Please select a table/counter first");
+    router.push("/(tabs)/category");
+    return;
+  }
 
-    setSelectedDish(dish);
-    setSelectedModifierIds([]);
+  setSelectedDish(dish);
+  setSelectedModifierIds([]);
 
-    try {
-      const res = await fetch(`${API}/modifiers/${dish.DishId}`);
-      const data = await res.json();
+  try {
+    const res = await fetch(`${API}/modifiers/${dish.DishId}`);
+    const data = await res.json();
+    
+    // 🔥 ALWAYS SHOW POPUP
+    setModifiers(Array.isArray(data) ? data : []);
+    setShowModifier(true);
 
-      if (Array.isArray(data) && data.length > 0) {
-        setModifiers(data);
-        setShowModifier(true);
-      } else {
-        addToCartGlobal({
-          id: dish.DishId,
-          name: dish.Name,
-          price: dish.Price ?? 0,
-        });
-      }
-    } catch (err) {
-      addToCartGlobal({
-        id: dish.DishId,
-        name: dish.Name,
-        price: dish.Price ?? 0,
-      });
-    }
-  };
+  } catch (err) {
+    console.log("MODIFIER ERROR:", err);
+  }
+};
 
   const toggleModifier = (modifierId: string) => {
     setSelectedModifierIds((prev) =>
@@ -275,22 +278,33 @@ export default function MenuScreen() {
   };
 
   const addWithModifiers = () => {
-    if (!selectedDish) return;
+  if (!selectedDish) return;
 
-    const selectedModifiers = modifiers.filter((m) =>
-      selectedModifierIds.includes(m.ModifierId),
-    );
+  // 🔥 MUST SELECT AT LEAST ONE
+  if (modifiers.length > 0 && selectedModifierIds.length === 0) {
+    alert("Please select at least one modifier");
+    return;
+  }
 
-    addToCartGlobal({
-      id: selectedDish.DishId,
-      name: selectedDish.Name,
-      price: selectedDish.Price ?? 0,
-      modifiers: selectedModifiers,
-    });
+  const selectedModifiers = modifiers.filter((m) =>
+    selectedModifierIds.includes(m.ModifierID),
+  );
 
-    setShowModifier(false);
-    setSelectedModifierIds([]);
-  };
+  const cartModifiers = selectedModifiers.map((m) => ({
+    ModifierId: m.ModifierID,
+    ModifierName: m.ModifierName,
+  }));
+
+  addToCartGlobal({
+    id: selectedDish.DishId,
+    name: selectedDish.Name,
+    price: selectedDish.Price ?? 0,
+    modifiers: cartModifiers,
+  });
+
+  setShowModifier(false);
+  setSelectedModifierIds([]);
+};
 
   const goToCart = () => {
     router.push("/cart");
@@ -417,7 +431,7 @@ export default function MenuScreen() {
               data={items}
               numColumns={columns}
               key={`grid-${columns}`}
-              keyExtractor={(i) => i.DishId}
+              keyExtractor={(item, index) => item.DishId + "_" + index}
               columnWrapperStyle={
                 columns > 1
                   ? {
@@ -491,13 +505,15 @@ export default function MenuScreen() {
 
               {modifiers.map((mod) => (
                 <TouchableOpacity
-                  key={mod.ModifierId}
+                  key={mod.ModifierID}
                   style={styles.modifierRow}
-                  onPress={() => toggleModifier(mod.ModifierId)}
+                  onPress={() => toggleModifier(mod.ModifierID)}
                 >
-                  <Text style={styles.modifierName}>{mod.ModifierName}</Text>
+                  <Text style={styles.modifierName}>
+                {mod.ModifierName} {mod.Price ? `(+ $${mod.Price})` : ""}
+              </Text>
                   <View style={styles.checkbox}>
-                    {selectedModifierIds.includes(mod.ModifierId) && (
+                    {selectedModifierIds.includes(mod.ModifierID) && (
                       <Text style={styles.checkmark}>✓</Text>
                     )}
                   </View>
