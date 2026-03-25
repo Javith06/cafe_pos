@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "POS",
-    "slug": "POS",
+    "name": "Smart_Cafe",
+    "slug": "Smart_Cafe",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.jpg",
