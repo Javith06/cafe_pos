@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { BlurView } from "expo-blur";
 import React, { useMemo } from "react";
 import {
   DimensionValue,
@@ -118,7 +119,7 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
 
   return (
     <View style={[styles.container, { width }]}>
-      <View style={styles.surface}>
+      <BlurView intensity={50} tint="dark" style={styles.surface}>
 
         {/* TOP BAR */}
         <View style={styles.topBar}>
@@ -304,8 +305,7 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
               )}
             </View>
         </View>
-
-      </View>
+      </BlurView>
     </View>
   );
 }
@@ -314,11 +314,11 @@ const styles = StyleSheet.create({
   container: { height: "100%", padding: 12 },
   surface: {
     flex: 1,
-    backgroundColor: "rgba(17,24,39,0.85)",
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: "rgba(255,255,255,0.15)",
+    overflow: "hidden",
   },
   topBar: {
     flexDirection: "row",

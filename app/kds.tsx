@@ -8,13 +8,16 @@ import {
   Text,
   useWindowDimensions,
   View,
+  Pressable,
 } from "react-native";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-
 import { useActiveOrdersStore } from "../stores/activeOrdersStore";
 
 export default function KDSScreen() {
   const { width } = useWindowDimensions();
+  const router = useRouter();
   const activeOrders = useActiveOrdersStore((s) => s.activeOrders);
 
   const [time, setTime] = useState(Date.now());
@@ -133,6 +136,12 @@ export default function KDSScreen() {
               )}
 
               {i.note && <Text style={styles.modifier}>Note: {i.note}</Text>}
+
+              {i.modifiers && Array.isArray(i.modifiers) && i.modifiers.map((mod: any, idx: number) => (
+                <Text key={`mod-${idx}`} style={styles.modifier}>
+                  + {mod.ModifierName}
+                </Text>
+              ))}
             </View>
           );
         })}
@@ -148,6 +157,13 @@ export default function KDSScreen() {
         resizeMode="cover"
       >
         <View style={styles.overlay} />
+
+        <View style={styles.topBar}>
+          <Pressable style={styles.backBtn} onPress={() => router.back()}>
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+            <Text style={styles.backText}>Back to POS</Text>
+          </Pressable>
+        </View>
 
         <FlatList
           key={numColumns}
@@ -174,6 +190,27 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.45)",
+  },
+
+  topBar: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 4,
+  },
+  backBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.15)",
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignSelf: "flex-start",
+    gap: 8,
+  },
+  backText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "800",
   },
 
   list: {
