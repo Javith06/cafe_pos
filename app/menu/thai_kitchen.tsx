@@ -1,5 +1,6 @@
 import { BlurView } from "expo-blur";
 import { useRouter } from "expo-router";
+import { TextInput } from "react-native";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
@@ -111,7 +112,8 @@ export default function MenuScreen() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [items, setItems] = useState<Dish[]>([]);
 
-  const [selectedKitchen, setSelectedKitchen] = useState("");
+  const [selectedKitchenId, setSelectedKitchenId] = useState("");
+  const [selectedKitchenName, setSelectedKitchenName] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("");
 
   const [modifiers, setModifiers] = useState<Modifier[]>([]);
@@ -119,8 +121,12 @@ export default function MenuScreen() {
   const [selectedDish, setSelectedDish] = useState<Dish | null>(null);
   const [selectedModifierIds, setSelectedModifierIds] = useState<string[]>([]);
 
+  const [showCustomModal, setShowCustomModal] = useState(false);
+  const [customPrice, setCustomPrice] = useState("");
+  const [customText, setCustomText] = useState("");
+  const [customModifiers, setCustomModifiers] = useState<Modifier[]>([]);
+  
   const listRef = useRef<FlatList<Dish>>(null);
-
   const orderContext = useOrderContextStore((state) => state.currentOrder);
 
   // Responsive columns
@@ -174,68 +180,66 @@ export default function MenuScreen() {
         setKitchens(filteredKitchens);
 
         if (filteredKitchens.length > 0 && orderContext) {
-          loadGroups(filteredKitchens[0].CategoryId);
+          loadGroups(filteredKitchens[0].CategoryId, filteredKitchens[0].KitchenTypeName);
         }
       })
       .catch((err) => console.log("KITCHEN ERROR:", err));
   }, [orderContext]);
 
-  const loadGroups = async (kitchen: string) => {
-    setSelectedKitchen(kitchen);
+  const loadGroups = async (kitchenId: string, kitchenName: string) => {
+    setSelectedKitchenId(kitchenId);
+    setSelectedKitchenName(kitchenName);
     setSelectedGroup("");
     setGroups([]);
     setItems([]);
 
-    console.log("Fetching dish groups for kitchen:", kitchen);
+    console.log("Fetching dish groups for kitchen:", kitchenName);
     try {
-      const res = await fetch(`${API}/dishgroups/${kitchen}`);
+      const res = await fetch(`${API}/dishgroups/${kitchenId}`);
       if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
       const data = await res.json();
-      console.log("MODIFIERS API:", data);
-      console.log(`Groups received for ${kitchen}:`, data.length);
+      console.log("Groups received:", data);
       const safe = Array.isArray(data) ? data : [];
-      setGroups([...safe]);
-        if (safe.length > 0) {
-          loadDishes(safe[0].DishGroupId);
-        } else {
-          setItems([]);
-        }    } catch (err) {
+      setGroups(safe);
+      if (safe.length > 0) {
+        loadDishes(safe[0].DishGroupId);
+      } else {
+        setItems([]);
+      }
+    } catch (err) {
       console.log("GROUP ERROR:", err);
     }
   };
 
   const loadDishes = async (groupId: string) => {
-  setSelectedGroup(groupId);
+    setSelectedGroup(groupId);
+    setItems([]);
 
-  // ✅ clear old data
-  setItems([]);
+    console.log("Fetching dishes for group:", groupId);
 
-  console.log("Fetching dishes for group:", groupId);
+    try {
+      const res = await fetch(`${API}/dishes/${groupId}`);
+      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
 
-  try {
-    const res = await fetch(`${API}/dishes/${groupId}`);
-    if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
+      const data = await res.json();
+      console.log(`Dishes received:`, data);
 
-    const data = await res.json();
-    console.log(`Dishes received for group ${groupId}:`, data.length);
+      const safe = Array.isArray(data) ? data : [];
 
-    const safe = Array.isArray(data) ? data : [];
+      const uniqueData = Array.from(
+        new Map(safe.map(item => [item.DishId, item])).values()
+      );
 
-    // ✅ remove duplicates
-    const uniqueData = Array.from(
-      new Map(safe.map(item => [item.DishId, item])).values()
-    );
+      setItems(uniqueData);
 
-    setItems(uniqueData);
+    } catch (err) {
+      console.log("DISH ERROR:", err);
+    }
 
-  } catch (err) {
-    console.log("DISH ERROR:", err);
-  }
-
-  requestAnimationFrame(() => {
-    listRef.current?.scrollToOffset({ offset: 0, animated: true });
-  });
-};
+    requestAnimationFrame(() => {
+      listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    });
+  };
 
   const totalItems = useMemo(
     () => cart.reduce((s, i) => s + (i.qty || 0), 0),
@@ -251,6 +255,9 @@ export default function MenuScreen() {
 
     setSelectedDish(dish);
     setSelectedModifierIds([]);
+    setCustomModifiers([]);
+    setCustomText("");
+    setCustomPrice("");
 
     try {
       const res = await fetch(`${API}/modifiers/${dish.DishId}`);
@@ -275,34 +282,84 @@ export default function MenuScreen() {
     }
   };
 
-  const toggleModifier = (modifierId: string) => {
+  const toggleModifier = (modifier: Modifier) => {
+    if (modifier.ModifierName === "OPEN") {
+      setShowCustomModal(true);
+      return;
+    }
+    
     setSelectedModifierIds((prev) =>
-      prev.includes(modifierId)
-        ? prev.filter((id) => id !== modifierId)
-        : [...prev, modifierId],
+      prev.includes(modifier.ModifierID)
+        ? prev.filter((id) => id !== modifier.ModifierID)
+        : [...prev, modifier.ModifierID],
     );
+  };
+
+  const addCustomModifier = () => {
+    if (!customText.trim()) {
+      alert("Please enter item name");
+      return;
+    }
+    
+    const price = parseFloat(customPrice) || 0;
+    
+    // Check if same custom item already exists
+    const exists = customModifiers.some(
+      mod => mod.ModifierName === customText && mod.Price === price
+    );
+    
+    if (exists) {
+      alert("This item already added");
+      return;
+    }
+    
+    const customModifierObj = {
+      ModifierID: `CUSTOM_${Date.now()}_${Math.random()}`,
+      ModifierName: customText,
+      Price: price
+    };
+    
+    setSelectedModifierIds((prev) => [...prev, customModifierObj.ModifierID]);
+    setCustomModifiers((prev) => [...prev, customModifierObj]);
+    setCustomText("");
+    setCustomPrice("");
+    setShowCustomModal(false);
   };
 
   const addWithModifiers = () => {
     if (!selectedDish) return;
 
-    const selectedModifiers = modifiers
-  .filter((m) => selectedModifierIds.includes(m.ModifierID))
-  .map((m) => ({
-    ModifierId: m.ModifierID,   // 🔥 FIX HERE
-    ModifierName: m.ModifierName,
-    Price: m.Price,
-  }));
+    const selectedRegularModifiers = modifiers
+      .filter((m) => selectedModifierIds.includes(m.ModifierID))
+      .map((m) => ({
+        ModifierId: m.ModifierID,
+        ModifierName: m.ModifierName,
+        Price: m.Price ?? 0,
+      }));
+
+    const customModifiersToAdd = customModifiers.map((m) => ({
+      ModifierId: m.ModifierID,
+      ModifierName: m.ModifierName,
+      Price: m.Price ?? 0,
+    }));
+
+    const extra = selectedRegularModifiers.reduce((sum, m) => sum + (m.Price || 0), 0) +
+      customModifiersToAdd.reduce((sum, m) => sum + (m.Price || 0), 0);
+
+    const finalPrice = (selectedDish.Price ?? 0) + extra;
 
     addToCartGlobal({
       id: selectedDish.DishId,
       name: selectedDish.Name,
-      price: selectedDish.Price ?? 0,
-      modifiers: selectedModifiers,
+      price: finalPrice,
+      modifiers: [...selectedRegularModifiers, ...customModifiersToAdd],
     });
 
     setShowModifier(false);
     setSelectedModifierIds([]);
+    setCustomModifiers([]);
+    setCustomText("");
+    setCustomPrice("");
   };
 
   const goToCart = () => {
@@ -339,7 +396,7 @@ export default function MenuScreen() {
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
               <Text style={styles.title} numberOfLines={1}>
-                {selectedKitchen || "Select Kitchen"}
+                {selectedKitchenName || "Select Kitchen"}
               </Text>
               {totalItems > 0 && (
                 <TouchableOpacity onPress={goToCart}>
@@ -376,12 +433,12 @@ export default function MenuScreen() {
               contentContainerStyle={styles.kitchenRow}
             >
               {kitchens.map((k) => {
-                const active = k.KitchenTypeName === selectedKitchen;
+                const active = k.CategoryId === selectedKitchenId;
                 return (
                   <TouchableOpacity
                     key={k.CategoryId}
                     style={[styles.kitchenCard, active && styles.kitchenActive]}
-                    onPress={() => loadGroups(k.CategoryId)}
+                    onPress={() => loadGroups(k.CategoryId, k.KitchenTypeName)}
                   >
                     <Text style={styles.kitchenIcon}>
                       {kitchenIcons[k.KitchenTypeName] || "🍽️"}
@@ -494,7 +551,11 @@ export default function MenuScreen() {
           visible={showModifier}
           transparent
           animationType="fade"
-          onRequestClose={() => setShowModifier(false)}
+          onRequestClose={() => {
+            setShowModifier(false);
+            setCustomModifiers([]);
+            setSelectedModifierIds([]);
+          }}
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
@@ -502,29 +563,61 @@ export default function MenuScreen() {
                 Select modifiers for {selectedDish?.Name}
               </Text>
 
+              <ScrollView
+                style={{ maxHeight: 350 }}
+                showsVerticalScrollIndicator={false}
+              >
+                {modifiers.map((mod) => (
+                  <TouchableOpacity
+                    key={mod.ModifierID}
+                    style={styles.modifierRow}
+                    onPress={() => toggleModifier(mod)}
+                  >
+                    <Text style={styles.modifierName}>
+                      {mod.ModifierName}
+                      {mod.Price && mod.Price > 0 && (
+                        <Text style={styles.modifierPrice}> (+${mod.Price.toFixed(2)})</Text>
+                      )}
+                    </Text>
 
-              <ScrollView style={{ maxHeight: 300 }}>
-              {modifiers.map((mod) => (
-                <TouchableOpacity
-                  key={mod.ModifierID} 
-                  style={styles.modifierRow}
-                  onPress={() => toggleModifier(mod.ModifierID)}
-                >
-                  <Text style={styles.modifierName}>{mod.ModifierName}</Text>
-                  <View style={styles.checkbox}>
-                    {selectedModifierIds.includes(mod.ModifierID)&& (
-                      <Text style={styles.checkmark}>✓</Text>
-                    )}
+                    <View style={styles.checkbox}>
+                      {selectedModifierIds.includes(mod.ModifierID) && (
+                        <Text style={styles.checkmark}>✓</Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+                
+                {customModifiers.length > 0 && (
+                  <View style={styles.customSection}>
+                    <Text style={styles.customSectionTitle}>Custom Items:</Text>
+                    {customModifiers.map((custom, idx) => (
+                      <View key={idx} style={styles.customItemRow}>
+                        <Text style={styles.customItemText}>
+                          {custom.ModifierName} {custom.Price && custom.Price > 0 && `(+$${custom.Price.toFixed(2)})`}
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setCustomModifiers(prev => prev.filter((_, i) => i !== idx));
+                            setSelectedModifierIds(prev => prev.filter(id => id !== custom.ModifierID));
+                          }}
+                        >
+                          <Text style={styles.removeText}>Remove</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
                   </View>
-                </TouchableOpacity>
-              ))}
+                )}
               </ScrollView>
-   
 
               <View style={styles.modalButtons}>
                 <TouchableOpacity
                   style={[styles.modalBtn, styles.cancelBtn]}
-                  onPress={() => setShowModifier(false)}
+                  onPress={() => {
+                    setShowModifier(false);
+                    setCustomModifiers([]);
+                    setSelectedModifierIds([]);
+                  }}
                 >
                   <Text style={styles.btnText}>Cancel</Text>
                 </TouchableOpacity>
@@ -534,6 +627,63 @@ export default function MenuScreen() {
                   onPress={addWithModifiers}
                 >
                   <Text style={styles.btnText}>🛒 Add to Cart</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Custom Item Modal */}
+        <Modal
+          visible={showCustomModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            setShowCustomModal(false);
+            setCustomText("");
+            setCustomPrice("");
+          }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.customModalContent}>
+              <Text style={styles.modalTitle}>Add Custom Item</Text>
+              
+              <Text style={styles.inputLabel}>Item Name *</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Enter item name"
+                placeholderTextColor="#999"
+                value={customText}
+                onChangeText={setCustomText}
+              />
+              
+              <Text style={styles.inputLabel}>Price (Optional)</Text>
+              <TextInput
+                style={styles.textInput}
+                placeholder="Enter price"
+                placeholderTextColor="#999"
+                value={customPrice}
+                onChangeText={setCustomPrice}
+                keyboardType="numeric"
+              />
+              
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalBtn, styles.cancelBtn]}
+                  onPress={() => {
+                    setShowCustomModal(false);
+                    setCustomText("");
+                    setCustomPrice("");
+                  }}
+                >
+                  <Text style={styles.btnText}>Cancel</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.modalBtn, styles.addBtn]}
+                  onPress={addCustomModifier}
+                >
+                  <Text style={styles.btnText}>Add Item</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -782,8 +932,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalContent: {
-    width: "85%",
-    maxWidth: 400,
+    width: "90%",
+    maxWidth: 500,
+    maxHeight: "80%",
     backgroundColor: "#1e1e1e",
     borderRadius: 24,
     padding: 24,
@@ -796,17 +947,22 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   modifierRow: {
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingVertical: 14,
-          borderBottomWidth: 1,
-          borderBottomColor: "#333",
+    flexDirection: "row",
+    alignItems: "flex-start", 
+    justifyContent: "space-between",
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#333",
   },
   modifierName: {
-     color: "#fff",
-      fontSize: 15,
-      flex: 1,
+    color: "#fff",
+    fontSize: 15,
+    flex: 1,
+  },
+  modifierPrice: {
+    color: "#22c55e",
+    fontSize: 12,
+    marginLeft: 5,
   },
   checkbox: {
     width: 24,
@@ -844,5 +1000,61 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "bold",
     fontSize: 15,
+  },
+  customSection: {
+    marginTop: 15,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: "#333",
+  },
+  customSectionTitle: {
+    color: "#22c55e",
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 10,
+  },
+  customItemRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 5,
+    backgroundColor: "rgba(34,197,94,0.1)",
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  customItemText: {
+    color: "#fff",
+    fontSize: 14,
+    flex: 1,
+  },
+  removeText: {
+    color: "#ff4444",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  customModalContent: {
+    width: "90%",
+    maxWidth: 400,
+    backgroundColor: "#1e1e1e",
+    borderRadius: 24,
+    padding: 24,
+  },
+  textInput: {
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 12,
+    padding: 12,
+    color: "#fff",
+    fontSize: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+  },
+  inputLabel: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 8,
+    marginTop: 8,
   },
 });
