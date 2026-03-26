@@ -7,9 +7,9 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  View,
   TouchableOpacity,
   useWindowDimensions,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -62,10 +62,7 @@ export default function SummaryScreen() {
       >
         <SafeAreaView style={styles.safeArea}>
           <View
-            style={[
-              styles.overlay,
-              { backgroundColor: "rgba(0,0,0,0.35)" },
-            ]}
+            style={[styles.overlay, { backgroundColor: "rgba(0,0,0,0.35)" }]}
           >
             <View style={styles.headerBar}>
               <Pressable
@@ -87,7 +84,7 @@ export default function SummaryScreen() {
                 onPress={() => router.push("/kds")}
               >
                 <Text style={[styles.backBtnText, { color: "#22c55e" }]}>
-                  KDS Demo
+                  KDS Demo n
                 </Text>
               </TouchableOpacity>
 
