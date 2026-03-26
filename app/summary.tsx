@@ -113,69 +113,49 @@ export default function SummaryScreen() {
           >
             {/* HEADER */}
             <View style={styles.headerBar}>
-              <Pressable style={styles.iconBtn} onPress={() => router.back()}>
-                <Ionicons name="arrow-back" size={24} color="#fff" />
-              </Pressable>
+              <View style={styles.headerLeft}>
+                <Pressable style={styles.iconBtn} onPress={() => router.back()}>
+                  <Ionicons name="arrow-back" size={24} color="#fff" />
+                </Pressable>
 
-              <TouchableOpacity
-                style={[
-                  styles.iconBtn,
-                  { backgroundColor: "rgba(34,197,94,0.15)", width: "auto", paddingHorizontal: 16 },
-                ]}
-                onPress={() => router.push("/kds")}
-              >
-                <Ionicons name="tv-outline" size={20} color="#22c55e" style={isLandscape ? { marginRight: 8 } : {}} />
-                {isLandscape && (
-                  <Text style={[styles.backBtnText, { color: "#22c55e" }]}>
-                    KDS Demo
-                  </Text>
-                )}
-              </TouchableOpacity>
+                <View style={styles.headerTitleContainer}>
+                  <Text style={[styles.title, !isLandscape && { fontSize: 16 }]} numberOfLines={1}>ORDER SUMMARY</Text>
+                  {context.orderType === "DINE_IN" ? (
+                    <Text style={[styles.contextText, !isLandscape && { fontSize: 10 }]} numberOfLines={1}>
+                      DINE-IN • {context.section} • Table {context.tableNo}
+                    </Text>
+                  ) : (
+                    <Text style={[styles.contextText, !isLandscape && { fontSize: 10 }]} numberOfLines={1}>
+                      TAKEAWAY • Order {context.takeawayNo}
+                    </Text>
+                  )}
+                </View>
+              </View>
 
-              {/* 🔥 DISCOUNT BUTTON */}
-              <TouchableOpacity
-                style={[
-                  styles.iconBtn,
-                  { backgroundColor: "rgba(255,215,0,0.15)", width: "auto", paddingHorizontal: 16 },
-                ]}
-                onPress={() => setShowDiscount(true)}
-              >
-                <Ionicons name="pricetag-outline" size={20} color="#ffd700" style={isLandscape ? { marginRight: 8 } : {}} />
-                {isLandscape && (
-                  <Text style={[styles.backBtnText, { color: "#ffd700" }]}>
-                    Discount
-                  </Text>
-                )}
-              </TouchableOpacity>
+              <View style={styles.headerRight}>
+                <TouchableOpacity
+                  style={[styles.actionBtn, { backgroundColor: "rgba(34,197,94,0.15)" }]}
+                  onPress={() => router.push("/kds")}
+                >
+                  <Ionicons name="tv-outline" size={18} color="#22c55e" />
+                  {isLandscape && <Text style={[styles.actionBtnText, { color: "#22c55e" }]}>KDS</Text>}
+                </TouchableOpacity>
 
-              {/* 🔥 FOC BUTTON */}
-              <TouchableOpacity
-                style={[
-                  styles.iconBtn,
-                  { backgroundColor: "rgba(239, 68, 68, 0.15)", width: "auto", paddingHorizontal: 16 },
-                ]}
-                onPress={handleFOC}
-              >
-                <Ionicons name="gift-outline" size={20} color="#ef4444" style={isLandscape ? { marginRight: 8 } : {}} />
-                {isLandscape && (
-                  <Text style={[styles.backBtnText, { color: "#ef4444" }]}>
-                    FOC
-                  </Text>
-                )}
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionBtn, { backgroundColor: "rgba(255,215,0,0.15)" }]}
+                  onPress={() => setShowDiscount(true)}
+                >
+                  <Ionicons name="pricetag-outline" size={18} color="#ffd700" />
+                  {isLandscape && <Text style={[styles.actionBtnText, { color: "#ffd700" }]}>Discount</Text>}
+                </TouchableOpacity>
 
-              {/* CENTERED TITLE */}
-              <View style={styles.headerTitleContainer} pointerEvents="none">
-                <Text style={[styles.title, !isLandscape && { fontSize: 20 }]}>ORDER SUMMARY</Text>
-                {context.orderType === "DINE_IN" ? (
-                  <Text style={[styles.contextText, !isLandscape && { fontSize: 11 }]}>
-                    DINE-IN • {context.section} • Table {context.tableNo}
-                  </Text>
-                ) : (
-                  <Text style={[styles.contextText, !isLandscape && { fontSize: 11 }]}>
-                    TAKEAWAY • Order {context.takeawayNo}
-                  </Text>
-                )}
+                <TouchableOpacity
+                  style={[styles.actionBtn, { backgroundColor: "rgba(239, 68, 68, 0.15)" }]}
+                  onPress={handleFOC}
+                >
+                  <Ionicons name="gift-outline" size={18} color="#ef4444" />
+                  {isLandscape && <Text style={[styles.actionBtnText, { color: "#ef4444" }]}>FOC</Text>}
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -320,29 +300,45 @@ const styles = StyleSheet.create({
 
   headerBar: {
     flexDirection: "row",
-    height: 60,
+    justifyContent: "space-between",
     alignItems: "center",
+    height: 60,
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    paddingRight: 10,
+  },
+  headerRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   iconBtn: {
     backgroundColor: "rgba(255,255,255,0.15)",
+    width: 44,
     height: 44,
-    minWidth: 44,
     justifyContent: "center",
     alignItems: "center",
     borderRadius: 12,
-    marginRight: 10,
-    flexDirection: "row",
-  },
-  backBtnText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 14,
+    marginRight: 12,
   },
   headerTitleContainer: {
-    ...StyleSheet.absoluteFillObject,
+    flex: 1,
     justifyContent: "center",
+  },
+  actionBtn: {
+    flexDirection: "row",
     alignItems: "center",
-    zIndex: -1, // Keep it behind buttons so tapping buttons works
+    height: 44,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    gap: 6,
+  },
+  actionBtnText: {
+    fontWeight: "700",
+    fontSize: 13,
   },
   contextText: {
     color: "#d7ff9a",

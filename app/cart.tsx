@@ -147,10 +147,7 @@ export default function CartScreen() {
             <View style={styles.topBar}>
               <Pressable
                 style={styles.back}
-                onPress={() => {
-                  clearCart();
-                  router.back();
-                }}
+                onPress={() => router.back()}
               >
                 <Text style={styles.topBtnText}>Back</Text>
               </Pressable>

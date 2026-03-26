@@ -409,7 +409,7 @@ export default function MenuScreen() {
             { flexDirection: width > 900 ? "row" : "column" },
           ]}
         >
-          <BlurView intensity={40} tint="dark" style={styles.main}>
+          <BlurView intensity={65} tint="dark" style={styles.main}>
             {/* Header */}
             <View style={styles.header}>
               <View style={{ flex: 1 }}>
@@ -417,20 +417,45 @@ export default function MenuScreen() {
                   {selectedKitchenName || "Select Kitchen"}
                 </Text>
                 {totalItems > 0 && (
-                  <TouchableOpacity onPress={goToCart}>
+                  <View style={{ marginTop: 2 }}>
                     <Text style={styles.subTitle} numberOfLines={1}>
-                      🛒 {totalItems} item{totalItems === 1 ? "" : "s"} in cart
+                      {totalItems} item{totalItems === 1 ? "" : "s"} selected
                     </Text>
-                  </TouchableOpacity>
+                  </View>
                 )}
               </View>
 
-              <TouchableOpacity
-                onPress={() => router.replace("/(tabs)/category")}
-                style={styles.backBtn}
-              >
-                <Text style={styles.backText}>Back</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                {width <= 900 && (
+                  <TouchableOpacity
+                    onPress={goToCart}
+                    style={[
+                      styles.backBtn,
+                      totalItems > 0
+                        ? { backgroundColor: "#22c55e", borderWidth: 0 }
+                        : { backgroundColor: "rgba(255,255,255,0.15)", borderWidth: 0 },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.backText,
+                        totalItems > 0
+                          ? { color: "#052b12", fontWeight: "900" }
+                          : { color: "#cbd5e1", fontWeight: "700" },
+                      ]}
+                    >
+                      🛒 Cart
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity
+                  onPress={() => router.replace("/(tabs)/category")}
+                  style={styles.backBtn}
+                >
+                  <Text style={styles.backText}>Back</Text>
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Order Context Display */}
@@ -559,18 +584,6 @@ export default function MenuScreen() {
 
           {/* Cart Sidebar for wide screens */}
           {width > 900 && <CartSidebar width={350} />}
-
-          {/* Mobile Cart Button */}
-          {width <= 900 && totalItems > 0 && (
-            <TouchableOpacity
-              style={styles.mobileCartButton}
-              onPress={goToCart}
-            >
-              <Text style={styles.mobileCartText}>
-                🛒 View Cart ({totalItems})
-              </Text>
-            </TouchableOpacity>
-          )}
 
           {/* Modifier Modal */}
           <Modal
@@ -837,16 +850,16 @@ const styles = StyleSheet.create({
     width: 110,
     height: 80,
     borderRadius: 16,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: "rgba(17, 24, 39, 0.8)",
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 8,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
+    borderColor: "rgba(255, 255, 255, 0.15)",
   },
   kitchenActive: {
-    backgroundColor: "rgba(34,197,94,0.25)",
-    borderColor: "rgba(34,197,94,0.6)",
+    backgroundColor: "rgba(34, 197, 94, 0.3)",
+    borderColor: "#4ade80",
   },
   kitchenIcon: {
     fontSize: 24,
@@ -867,15 +880,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     height: 40,
     borderRadius: 20,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    backgroundColor: "rgba(17, 24, 39, 0.8)",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
+    borderColor: "rgba(255, 255, 255, 0.15)",
   },
   activeChip: {
-    backgroundColor: "rgba(34,197,94,0.25)",
-    borderColor: "rgba(34,197,94,0.6)",
+    backgroundColor: "rgba(34, 197, 94, 0.3)",
+    borderColor: "#4ade80",
   },
   chipText: {
     color: "#fff",
@@ -894,11 +907,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   card: {
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
+    backgroundColor: "rgba(17, 24, 39, 0.85)",
     borderRadius: 16,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: "rgba(255, 255, 255, 0.15)",
   },
   image: {
     width: "100%",
@@ -906,7 +919,7 @@ const styles = StyleSheet.create({
     resizeMode: "cover",
   },
   imagePlaceholder: {
-    backgroundColor: "rgba(0, 0, 0, 0.3)",
+    backgroundColor: "rgba(30, 41, 59, 1)",
     justifyContent: "center",
     alignItems: "center",
     width: "100%",

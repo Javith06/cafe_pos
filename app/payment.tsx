@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   useWindowDimensions,
   View,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -123,12 +124,15 @@ export default function PaymentScreen() {
         </html>
       `;
 
-      const win = window.open("", "", "width=300,height=600");
-
-      if (win) {
-        win.document.write(html);
-        win.document.close();
-        win.print();
+      if (Platform.OS === "web") {
+        const win = window.open("", "", "width=300,height=600");
+        if (win) {
+          win.document.write(html);
+          win.document.close();
+          win.print();
+        }
+      } else {
+        console.log("Printing not available natively without expo-print package.");
       }
     };
 
@@ -237,13 +241,13 @@ export default function PaymentScreen() {
               <Text style={styles.grandTotal}>${total.toFixed(2)}</Text>
 
               <View style={styles.breakdown}>
-                <View>
+                <View style={styles.breakRow}>
                   <Text style={styles.breakLabel}>Subtotal</Text>
                   <Text style={styles.breakValue}>${subtotal.toFixed(2)}</Text>
                 </View>
 
                 {discount?.applied && (
-                  <View>
+                  <View style={styles.breakRow}>
                     <Text style={[styles.breakLabel, { color: "#ff4444" }]}>
                       Discount
                     </Text>
@@ -253,8 +257,8 @@ export default function PaymentScreen() {
                   </View>
                 )}
 
-                <View>
-                  <Text style={styles.breakLabel}>Tax</Text>
+                <View style={styles.breakRow}>
+                  <Text style={styles.breakLabel}>Tax (9%)</Text>
                   <Text style={styles.breakValue}>${tax.toFixed(2)}</Text>
                 </View>
               </View>
@@ -410,8 +414,9 @@ const styles = StyleSheet.create({
   sectionLabel: { color: "#94a3b8", marginBottom: 6 },
   grandTotal: { fontSize: 40, fontWeight: "900", color: "#22c55e" },
 
-  breakdown: { flexDirection: "row", gap: 20 },
-  breakLabel: { color: "#64748b" },
+  breakdown: { flexDirection: "column", gap: 12, marginTop: 24, paddingRight: 8 },
+  breakRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  breakLabel: { color: "#64748b", fontSize: 16 },
   breakValue: { color: "#fff", fontSize: 18, fontWeight: "800" },
 
   methodRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
