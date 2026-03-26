@@ -230,6 +230,13 @@ export default function CartScreen() {
                         <Text style={styles.modifier}>Note: {item.note}</Text>
                       )}
 
+                      {"modifiers" in item && Array.isArray(item.modifiers) && item.modifiers.map((mod: any, idx: number) => (
+                        <Text key={`mod-${idx}`} style={styles.modifier}>
+                          + {mod.ModifierName}
+                          {mod.Price ? ` ($${mod.Price.toFixed(2)})` : ""}
+                        </Text>
+                      ))}
+
                       <Text style={styles.qty}>Qty: {item.qty}</Text>
 
                       <Text style={styles.price}>

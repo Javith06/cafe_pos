@@ -182,6 +182,12 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
                     {item.salt && item.salt !== "Normal" && <Text style={styles.modifierText}>Salt: {item.salt}</Text>}
                     {item.sugar && item.sugar !== "Normal" && <Text style={styles.modifierText}>Sugar: {item.sugar}</Text>}
                     {item.note && <Text style={styles.modifierText}>Note: {item.note}</Text>}
+                    {item.modifiers && Array.isArray(item.modifiers) && item.modifiers.map((mod: any, idx: number) => (
+                      <Text key={`mod-${idx}`} style={styles.modifierText}>
+                        + {mod.ModifierName}
+                        {mod.Price ? ` ($${mod.Price.toFixed(2)})` : ""}
+                      </Text>
+                    ))}
                   </View>
 
                   <Text style={styles.qty}>Qty: {item.qty}</Text>
