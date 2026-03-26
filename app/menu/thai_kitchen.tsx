@@ -56,7 +56,7 @@ type Dish = {
 };
 
 type Modifier = {
-  ModifierId: string;
+  ModifierID: string;
   ModifierName: string;
   Price?: number;
 };
@@ -191,6 +191,7 @@ export default function MenuScreen() {
       const res = await fetch(`${API}/dishgroups/${kitchen}`);
       if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
       const data = await res.json();
+      console.log("MODIFIERS API:", data);
       console.log(`Groups received for ${kitchen}:`, data.length);
       const safe = Array.isArray(data) ? data : [];
       setGroups([...safe]);
@@ -285,9 +286,13 @@ export default function MenuScreen() {
   const addWithModifiers = () => {
     if (!selectedDish) return;
 
-    const selectedModifiers = modifiers.filter((m) =>
-      selectedModifierIds.includes(m.ModifierId),
-    );
+    const selectedModifiers = modifiers
+  .filter((m) => selectedModifierIds.includes(m.ModifierID))
+  .map((m) => ({
+    ModifierId: m.ModifierID,   // 🔥 FIX HERE
+    ModifierName: m.ModifierName,
+    Price: m.Price,
+  }));
 
     addToCartGlobal({
       id: selectedDish.DishId,
@@ -497,20 +502,24 @@ export default function MenuScreen() {
                 Select modifiers for {selectedDish?.Name}
               </Text>
 
+
+              <ScrollView style={{ maxHeight: 300 }}>
               {modifiers.map((mod) => (
                 <TouchableOpacity
-                  key={mod.ModifierId}
+                  key={mod.ModifierID} 
                   style={styles.modifierRow}
-                  onPress={() => toggleModifier(mod.ModifierId)}
+                  onPress={() => toggleModifier(mod.ModifierID)}
                 >
                   <Text style={styles.modifierName}>{mod.ModifierName}</Text>
                   <View style={styles.checkbox}>
-                    {selectedModifierIds.includes(mod.ModifierId) && (
+                    {selectedModifierIds.includes(mod.ModifierID)&& (
                       <Text style={styles.checkmark}>✓</Text>
                     )}
                   </View>
                 </TouchableOpacity>
               ))}
+              </ScrollView>
+   
 
               <View style={styles.modalButtons}>
                 <TouchableOpacity
@@ -524,7 +533,7 @@ export default function MenuScreen() {
                   style={[styles.modalBtn, styles.addBtn]}
                   onPress={addWithModifiers}
                 >
-                  <Text style={styles.btnText}>Add to Cart</Text>
+                  <Text style={styles.btnText}>🛒 Add to Cart</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -787,16 +796,17 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   modifierRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#333",
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          paddingVertical: 14,
+          borderBottomWidth: 1,
+          borderBottomColor: "#333",
   },
   modifierName: {
-    color: "#fff",
-    fontSize: 16,
+     color: "#fff",
+      fontSize: 15,
+      flex: 1,
   },
   checkbox: {
     width: 24,

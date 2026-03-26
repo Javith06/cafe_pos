@@ -129,10 +129,13 @@ app.get("/modifiers/:dishId", async (req, res) => {
       .input("dishId", req.params.dishId)
       .query(`
         SELECT 
-          m.ModifierId AS ModifierID,
+          dm.DishId,
+          dm.ModifierId AS ModifierID,
           m.ModifierName,
-          ISNULL(m.Rate, 0) AS Price
-        FROM DishModifiers dm 
+
+          TRY_CAST(REPLACE(m.ModifierName, '$', '') AS FLOAT) AS Price
+
+        FROM DishModifier dm 
         INNER JOIN ModifierMaster m 
           ON dm.ModifierId = m.ModifierId
         WHERE dm.DishId = @dishId
