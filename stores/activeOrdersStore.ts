@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { CartItem } from "./cartStore";
+import { CartItem, getContextId, useCartStore } from "./cartStore";
 import { OrderContext } from "./orderContextStore";
 
 /* ================= TYPES ================= */
@@ -9,22 +9,34 @@ export type OrderItem = CartItem & {
   sentAt?: number;
 };
 
+export type DiscountInfo = {
+  applied: boolean;
+  type: "percentage" | "fixed";
+  value: number;
+};
+
 export type ActiveOrder = {
   orderId: string;
   context: OrderContext;
   items: OrderItem[];
+  discount?: DiscountInfo; // 🔥 ADDED
   createdAt: number;
 };
 
 type ActiveOrdersState = {
   activeOrders: ActiveOrder[];
+
   appendOrder: (
     orderId: string,
     context: OrderContext,
     cartItems: CartItem[],
   ) => void;
+
   markItemsSent: (orderId: string) => void;
   closeActiveOrder: (orderId: string) => void;
+
+  // 🔥 NEW FUNCTION
+  updateOrderDiscount: (context: OrderContext, discount: DiscountInfo) => void;
 };
 
 /* ================= STORE ================= */
@@ -36,6 +48,11 @@ export const useActiveOrdersStore = create<ActiveOrdersState>((set, get) => ({
 
   appendOrder: (orderId, context, cartItems) => {
     const { activeOrders } = get();
+
+    const contextId = getContextId(context);
+
+    // 🔥 GET DISCOUNT FROM CART STORE
+    const discount = contextId && useCartStore.getState().discounts[contextId];
 
     const existingOrderIndex = activeOrders.findIndex((o) => {
       if (context.orderType === "DINE_IN") {
@@ -56,7 +73,7 @@ export const useActiveOrdersStore = create<ActiveOrdersState>((set, get) => ({
       return false;
     });
 
-    /* CREATE NEW ORDER */
+    /* ================= CREATE NEW ORDER ================= */
 
     if (existingOrderIndex === -1) {
       const newOrder: ActiveOrder = {
@@ -66,15 +83,15 @@ export const useActiveOrdersStore = create<ActiveOrdersState>((set, get) => ({
           ...i,
           status: "NEW",
         })),
+        discount: discount || undefined, // 🔥 ADD HERE
         createdAt: Date.now(),
       };
 
       set({ activeOrders: [...activeOrders, newOrder] });
-
       return;
     }
 
-    /* ADD ITEMS TO EXISTING ORDER */
+    /* ================= UPDATE EXISTING ORDER ================= */
 
     const updatedOrders = [...activeOrders];
     const existingOrder = { ...updatedOrders[existingOrderIndex] };
@@ -99,16 +116,49 @@ export const useActiveOrdersStore = create<ActiveOrdersState>((set, get) => ({
       }
     });
 
+    // 🔥 UPDATE DISCOUNT ALSO
+    existingOrder.discount = discount || existingOrder.discount;
+
     updatedOrders[existingOrderIndex] = existingOrder;
 
     set({ activeOrders: updatedOrders });
+  },
+
+  /* ================= UPDATE DISCOUNT ================= */
+
+  updateOrderDiscount: (context, discount) => {
+    const { activeOrders } = get();
+
+    const updated = activeOrders.map((order) => {
+      if (context.orderType === "DINE_IN") {
+        if (
+          order.context.orderType === "DINE_IN" &&
+          order.context.section === context.section &&
+          order.context.tableNo === context.tableNo
+        ) {
+          return { ...order, discount };
+        }
+      }
+
+      if (context.orderType === "TAKEAWAY") {
+        if (
+          order.context.orderType === "TAKEAWAY" &&
+          order.context.takeawayNo === context.takeawayNo
+        ) {
+          return { ...order, discount };
+        }
+      }
+
+      return order;
+    });
+
+    set({ activeOrders: updated });
   },
 
   /* ================= MARK ITEMS SENT ================= */
 
   markItemsSent: (orderId) => {
     const { activeOrders } = get();
-
     const now = Date.now();
 
     set({
@@ -117,7 +167,6 @@ export const useActiveOrdersStore = create<ActiveOrdersState>((set, get) => ({
 
         return {
           ...order,
-
           items: order.items.map((item) => {
             if (item.status === "NEW") {
               return {
@@ -126,7 +175,6 @@ export const useActiveOrdersStore = create<ActiveOrdersState>((set, get) => ({
                 sentAt: now,
               };
             }
-
             return item;
           }),
         };

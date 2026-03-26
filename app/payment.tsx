@@ -26,8 +26,6 @@ import {
 } from "../stores/orderContextStore";
 import { useTableStatusStore } from "../stores/tableStatusStore";
 
-import UniversalPrinter from "../components/UniversalPrinter";
-
 export default function PaymentScreen() {
   const closeActiveOrder = useActiveOrdersStore((s) => s.closeActiveOrder);
   const clearTable = useTableStatusStore((s) => s.clearTable);
@@ -46,18 +44,35 @@ export default function PaymentScreen() {
     [activeOrder],
   );
 
+  const discount = activeOrder?.discount;
+
   const [method, setMethod] = useState("CASH");
   const [cashInput, setCashInput] = useState("");
   const [processing, setProcessing] = useState(false);
   const [time, setTime] = useState(new Date());
+
+  /* ================= CALCULATIONS ================= */
 
   const subtotal = useMemo(
     () => cart.reduce((sum, item) => sum + (item.price || 0) * item.qty, 0),
     [cart],
   );
 
-  const tax = subtotal * 0.09;
-  const total = subtotal + tax;
+  const GST_RATE = 0.09;
+
+  const discountAmount = useMemo(() => {
+    if (!discount?.applied) return 0;
+
+    if (discount.type === "percentage") {
+      return (subtotal * discount.value) / 100;
+    } else {
+      return discount.value;
+    }
+  }, [discount, subtotal]);
+
+  const discountedSubtotal = subtotal - discountAmount;
+  const tax = discountedSubtotal * GST_RATE;
+  const total = discountedSubtotal + tax;
 
   const paidNum = parseFloat(cashInput) || 0;
   const change = Math.max(0, paidNum - total);
@@ -69,12 +84,13 @@ export default function PaymentScreen() {
     return () => clearInterval(timer);
   }, []);
 
+  /* ================= PAYMENT ================= */
+
   const confirmPayment = async () => {
     if (method === "CASH" && paidNum < total) return;
 
     setProcessing(true);
 
-    // ✅ PRINT FUNCTION
     const printBill = () => {
       const html = `
         <html>
@@ -84,15 +100,23 @@ export default function PaymentScreen() {
 
             <hr/>
 
-            ${cart.map(i => `
-              <p>${i.qty} x ${i.name} - ₹${(i.price || 0) * i.qty}</p>
-            `).join("")}
+            ${cart
+              .map(
+                (i) => `
+              <p>${i.qty} x ${i.name} - $${((i.price || 0) * i.qty).toFixed(2)}</p>
+            `,
+              )
+              .join("")}
 
             <hr/>
 
-            <p>Total: ₹${total.toFixed(2)}</p>
-            <p>Paid: ₹${paidNum.toFixed(2)}</p>
-            <p>Change: ₹${change.toFixed(2)}</p>
+            <p>Subtotal: $${subtotal.toFixed(2)}</p>
+            <p>Discount: -$${discountAmount.toFixed(2)}</p>
+            <p>Tax: $${tax.toFixed(2)}</p>
+            <p><b>Total: $${total.toFixed(2)}</b></p>
+
+            <p>Paid: $${paidNum.toFixed(2)}</p>
+            <p>Change: $${change.toFixed(2)}</p>
 
             <h4>Thank You!</h4>
           </body>
@@ -108,7 +132,6 @@ export default function PaymentScreen() {
       }
     };
 
-    // ✅ CALL PRINT
     printBill();
 
     setTimeout(() => {
@@ -126,7 +149,6 @@ export default function PaymentScreen() {
         },
       });
 
-      // CLEANUP
       if (activeOrder) {
         closeActiveOrder(activeOrder.orderId);
       }
@@ -152,6 +174,8 @@ export default function PaymentScreen() {
     }, 800);
   };
 
+  /* ================= RENDER ================= */
+
   const renderItem = ({ item }: { item: any }) => (
     <View style={styles.itemRow}>
       <Text style={styles.itemQty}>{item.qty}x</Text>
@@ -174,6 +198,7 @@ export default function PaymentScreen() {
         <View style={styles.overlay} />
 
         <View style={styles.container}>
+          {/* HEADER */}
           <View style={styles.header}>
             <TouchableOpacity
               onPress={() => router.back()}
@@ -202,9 +227,11 @@ export default function PaymentScreen() {
             </Text>
           </View>
 
+          {/* MAIN */}
           <View
             style={[styles.mainLayout, !showOrderPanel && styles.mobileLayout]}
           >
+            {/* LEFT */}
             <BlurView intensity={40} tint="dark" style={styles.leftPane}>
               <Text style={styles.sectionLabel}>Grand Total</Text>
               <Text style={styles.grandTotal}>${total.toFixed(2)}</Text>
@@ -214,6 +241,18 @@ export default function PaymentScreen() {
                   <Text style={styles.breakLabel}>Subtotal</Text>
                   <Text style={styles.breakValue}>${subtotal.toFixed(2)}</Text>
                 </View>
+
+                {discount?.applied && (
+                  <View>
+                    <Text style={[styles.breakLabel, { color: "#ff4444" }]}>
+                      Discount
+                    </Text>
+                    <Text style={[styles.breakValue, { color: "#ff4444" }]}>
+                      -${discountAmount.toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+
                 <View>
                   <Text style={styles.breakLabel}>Tax</Text>
                   <Text style={styles.breakValue}>${tax.toFixed(2)}</Text>
@@ -221,6 +260,7 @@ export default function PaymentScreen() {
               </View>
             </BlurView>
 
+            {/* CENTER */}
             <BlurView intensity={40} tint="dark" style={styles.centerPane}>
               <Text style={styles.sectionLabel}>Payment Method</Text>
 
@@ -312,6 +352,7 @@ export default function PaymentScreen() {
               </TouchableOpacity>
             </BlurView>
 
+            {/* RIGHT */}
             {showOrderPanel && (
               <BlurView intensity={40} tint="dark" style={styles.rightPane}>
                 <Text style={styles.receiptTitle}>Order Items</Text>
@@ -337,6 +378,8 @@ export default function PaymentScreen() {
     </SafeAreaView>
   );
 }
+
+/* ================= STYLES ================= */
 
 const styles = StyleSheet.create({
   overlay: {

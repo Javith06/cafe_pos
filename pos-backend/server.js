@@ -12,12 +12,13 @@ console.log("PORT:", PORT);
 console.log("DB_SERVER:", process.env.DB_SERVER);
 
 // ✅ FIXED CORS
-app.use(cors({
-  origin: "*",
-  methods: ["GET", "POST"],
-  allowedHeaders: ["Content-Type"]
-}));
-
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type"],
+  }),
+);
 
 app.use(express.json());
 
@@ -58,8 +59,7 @@ app.get("/dishgroups/:CategoryId", async (req, res) => {
 
     const result = await pool
       .request()
-      .input("CategoryId", req.params.CategoryId)
-      .query(`
+      .input("CategoryId", req.params.CategoryId).query(`
         SELECT 
           a.DishGroupId,
           a.DishGroupName
@@ -82,9 +82,9 @@ app.get("/dishes/:DishGroupId", async (req, res) => {
   try {
     const pool = await poolPromise;
 
-    const result = await pool.request()
-      .input("DishGroupId", req.params.DishGroupId)
-      .query(`
+    const result = await pool
+      .request()
+      .input("DishGroupId", req.params.DishGroupId).query(`
         SELECT
           d.DishId,
           d.Name,
@@ -113,7 +113,6 @@ app.get("/dishes/:DishGroupId", async (req, res) => {
       `);
 
     res.json(result.recordset);
-
   } catch (err) {
     console.error("🔥 DISH ERROR:", err);
     res.status(500).send(err.message);
@@ -125,8 +124,7 @@ app.get("/modifiers/:dishId", async (req, res) => {
   try {
     const pool = await poolPromise;
 
-    const result = await pool.request()
-      .input("dishId", req.params.dishId)
+    const result = await pool.request().input("dishId", req.params.dishId)
       .query(`
         SELECT 
           dm.DishId,

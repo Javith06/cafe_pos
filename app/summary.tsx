@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   FlatList,
   ImageBackground,
@@ -13,7 +13,9 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import DiscountModal from "../components/DiscountModal";
 import { findActiveOrder } from "../stores/activeOrdersStore";
+import { useCartStore } from "../stores/cartStore";
 import { getOrderContext } from "../stores/orderContextStore";
 
 export default function SummaryScreen() {
@@ -22,9 +24,16 @@ export default function SummaryScreen() {
   const context = getOrderContext();
   const activeOrder = context ? findActiveOrder(context) : undefined;
 
+  const [showDiscount, setShowDiscount] = useState(false);
+
   const cart = useMemo(() => {
     return activeOrder ? activeOrder.items : [];
   }, [activeOrder]);
+
+  const discountInfo = useCartStore((s) => {
+    const id = s.currentContextId;
+    return id ? s.discounts[id] : null;
+  });
 
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
 
@@ -41,14 +50,34 @@ export default function SummaryScreen() {
   );
 
   const GST_RATE = 0.09;
-  const gst = subtotal * GST_RATE;
-  const grandTotal = subtotal + gst;
+
+  /* 🔥 DISCOUNT LOGIC (CORRECT) */
+  const discountAmount = useMemo(() => {
+    if (!discountInfo?.applied) return 0;
+
+    if (discountInfo.type === "percentage") {
+      return (subtotal * discountInfo.value) / 100;
+    } else {
+      return discountInfo.value;
+    }
+  }, [discountInfo, subtotal]);
+
+  const discountedSubtotal = subtotal - discountAmount;
+
+  const gst = discountedSubtotal * GST_RATE;
+
+  const grandTotal = discountedSubtotal + gst;
 
   /* ================= GUARD ================= */
 
-  if (!context || !activeOrder) {
-    router.replace("/(tabs)/category");
-    return null;
+  if (!context) return null;
+
+  if (!activeOrder) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <Text style={{ color: "#fff" }}>Loading order...</Text>
+      </View>
+    );
   }
 
   /* ================= UI ================= */
@@ -64,15 +93,9 @@ export default function SummaryScreen() {
           <View
             style={[styles.overlay, { backgroundColor: "rgba(0,0,0,0.35)" }]}
           >
+            {/* HEADER */}
             <View style={styles.headerBar}>
-              <Pressable
-                style={styles.backBtn}
-                onPress={() => {
-                  // Note: We don't clearCart here because we might want to edit the cart.
-                  // We'll let cart.tsx handle its own unmount or back button if needed.
-                  router.back();
-                }}
-              >
+              <Pressable style={styles.backBtn} onPress={() => router.back()}>
                 <Text style={styles.backBtnText}>Back</Text>
               </Pressable>
 
@@ -85,6 +108,19 @@ export default function SummaryScreen() {
               >
                 <Text style={[styles.backBtnText, { color: "#22c55e" }]}>
                   KDS Demo n
+                </Text>
+              </TouchableOpacity>
+
+              {/* 🔥 DISCOUNT BUTTON */}
+              <TouchableOpacity
+                style={[
+                  styles.backBtn,
+                  { backgroundColor: "rgba(255,215,0,0.15)" },
+                ]}
+                onPress={() => setShowDiscount(true)}
+              >
+                <Text style={[styles.backBtnText, { color: "#ffd700" }]}>
+                  Discount
                 </Text>
               </TouchableOpacity>
 
@@ -102,6 +138,7 @@ export default function SummaryScreen() {
               </View>
             </View>
 
+            {/* LIST */}
             <View style={styles.listContainer}>
               <FlatList
                 data={cart}
@@ -152,27 +189,46 @@ export default function SummaryScreen() {
               />
             </View>
 
+            {/* TOTALS */}
             <View style={styles.totalsContainer}>
               <View style={styles.divider} />
+
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Total Items</Text>
                 <Text style={styles.summaryValue}>{totalItems}</Text>
               </View>
+
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Subtotal</Text>
                 <Text style={styles.summaryValue}>${subtotal.toFixed(2)}</Text>
               </View>
+
+              {/* 🔥 DISCOUNT DISPLAY */}
+              {discountInfo?.applied && (
+                <View style={styles.summaryRow}>
+                  <Text style={[styles.summaryLabel, { color: "#ff4444" }]}>
+                    Discount
+                  </Text>
+                  <Text style={[styles.summaryValue, { color: "#ff4444" }]}>
+                    -${discountAmount.toFixed(2)}
+                  </Text>
+                </View>
+              )}
+
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>GST (9%)</Text>
                 <Text style={styles.summaryValue}>${gst.toFixed(2)}</Text>
               </View>
+
               <View style={styles.divider} />
+
               <View style={styles.summaryRow}>
                 <Text style={styles.grandLabel}>Grand Total</Text>
                 <Text style={styles.grandValue}>${grandTotal.toFixed(2)}</Text>
               </View>
             </View>
 
+            {/* BUTTON */}
             <View style={styles.bottomFixed}>
               <Pressable
                 style={styles.proceedBtn}
@@ -190,6 +246,13 @@ export default function SummaryScreen() {
           </View>
         </SafeAreaView>
       </ImageBackground>
+
+      {/* DISCOUNT MODAL */}
+      <DiscountModal
+        visible={showDiscount}
+        onClose={() => setShowDiscount(false)}
+        currentTotal={subtotal}
+      />
     </View>
   );
 }

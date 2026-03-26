@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
 import { create } from "zustand";
 
+/* ================= TYPES ================= */
+
 export type Modifier = {
   ModifierId: string;
   ModifierName: string;
@@ -23,20 +25,39 @@ export type CartItem = {
   modifiers?: Modifier[];
 };
 
+type DiscountInfo = {
+  applied: boolean;
+  type: "percentage" | "fixed";
+  value: number;
+};
+
 type CartState = {
   carts: Record<string, CartItem[]>;
+  discounts: Record<string, DiscountInfo>;
+
   currentContextId: string | null;
+
   setCurrentContext: (contextId: string | null) => void;
+
   getCart: () => CartItem[];
+
   addToCartGlobal: (item: Omit<CartItem, "qty" | "lineItemId">) => void;
   removeFromCartGlobal: (lineItemId: string) => void;
   clearCart: () => void;
   clearAllCarts: () => void;
+
+  applyDiscount: (discount: DiscountInfo) => void;
+  clearDiscount: () => void;
+
   setCartItems: (contextId: string, items: CartItem[]) => void;
 };
 
+/* ================= STORE ================= */
+
 export const useCartStore = create<CartState>((set, get) => ({
   carts: {},
+  discounts: {},
+
   currentContextId: null,
 
   setCurrentContext: (contextId) => set({ currentContextId: contextId }),
@@ -47,16 +68,47 @@ export const useCartStore = create<CartState>((set, get) => ({
     return carts[currentContextId] || [];
   },
 
+  /* ================= DISCOUNT ================= */
+
+  applyDiscount: (discount) => {
+    const { currentContextId, discounts } = get();
+    if (!currentContextId) return;
+
+    set({
+      discounts: {
+        ...discounts,
+        [currentContextId]: discount,
+      },
+    });
+  },
+
+  clearDiscount: () => {
+    const { currentContextId, discounts } = get();
+    if (!currentContextId) return;
+
+    const updated = { ...discounts };
+    delete updated[currentContextId];
+
+    set({ discounts: updated });
+  },
+
+  /* ================= ADD ================= */
+
   addToCartGlobal: (item) => {
-    const { carts, currentContextId } = get();
+    const { carts, currentContextId, discounts } = get();
     if (!currentContextId) return;
 
     const currentCart = carts[currentContextId] || [];
 
-    // Helper to compare modifiers by ID
     const areModifiersEqual = (mods1?: Modifier[], mods2?: Modifier[]) => {
-      const ids1 = (mods1 || []).map(m => m.ModifierId).sort().join('|');
-      const ids2 = (mods2 || []).map(m => m.ModifierId).sort().join('|');
+      const ids1 = (mods1 || [])
+        .map((m) => m.ModifierId)
+        .sort()
+        .join("|");
+      const ids2 = (mods2 || [])
+        .map((m) => m.ModifierId)
+        .sort()
+        .join("|");
       return ids1 === ids2;
     };
 
@@ -68,72 +120,85 @@ export const useCartStore = create<CartState>((set, get) => ({
         p.salt === item.salt &&
         p.sugar === item.sugar &&
         p.note === item.note &&
-        areModifiersEqual(p.modifiers, item.modifiers)
+        areModifiersEqual(p.modifiers, item.modifiers),
     );
 
-    if (existing) {
-      console.log("✅ Item exists, incrementing qty");
-      set({
-        carts: {
-          ...carts,
-          [currentContextId]: currentCart.map((p) =>
-            p.lineItemId === existing.lineItemId
-              ? { ...p, qty: p.qty + 1 }
-              : p
-          ),
-        },
-      });
-    } else {
-          console.log("🆕 New item, adding to cart");  // Add this debug line
+    let updatedCart;
 
-      set({
-        carts: {
-          ...carts,
-          [currentContextId]: [...currentCart, { ...item, qty: 1, lineItemId: uuidv4() }],
-        },
-      });
+    if (existing) {
+      updatedCart = currentCart.map((p) =>
+        p.lineItemId === existing.lineItemId ? { ...p, qty: p.qty + 1 } : p,
+      );
+    } else {
+      updatedCart = [...currentCart, { ...item, qty: 1, lineItemId: uuidv4() }];
     }
+
+    const newDiscounts = { ...discounts };
+    delete newDiscounts[currentContextId]; // 🔥 reset discount
+
+    set({
+      carts: {
+        ...carts,
+        [currentContextId]: updatedCart,
+      },
+      discounts: newDiscounts,
+    });
   },
 
+  /* ================= REMOVE ================= */
+
   removeFromCartGlobal: (lineItemId) => {
-    const { carts, currentContextId } = get();
+    const { carts, currentContextId, discounts } = get();
     if (!currentContextId) return;
 
     const currentCart = carts[currentContextId] || [];
     const item = currentCart.find((p) => p.lineItemId === lineItemId);
     if (!item) return;
 
+    let updatedCart;
+
     if (item.qty > 1) {
-      set({
-        carts: {
-          ...carts,
-          [currentContextId]: currentCart.map((p) =>
-            p.lineItemId === lineItemId ? { ...p, qty: p.qty - 1 } : p
-          ),
-        },
-      });
+      updatedCart = currentCart.map((p) =>
+        p.lineItemId === lineItemId ? { ...p, qty: p.qty - 1 } : p,
+      );
     } else {
-      set({
-        carts: {
-          ...carts,
-          [currentContextId]: currentCart.filter((p) => p.lineItemId !== lineItemId),
-        },
-      });
+      updatedCart = currentCart.filter((p) => p.lineItemId !== lineItemId);
     }
+
+    const newDiscounts = { ...discounts };
+    delete newDiscounts[currentContextId];
+
+    set({
+      carts: {
+        ...carts,
+        [currentContextId]: updatedCart,
+      },
+      discounts: newDiscounts,
+    });
   },
 
+  /* ================= CLEAR ================= */
+
   clearCart: () => {
-    const { carts, currentContextId } = get();
+    const { carts, currentContextId, discounts } = get();
     if (!currentContextId) return;
+
+    const newDiscounts = { ...discounts };
+    delete newDiscounts[currentContextId];
+
     set({
       carts: {
         ...carts,
         [currentContextId]: [],
       },
+      discounts: newDiscounts,
     });
   },
 
-  clearAllCarts: () => set({ carts: {}, currentContextId: null }),
+  clearAllCarts: () =>
+    set({ carts: {}, discounts: {}, currentContextId: null }),
+
+  /* ================= SET ================= */
 
   setCartItems: (contextId, items) => {
     set((state) => ({
@@ -145,21 +210,44 @@ export const useCartStore = create<CartState>((set, get) => ({
   },
 }));
 
-// Helper for context ID
-export const getContextId = (context?: { orderType: string; section?: string; tableNo?: string; takeawayNo?: string } | null) => {
+/* ================= HELPERS ================= */
+
+export const getContextId = (
+  context?: {
+    orderType: string;
+    section?: string;
+    tableNo?: string;
+    takeawayNo?: string;
+  } | null,
+) => {
   if (!context) return null;
-  if (context.orderType === "DINE_IN") return `DINE_IN_${context.section}_${context.tableNo}`;
-  if (context.orderType === "TAKEAWAY") return `TAKEAWAY_${context.takeawayNo}`;
+
+  if (context.orderType === "DINE_IN") {
+    return `DINE_IN_${context.section}_${context.tableNo}`;
+  }
+
+  if (context.orderType === "TAKEAWAY") {
+    return `TAKEAWAY_${context.takeawayNo}`;
+  }
+
   return null;
 };
 
-// Direct functions for non-hook usage
 export const getCart = () => useCartStore.getState().getCart();
-export const addToCartGlobal = (item: Omit<CartItem, "qty" | "lineItemId">) => useCartStore.getState().addToCartGlobal(item);
-export const removeFromCartGlobal = (lineItemId: string) => useCartStore.getState().removeFromCartGlobal(lineItemId);
+
+export const addToCartGlobal = (item: Omit<CartItem, "qty" | "lineItemId">) =>
+  useCartStore.getState().addToCartGlobal(item);
+
+export const removeFromCartGlobal = (lineItemId: string) =>
+  useCartStore.getState().removeFromCartGlobal(lineItemId);
+
 export const clearCart = () => useCartStore.getState().clearCart();
-export const setCurrentContext = (contextId: string | null) => useCartStore.getState().setCurrentContext(contextId);
-export const setCartItemsGlobal = (contextId: string, items: CartItem[]) => useCartStore.getState().setCartItems(contextId, items);
 
-export const subscribeCart = (listener: () => void) => useCartStore.subscribe(listener);
+export const setCurrentContext = (contextId: string | null) =>
+  useCartStore.getState().setCurrentContext(contextId);
 
+export const setCartItemsGlobal = (contextId: string, items: CartItem[]) =>
+  useCartStore.getState().setCartItems(contextId, items);
+
+export const subscribeCart = (listener: () => void) =>
+  useCartStore.subscribe(listener);
