@@ -25,7 +25,7 @@ import {
 } from "../../stores/cartStore";
 import { useOrderContextStore } from "../../stores/orderContextStore";
 
-const API = "http://localhost:3000";
+const API = "https://cafepos-production-3428.up.railway.app";
 
 const kitchenIcons: Record<string, string> = {
   "THAI KITCHEN": "🍜",
