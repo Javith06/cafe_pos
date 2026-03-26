@@ -26,7 +26,7 @@ import {
   useOrderContextStore,
 } from "../../stores/orderContextStore";
 
-const API = "https://cafepos-production-3428.up.railway.app";
+const API = "http://localhost:3000";
 
 const kitchenIcons: Record<string, string> = {
   "THAI KITCHEN": "🍜",
@@ -38,10 +38,9 @@ const kitchenIcons: Record<string, string> = {
 };
 
 type Kitchen = {
-  KitchenTypeId: number;
+  CategoryId: string;   
   KitchenTypeName: string;
 };
-
 type Group = {
   DishGroupId: string;
   DishGroupName: string;
@@ -57,7 +56,7 @@ type Dish = {
 };
 
 type Modifier = {
-  ModifierID: string;
+  ModifierId: string;
   ModifierName: string;
   Price?: number;
 };
@@ -71,17 +70,14 @@ const DishImage = ({ dish, style }: { dish: Dish; style: any }) => {
   }, [dish.DishId]);
 
   const getImageUrl = () => {
-    if (error) return null;
+  if (error) return null;
 
   if (dish.ImageBase64) {
-  return { uri: dish.ImageBase64 };
-}
+    return { uri: dish.ImageBase64 };
+  }
 
-    const fileName =
-      dish.Name.replace(/[()]/g, "").replace(/\s+/g, "_").toLowerCase() +
-      ".jpg";
-    return { uri: `${API}/images/${fileName}` };
-  };
+  return null;
+};
 
   if (error) {
     return (
@@ -178,7 +174,7 @@ export default function MenuScreen() {
         setKitchens(filteredKitchens);
 
         if (filteredKitchens.length > 0 && orderContext) {
-          loadGroups(filteredKitchens[0].KitchenTypeName);
+          loadGroups(filteredKitchens[0].CategoryId);
         }
       })
       .catch((err) => console.log("KITCHEN ERROR:", err));
@@ -195,7 +191,6 @@ export default function MenuScreen() {
       const res = await fetch(`${API}/dishgroups/${kitchen}`);
       if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
       const data = await res.json();
-      console.log("MODIFIERS API:", data);
       console.log(`Groups received for ${kitchen}:`, data.length);
       const safe = Array.isArray(data) ? data : [];
       setGroups([...safe]);
@@ -247,27 +242,37 @@ export default function MenuScreen() {
   );
 
   const openModifiers = async (dish: Dish) => {
-  if (!orderContext) {
-    alert("Please select a table/counter first");
-    router.push("/(tabs)/category");
-    return;
-  }
+    if (!orderContext) {
+      alert("Please select a table/counter first");
+      router.push("/(tabs)/category");
+      return;
+    }
 
-  setSelectedDish(dish);
-  setSelectedModifierIds([]);
+    setSelectedDish(dish);
+    setSelectedModifierIds([]);
 
-  try {
-    const res = await fetch(`${API}/modifiers/${dish.DishId}`);
-    const data = await res.json();
-    
-    // 🔥 ALWAYS SHOW POPUP
-    setModifiers(Array.isArray(data) ? data : []);
-    setShowModifier(true);
+    try {
+      const res = await fetch(`${API}/modifiers/${dish.DishId}`);
+      const data = await res.json();
 
-  } catch (err) {
-    console.log("MODIFIER ERROR:", err);
-  }
-};
+      if (Array.isArray(data) && data.length > 0) {
+        setModifiers(data);
+        setShowModifier(true);
+      } else {
+        addToCartGlobal({
+          id: dish.DishId,
+          name: dish.Name,
+          price: dish.Price ?? 0,
+        });
+      }
+    } catch (err) {
+      addToCartGlobal({
+        id: dish.DishId,
+        name: dish.Name,
+        price: dish.Price ?? 0,
+      });
+    }
+  };
 
   const toggleModifier = (modifierId: string) => {
     setSelectedModifierIds((prev) =>
@@ -278,33 +283,22 @@ export default function MenuScreen() {
   };
 
   const addWithModifiers = () => {
-  if (!selectedDish) return;
+    if (!selectedDish) return;
 
-  // 🔥 MUST SELECT AT LEAST ONE
-  if (modifiers.length > 0 && selectedModifierIds.length === 0) {
-    alert("Please select at least one modifier");
-    return;
-  }
+    const selectedModifiers = modifiers.filter((m) =>
+      selectedModifierIds.includes(m.ModifierId),
+    );
 
-  const selectedModifiers = modifiers.filter((m) =>
-    selectedModifierIds.includes(m.ModifierID),
-  );
+    addToCartGlobal({
+      id: selectedDish.DishId,
+      name: selectedDish.Name,
+      price: selectedDish.Price ?? 0,
+      modifiers: selectedModifiers,
+    });
 
-  const cartModifiers = selectedModifiers.map((m) => ({
-    ModifierId: m.ModifierID,
-    ModifierName: m.ModifierName,
-  }));
-
-  addToCartGlobal({
-    id: selectedDish.DishId,
-    name: selectedDish.Name,
-    price: selectedDish.Price ?? 0,
-    modifiers: cartModifiers,
-  });
-
-  setShowModifier(false);
-  setSelectedModifierIds([]);
-};
+    setShowModifier(false);
+    setSelectedModifierIds([]);
+  };
 
   const goToCart = () => {
     router.push("/cart");
@@ -380,9 +374,9 @@ export default function MenuScreen() {
                 const active = k.KitchenTypeName === selectedKitchen;
                 return (
                   <TouchableOpacity
-                    key={k.KitchenTypeId}
+                    key={k.CategoryId}
                     style={[styles.kitchenCard, active && styles.kitchenActive]}
-                    onPress={() => loadGroups(k.KitchenTypeName)}
+                    onPress={() => loadGroups(k.CategoryId)}
                   >
                     <Text style={styles.kitchenIcon}>
                       {kitchenIcons[k.KitchenTypeName] || "🍽️"}
@@ -505,15 +499,13 @@ export default function MenuScreen() {
 
               {modifiers.map((mod) => (
                 <TouchableOpacity
-                  key={mod.ModifierID}
+                  key={mod.ModifierId}
                   style={styles.modifierRow}
-                  onPress={() => toggleModifier(mod.ModifierID)}
+                  onPress={() => toggleModifier(mod.ModifierId)}
                 >
-                  <Text style={styles.modifierName}>
-                {mod.ModifierName} {mod.Price ? `(+ $${mod.Price})` : ""}
-              </Text>
+                  <Text style={styles.modifierName}>{mod.ModifierName}</Text>
                   <View style={styles.checkbox}>
-                    {selectedModifierIds.includes(mod.ModifierID) && (
+                    {selectedModifierIds.includes(mod.ModifierId) && (
                       <Text style={styles.checkmark}>✓</Text>
                     )}
                   </View>

@@ -1,165 +1,154 @@
-  require("dotenv").config();
+require("dotenv").config();
 
-  const express = require("express");
-  const cors = require("cors");
-  const path = require("path");
-  const { poolPromise } = require("./db");
+const express = require("express");
+const cors = require("cors");
+const { poolPromise } = require("./db");
 
-  const app = express();
+const app = express();
 
-  // ✅ Works for BOTH local & Railway
-  const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
-  // 🔍 Debug logs (safe)
-  console.log("PORT:", PORT);
-  console.log("DB_SERVER:", process.env.DB_SERVER);
+console.log("PORT:", PORT);
+console.log("DB_SERVER:", process.env.DB_SERVER);
 
-  app.use(cors());
-  app.use(express.json());
+// ✅ FIXED CORS
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type"]
+}));
 
-  // ✅ Serve static images (make sure folder exists)
-  app.use("/images", express.static(path.join(__dirname, "assets/images")));
 
-  /* ================= ROOT ================= */
-  app.get("/", (req, res) => {
-    res.send("POS Backend Running");
-  });
+app.use(express.json());
 
-  /* ================= TEST ================= */
-  app.get("/test", (req, res) => {
-    res.send("TEST OK");
-  });
+/* ================= ROOT ================= */
+app.get("/", (req, res) => {
+  res.send("POS Backend Running");
+});
 
-  /* ================= KITCHENS ================= */
-  app.get("/kitchens", async (req, res) => {
-    try {
-      const pool = await poolPromise;
+/* ================= TEST ================= */
+app.get("/test", (req, res) => {
+  res.send("TEST OK");
+});
 
-      const result = await pool.request().query(`
-        SELECT 
-          ROW_NUMBER() OVER (ORDER BY CategoryName) AS KitchenTypeId,
-          CategoryName AS KitchenTypeName
-        FROM CategoryMaster
-        WHERE IsActive = 1
-      `);
-
-      res.json(result.recordset);
-    } catch (err) {
-      console.error("KITCHEN ERROR:", err);
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  /* ================= DISH GROUPS ================= */
-  app.get("/dishgroups/:CategoryId", async (req, res) => {
-    try {
-      const pool = await poolPromise;
-
-      const result = await pool
-        .request()
-        .input("CategoryId", req.params.CategoryId).query(`
-          SELECT 
-            a.DishGroupId,
-            a.DishGroupName
-          FROM DishGroupMaster a
-          JOIN CategoryMaster b 
-            ON a.CategoryId = b.CategoryId
-          WHERE a.CategoryId = @CategoryId
-            AND a.IsActive = 1
-        `);
-
-      res.json(result.recordset);
-    } catch (err) {
-      console.error("DISH GROUP ERROR:", err);
-      res.status(500).send(err.message);
-    }
-  });
-
-  /* ================= DISHES ================= */
-  app.get("/dishes/:DishGroupId", async (req, res) => {
-    try {
-      const pool = await poolPromise;
-
-      const result = await pool.request()
-        .input("DishGroupId", req.params.DishGroupId)
-        .query(`
-          SELECT
-  d.DishId,
-  d.Name,
-  d.DishGroupId,
-  ISNULL(p.Amount, 0) AS Price,
-  'data:image/jpeg;base64,' + 
- CASE 
-  WHEN i.ImageData IS NOT NULL THEN
-    'data:image/jpeg;base64,' + 
-    CAST('' AS XML).value(
-      'xs:base64Binary(sql:column("i.ImageData"))',
-      'VARCHAR(MAX)'
-    )
-  ELSE NULL
-END AS ImageBase64
-FROM DishMaster d
-INNER JOIN DishPriceList p 
-  ON d.DishId = p.DishId
-LEFT JOIN ImageList i 
-  ON d.Imageid = i.Imageid
-
-WHERE d.IsActive = 1
-AND d.DishGroupId = @DishGroupId
-        `);
-
-      const dishes = result.recordset.map(dish => ({
-        ...dish,
-        ImageUrl: dish.ImageName
-          ? `${req.protocol}://${req.get("host")}/images/${dish.ImageName}`
-          : `${req.protocol}://${req.get("host")}/images/default.png`
-      }));
-
-      res.json(dishes);
-
-    } catch (err) {
-      console.error("🔥 DISH ERROR:", err);
-      res.status(500).send(err.message);
-    }
-  });
-
- /* ================= MODIFIERS ================= */
-app.get("/modifiers/:dishId", async (req, res) => {
+/* ================= KITCHENS ================= */
+app.get("/kitchens", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const dishId = req.params.dishId;
-    
-    console.log("🔍 Fetching modifiers for dishId:", dishId);
-    
-    const result = await pool.request()
-      .input("dishId", dishId)
-      .query(`
-        SELECT 
-          dm.DishId,
-          dm.ModifierId AS ModifierID, 
-          m.ModifierName,
-          TRY_CAST(REPLACE(m.ModifierName, '$', '') AS FLOAT) AS Price
-        FROM DishModifier dm
-        INNER JOIN ModifierMaster m 
-          ON dm.ModifierId = m.ModifierID
-        WHERE dm.DishId = @dishId
-      `);
-    
-    console.log("✅ Modifiers found:", result.recordset.length);
-    console.log("📦 Modifiers data:", result.recordset);
-    
+
+    const result = await pool.request().query(`
+      SELECT 
+          CategoryId,             
+        CategoryName AS KitchenTypeName
+      FROM CategoryMaster
+      WHERE IsActive = 1
+    `);
+
     res.json(result.recordset);
-    
   } catch (err) {
-    console.error("❌ MODIFIER ERROR:", err);
+    console.error("KITCHEN ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-  /* ================= SERVER ================= */
+/* ================= DISH GROUPS ================= */
+app.get("/dishgroups/:CategoryId", async (req, res) => {
+  try {
+    const pool = await poolPromise;
 
-  console.log("🚀 Starting server...");
+    const result = await pool
+      .request()
+      .input("CategoryId", req.params.CategoryId)
+      .query(`
+        SELECT 
+          a.DishGroupId,
+          a.DishGroupName
+        FROM DishGroupMaster a
+        JOIN CategoryMaster b 
+          ON a.CategoryId = b.CategoryId
+        WHERE a.CategoryId = @CategoryId
+          AND a.IsActive = 1
+      `);
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`✅ Server running on port ${PORT}`);
-  });
+    res.json(result.recordset);
+  } catch (err) {
+    console.error("DISH GROUP ERROR:", err);
+    res.status(500).send(err.message);
+  }
+});
+
+/* ================= DISHES (🔥 IMAGE FIXED) ================= */
+app.get("/dishes/:DishGroupId", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+
+    const result = await pool.request()
+      .input("DishGroupId", req.params.DishGroupId)
+      .query(`
+        SELECT
+          d.DishId,
+          d.Name,
+          d.DishGroupId,
+          ISNULL(p.Amount, 0) AS Price,
+
+          -- 🔥 BASE64 IMAGE
+          CASE 
+            WHEN i.ImageData IS NOT NULL THEN
+              'data:image/jpeg;base64,' + 
+              CAST('' AS XML).value(
+                'xs:base64Binary(sql:column("i.ImageData"))',
+                'VARCHAR(MAX)'
+              )
+            ELSE NULL
+          END AS ImageBase64
+
+        FROM DishMaster d
+        INNER JOIN DishPriceList p 
+          ON d.DishId = p.DishId
+        LEFT JOIN ImageList i 
+          ON d.Imageid = i.Imageid
+
+        WHERE d.IsActive = 1
+        AND d.DishGroupId = @DishGroupId
+      `);
+
+    res.json(result.recordset);
+
+  } catch (err) {
+    console.error("🔥 DISH ERROR:", err);
+    res.status(500).send(err.message);
+  }
+});
+
+/* ================= MODIFIERS ================= */
+app.get("/modifiers/:dishId", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+
+    const result = await pool.request()
+      .input("dishId", req.params.dishId)
+      .query(`
+        SELECT 
+          m.ModifierId AS ModifierID,
+          m.ModifierName,
+          ISNULL(m.Rate, 0) AS Price
+        FROM DishModifiers dm 
+        INNER JOIN ModifierMaster m 
+          ON dm.ModifierId = m.ModifierId
+        WHERE dm.DishId = @dishId
+      `);
+
+    res.json(result.recordset);
+  } catch (err) {
+    console.error("MODIFIER ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ================= SERVER ================= */
+
+console.log("🚀 Starting server...");
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ Server running on port ${PORT}`);
+});
