@@ -50,7 +50,16 @@ export default function Category() {
   const fetchTables = async () => {
     try {
       const response = await fetch("https://cafepos-production-3428.up.railway.app/tables");
-      const data = await response.json();
+      let data = await response.json();
+      
+      // 🔥 Convert DiningSection from string to number
+      data = data.map((item: any) => ({
+        id: item.id,
+        label: item.label,
+        DiningSection: Number(item.DiningSection)
+      }));
+      
+      console.log("✅ Tables loaded:", data.length);
       setAllTables(data);
     } catch (error) {
       console.error("Failed to fetch tables:", error);

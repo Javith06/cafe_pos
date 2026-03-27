@@ -165,6 +165,89 @@ app.get("/modifiers/:dishId", async (req, res) => {
   }
 });
 
+// ================= SALES REPORT APIs =================
+
+// API 1: Get all sales
+app.get("/api/sales/all", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+      SELECT 
+        sh.SettlementID,
+        sh.LastSettlementDate AS SettlementDate,
+        sts.PayMode,
+        sts.SysAmount,
+        sts.ManualAmount,
+        sts.ReceiptCount
+      FROM SettlementHeader sh
+      INNER JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
+      ORDER BY sh.LastSettlementDate DESC
+    `);
+    res.json(result.recordset);
+  } catch (err) {
+    console.error("SALES ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API 2: Get daily summary
+app.get("/api/sales/daily/:date", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const { date } = req.params;
+    
+    const result = await pool.request()
+      .input("Date", sql.Date, date)
+      .query(`
+        SELECT 
+          COUNT(DISTINCT sh.SettlementID) as TotalTransactions,
+          SUM(sts.SysAmount) as TotalSales,
+          SUM(CASE WHEN sts.PayMode = 'CASH' THEN sts.SysAmount ELSE 0 END) as CashSales,
+          SUM(CASE WHEN sts.PayMode = 'NETS' THEN sts.SysAmount ELSE 0 END) as NETS_Sales,
+          SUM(CASE WHEN sts.PayMode = 'PAYNOW' THEN sts.SysAmount ELSE 0 END) as PayNow_Sales,
+          SUM(sts.ReceiptCount) as TotalItems
+        FROM SettlementHeader sh
+        INNER JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
+        WHERE CAST(sh.LastSettlementDate AS DATE) = @Date
+      `);
+    res.json(result.recordset[0] || {});
+  } catch (err) {
+    console.error("DAILY SUMMARY ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API 3: Get sales by date range
+app.get("/api/sales/range", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const { startDate, endDate } = req.query;
+    
+    const result = await pool.request()
+      .input("StartDate", sql.Date, startDate)
+      .input("EndDate", sql.Date, endDate)
+      .query(`
+        SELECT 
+          CAST(sh.LastSettlementDate AS DATE) as SaleDate,
+          COUNT(DISTINCT sh.SettlementID) as TotalTransactions,
+          SUM(sts.SysAmount) as TotalSales,
+          SUM(CASE WHEN sts.PayMode = 'CASH' THEN sts.SysAmount ELSE 0 END) as CashSales,
+          SUM(CASE WHEN sts.PayMode = 'NETS' THEN sts.SysAmount ELSE 0 END) as NETS_Sales,
+          SUM(CASE WHEN sts.PayMode = 'PAYNOW' THEN sts.SysAmount ELSE 0 END) as PayNow_Sales
+        FROM SettlementHeader sh
+        INNER JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
+        WHERE CAST(sh.LastSettlementDate AS DATE) BETWEEN @StartDate AND @EndDate
+        GROUP BY CAST(sh.LastSettlementDate AS DATE)
+        ORDER BY SaleDate DESC
+      `);
+    res.json(result.recordset);
+  } catch (err) {
+    console.error("RANGE ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 /* ================= SERVER ================= */
 
 console.log("🚀 Starting server...");
