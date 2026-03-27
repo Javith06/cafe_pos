@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
   View,
   Platform,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -87,55 +88,127 @@ export default function PaymentScreen() {
     return () => clearInterval(timer);
   }, []);
 
+  /* ================= TEST API ================= */
+  const testAPI = async () => {
+    try {
+      console.log("🧪 Testing API connection...");
+      Alert.alert("Testing", "Checking API connection...");
+      
+      // Test basic endpoint
+      const response = await fetch(`${API_URL}/test`);
+      const data = await response.text();
+      console.log("✅ Test endpoint response:", data);
+      
+      // Test save endpoint with dummy data
+      const testSave = await fetch(`${API_URL}/api/sales/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: "TEST-" + Date.now(),
+          orderType: "TEST",
+          tableNo: "TEST",
+          section: "TEST",
+          items: [{ dishId: "test", name: "Test Item", qty: 1, price: 10 }],
+          subTotal: 10,
+          taxAmount: 0.9,
+          discountAmount: 0,
+          totalAmount: 10.9,
+          paymentMethod: "CASH",
+          cashierId: "FFA46DDA-2871-42BB-BE6D-A547AE9C1B88"
+        })
+      });
+      
+      const testResult = await testSave.json();
+      console.log("✅ Save test result:", testResult);
+      
+      Alert.alert("API Test", `Success!\n${JSON.stringify(testResult)}`);
+    } catch (error: any) {
+      console.error("❌ Test error:", error);
+      Alert.alert("API Test Failed", error.message);
+    }
+  };
+
   /* ================= SAVE SALE TO DATABASE ================= */
 
   const saveSaleToDatabase = async () => {
     try {
       console.log("💾 Saving sale to database...");
+      console.log("Order ID:", activeOrder?.orderId);
+      console.log("Total Amount:", total);
+      console.log("Payment Method:", method);
+      
+      const saleData = {
+        orderId: activeOrder?.orderId,
+        orderType: context?.orderType,
+        tableNo: context?.tableNo || context?.takeawayNo,
+        section: context?.section,
+        items: cart.map(item => ({
+          dishId: item.id,
+          name: item.name,
+          qty: item.qty,
+          price: item.price
+        })),
+        subTotal: subtotal,
+        taxAmount: tax,
+        discountAmount: discountAmount,
+        totalAmount: total,
+        paymentMethod: method,
+        cashierId: "FFA46DDA-2871-42BB-BE6D-A547AE9C1B88"
+      };
+      
+      console.log("Sending data:", JSON.stringify(saleData, null, 2));
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
       
       const response = await fetch(`${API_URL}/api/sales/save`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          orderId: activeOrder?.orderId,
-          orderType: context?.orderType,
-          tableNo: context?.tableNo || context?.takeawayNo,
-          section: context?.section,
-          items: cart.map(item => ({
-            dishId: item.id,
-            name: item.name,
-            qty: item.qty,
-            price: item.price
-          })),
-          subTotal: subtotal,
-          taxAmount: tax,
-          discountAmount: discountAmount,
-          totalAmount: total,
-          paymentMethod: method,
-          cashierId: "FFA46DDA-2871-42BB-BE6D-A547AE9C1B88"
-        })
+        body: JSON.stringify(saleData),
+        signal: controller.signal
       });
       
+      clearTimeout(timeoutId);
+      
+      console.log("Response status:", response.status);
       const result = await response.json();
+      console.log("Response data:", result);
+      
       if (result.success) {
         console.log("✅ Sale saved successfully:", result.settlementId);
+        return true;
       } else {
-        console.log("⚠️ Sale save response:", result);
+        console.log("⚠️ Sale save failed:", result);
+        return false;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ Failed to save sale:", error);
+      if (error.name === 'AbortError') {
+        console.log("Request timeout");
+      }
+      return false;
     }
   };
 
   /* ================= PAYMENT ================= */
 
   const confirmPayment = async () => {
-    if (method === "CASH" && paidNum < total) return;
+    if (method === "CASH" && paidNum < total) {
+      Alert.alert("Insufficient Payment", `Please enter at least $${total.toFixed(2)}`);
+      return;
+    }
 
     setProcessing(true);
 
+    console.log("🟢 Starting payment confirmation...");
+    console.log("📦 Order ID:", activeOrder?.orderId);
+    console.log("💰 Total amount:", total);
+    console.log("💳 Payment method:", method);
+
     // 🔥 SAVE SALE TO DATABASE
-    await saveSaleToDatabase();
+    console.log("💾 Calling saveSaleToDatabase...");
+    const saved = await saveSaleToDatabase();
+    console.log("✅ saveSaleToDatabase completed, success:", saved);
 
     const printBill = () => {
       const html = `
@@ -143,9 +216,7 @@ export default function PaymentScreen() {
           <body>
             <h2>POS BILL</h2>
             <p>Order: ${activeOrder?.orderId}</p>
-
             <hr/>
-
             ${cart
               .map(
                 (i) => `
@@ -153,17 +224,13 @@ export default function PaymentScreen() {
             `,
               )
               .join("")}
-
             <hr/>
-
             <p>Subtotal: $${subtotal.toFixed(2)}</p>
             <p>Discount: -$${discountAmount.toFixed(2)}</p>
             <p>Tax: $${tax.toFixed(2)}</p>
             <p><b>Total: $${total.toFixed(2)}</b></p>
-
             <p>Paid: $${paidNum.toFixed(2)}</p>
             <p>Change: $${change.toFixed(2)}</p>
-
             <h4>Thank You!</h4>
           </body>
         </html>
@@ -200,6 +267,7 @@ export default function PaymentScreen() {
 
       if (activeOrder) {
         closeActiveOrder(activeOrder.orderId);
+        console.log("✅ Closed order:", activeOrder.orderId);
       }
 
       if (context) {
@@ -209,10 +277,12 @@ export default function PaymentScreen() {
           context.tableNo
         ) {
           clearTable(context.section, context.tableNo);
+          console.log("✅ Cleared table:", context.section, context.tableNo);
         }
 
         if (context.orderType === "TAKEAWAY" && context.takeawayNo) {
           clearTable("TAKEAWAY", context.takeawayNo);
+          console.log("✅ Cleared takeaway:", context.takeawayNo);
         }
       }
 
@@ -268,12 +338,20 @@ export default function PaymentScreen() {
               </Text>
             </View>
 
-            <Text style={styles.dateTime}>
-              {time.toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </Text>
+            <View style={styles.rightHeader}>
+              <TouchableOpacity
+                style={styles.testBtn}
+                onPress={testAPI}
+              >
+                <Text style={styles.testBtnText}>Test</Text>
+              </TouchableOpacity>
+              <Text style={styles.dateTime}>
+                {time.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </Text>
+            </View>
           </View>
 
           {/* MAIN */}
@@ -447,6 +525,14 @@ const styles = StyleSheet.create({
   orderInfo: { alignItems: "center" },
   orderTitle: { color: "#fff", fontWeight: "900", fontSize: 16 },
   orderSub: { color: "#94a3b8", fontSize: 12 },
+  rightHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
+  testBtn: {
+    backgroundColor: "rgba(255,165,0,0.3)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  testBtnText: { color: "#fff", fontWeight: "700", fontSize: 12 },
   dateTime: { color: "#94a3b8" },
 
   mainLayout: { flex: 1, flexDirection: "row", gap: 16 },
