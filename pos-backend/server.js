@@ -45,6 +45,13 @@ app.get("/tables", async (req, res) => {
       FROM TableMaster
       ORDER BY SortCode
     `);
+    
+    // 🔥 Add cache control headers to prevent caching
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
+    console.log(`✅ Tables API: Returning ${result.recordset.length} tables`);
     res.json(result.recordset);
   } catch (err) {
     console.error("TABLES ERROR:", err);
@@ -256,7 +263,8 @@ app.post("/api/sales/save", async (req, res) => {
       cashierId
     } = req.body;
 
-    const settlementId = require('crypto').randomUUID();
+    const crypto = require('crypto');
+    const settlementId = crypto.randomUUID();
     const businessUnitId = "FBFD4E31-5C91-4DEC-86EA-989D3B5639CA"; // Your BusinessUnitID
 
     // Start transaction
