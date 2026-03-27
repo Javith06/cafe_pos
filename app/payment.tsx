@@ -27,6 +27,8 @@ import {
 } from "../stores/orderContextStore";
 import { useTableStatusStore } from "../stores/tableStatusStore";
 
+const API_URL = "https://cafepos-production-3428.up.railway.app";
+
 export default function PaymentScreen() {
   const closeActiveOrder = useActiveOrdersStore((s) => s.closeActiveOrder);
   const clearTable = useTableStatusStore((s) => s.clearTable);
@@ -85,12 +87,55 @@ export default function PaymentScreen() {
     return () => clearInterval(timer);
   }, []);
 
+  /* ================= SAVE SALE TO DATABASE ================= */
+
+  const saveSaleToDatabase = async () => {
+    try {
+      console.log("💾 Saving sale to database...");
+      
+      const response = await fetch(`${API_URL}/api/sales/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: activeOrder?.orderId,
+          orderType: context?.orderType,
+          tableNo: context?.tableNo || context?.takeawayNo,
+          section: context?.section,
+          items: cart.map(item => ({
+            dishId: item.id,
+            name: item.name,
+            qty: item.qty,
+            price: item.price
+          })),
+          subTotal: subtotal,
+          taxAmount: tax,
+          discountAmount: discountAmount,
+          totalAmount: total,
+          paymentMethod: method,
+          cashierId: "FFA46DDA-2871-42BB-BE6D-A547AE9C1B88"
+        })
+      });
+      
+      const result = await response.json();
+      if (result.success) {
+        console.log("✅ Sale saved successfully:", result.settlementId);
+      } else {
+        console.log("⚠️ Sale save response:", result);
+      }
+    } catch (error) {
+      console.error("❌ Failed to save sale:", error);
+    }
+  };
+
   /* ================= PAYMENT ================= */
 
   const confirmPayment = async () => {
     if (method === "CASH" && paidNum < total) return;
 
     setProcessing(true);
+
+    // 🔥 SAVE SALE TO DATABASE
+    await saveSaleToDatabase();
 
     const printBill = () => {
       const html = `

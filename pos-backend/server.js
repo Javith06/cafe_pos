@@ -43,7 +43,6 @@ app.get("/tables", async (req, res) => {
         TableNumber AS label,
         DiningSection
       FROM TableMaster
-      WHERE IsActive = 1
       ORDER BY SortCode
     `);
     res.json(result.recordset);
@@ -235,6 +234,78 @@ app.get("/api/sales/range", async (req, res) => {
     res.json(result.recordset);
   } catch (err) {
     console.error("RANGE ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ================= SAVE SALE API ================= */
+app.post("/api/sales/save", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const {
+      orderId,
+      orderType,
+      tableNo,
+      section,
+      items,
+      subTotal,
+      taxAmount,
+      discountAmount,
+      totalAmount,
+      paymentMethod,
+      cashierId
+    } = req.body;
+
+    const settlementId = require('crypto').randomUUID();
+    const businessUnitId = "FBFD4E31-5C91-4DEC-86EA-989D3B5639CA"; // Your BusinessUnitID
+
+    // Start transaction
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin();
+
+    try {
+      // Insert into SettlementHeader
+      await transaction.request()
+        .input("SettlementID", sql.UniqueIdentifier, settlementId)
+        .input("CashierID", sql.UniqueIdentifier, cashierId || "FFA46DDA-2871-42BB-BE6D-A547AE9C1B88")
+        .input("BusinessUnitID", sql.UniqueIdentifier, businessUnitId)
+        .input("Shift", sql.Numeric, 1)
+        .input("TerminalCode", sql.VarChar, "SR")
+        .input("LastSettlementDate", sql.DateTime, new Date())
+        .input("SysAmount", sql.Money, totalAmount)
+        .input("ManualAmount", sql.Money, totalAmount)
+        .query(`
+          INSERT INTO SettlementHeader 
+          (SettlementID, CashierID, BusinessUnitID, Shift, TerminalCode, LastSettlementDate, SysAmount, ManualAmount)
+          VALUES 
+          (@SettlementID, @CashierID, @BusinessUnitID, @Shift, @TerminalCode, @LastSettlementDate, @SysAmount, @ManualAmount)
+        `);
+
+      // Insert into SettlementTotalSales
+      await transaction.request()
+        .input("SettlementID", sql.UniqueIdentifier, settlementId)
+        .input("PayMode", sql.VarChar, paymentMethod || "CASH")
+        .input("SysAmount", sql.Money, totalAmount)
+        .input("ManualAmount", sql.Money, totalAmount)
+        .input("ReceiptCount", sql.Numeric, items?.length || 1)
+        .query(`
+          INSERT INTO SettlementTotalSales 
+          (SettlementID, PayMode, SysAmount, ManualAmount, ReceiptCount)
+          VALUES 
+          (@SettlementID, @PayMode, @SysAmount, @ManualAmount, @ReceiptCount)
+        `);
+
+      await transaction.commit();
+      console.log("✅ Sale saved:", settlementId);
+      res.json({ success: true, settlementId });
+
+    } catch (err) {
+      await transaction.rollback();
+      throw err;
+    }
+
+  } catch (err) {
+    console.error("SAVE SALE ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
