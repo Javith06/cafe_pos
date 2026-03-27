@@ -566,15 +566,6 @@ export default function MenuScreen() {
                       <Text style={styles.price} numberOfLines={1}>
                         $ {item.Price?.toFixed(2) ?? "0.00"}
                       </Text>
-                      <TouchableOpacity
-                        style={styles.addButton}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          openModifiers(item);
-                        }}
-                      >
-                        <Text style={styles.addButtonText}>ADD</Text>
-                      </TouchableOpacity>
                     </View>
                   </TouchableOpacity>
                 )}
@@ -936,25 +927,12 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "800",
     fontSize: 15,
+    minHeight: 40,
   },
   price: {
     color: "#22c55e",
     fontWeight: "900",
     fontSize: 15,
-  },
-  addButton: {
-    backgroundColor: "rgba(34, 197, 94, 0.2)",
-    paddingVertical: 10,
-    borderRadius: 10,
-    marginTop: 8,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(34, 197, 94, 0.4)",
-  },
-  addButtonText: {
-    color: "#4ade80",
-    fontWeight: "800",
-    fontSize: 13,
   },
   mobileCartButton: {
     position: "absolute",
