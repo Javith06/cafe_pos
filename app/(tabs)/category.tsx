@@ -11,7 +11,6 @@ import {
   useWindowDimensions,
   View,
   ActivityIndicator,
-  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -29,8 +28,34 @@ type TableItem = {
 
 const SECTIONS = ["SECTION_1", "SECTION_2", "SECTION_3", "TAKEAWAY"];
 
+// 🔥 FALLBACK DATA - If API fails
+const getFallbackTables = (): TableItem[] => {
+  const tables: TableItem[] = [];
+  // SECTION 1: Tables 1-15
+  for (let i = 1; i <= 15; i++) {
+    tables.push({ id: `fb-${i}`, label: `${i}`, DiningSection: 1 });
+  }
+  // SECTION 2: Tables 16-30
+  for (let i = 16; i <= 30; i++) {
+    tables.push({ id: `fb-${i}`, label: `${i}`, DiningSection: 2 });
+  }
+  // SECTION 3: Tables 31-40
+  for (let i = 31; i <= 40; i++) {
+    tables.push({ id: `fb-${i}`, label: `${i}`, DiningSection: 3 });
+  }
+  // TAKEAWAY: T1-T20
+  for (let i = 1; i <= 20; i++) {
+    tables.push({ id: `fb-T${i}`, label: `T${i}`, DiningSection: 4 });
+  }
+  // D1-D20
+  for (let i = 1; i <= 20; i++) {
+    tables.push({ id: `fb-D${i}`, label: `D${i}`, DiningSection: 3 });
+  }
+  return tables;
+};
+
 export default function Category() {
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const router = useRouter();
   const { section: urlSection } = useLocalSearchParams<{ section?: string }>();
 
@@ -43,27 +68,56 @@ export default function Category() {
   const activeOrders = useActiveOrdersStore((s) => s.activeOrders);
   const carts = useCartStore((s) => s.carts);
 
-  // ✅ Fetch tables from backend
   useEffect(() => {
     fetchTables();
   }, []);
 
   const fetchTables = async () => {
     try {
-      const response = await fetch("https://cafepos-production-3428.up.railway.app/tables");
-      let data = await response.json();
+      console.log("🔄 Fetching tables...");
       
-      // 🔥 Convert DiningSection from string to number
-      data = data.map((item: any) => ({
-        id: item.id,
-        label: item.label,
-        DiningSection: Number(item.DiningSection)
-      }));
+      // Add timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       
-      console.log("✅ Tables loaded:", data.length);
-      setAllTables(data);
+      const response = await fetch("https://cafepos-production-3428.up.railway.app/tables", {
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      let tablesArray: any[] = [];
+      if (Array.isArray(data)) {
+        tablesArray = data;
+      } else if (data?.data && Array.isArray(data.data)) {
+        tablesArray = data.data;
+      } else if (data?.recordset && Array.isArray(data.recordset)) {
+        tablesArray = data.recordset;
+      }
+      
+      if (tablesArray.length > 0) {
+        const convertedData = tablesArray.map((item: any) => ({
+          id: item.id || item.TableId,
+          label: item.label || item.TableNumber,
+          DiningSection: Number(item.DiningSection)
+        })).filter(item => item.id && item.label);
+        
+        console.log("✅ API tables loaded:", convertedData.length);
+        setAllTables(convertedData);
+      } else {
+        throw new Error("No data from API");
+      }
+      
     } catch (error) {
-      console.error("Failed to fetch tables:", error);
+      console.log("⚠️ Using fallback tables");
+      const fallbackData = getFallbackTables();
+      setAllTables(fallbackData);
     } finally {
       setLoading(false);
     }
@@ -75,14 +129,14 @@ export default function Category() {
     }
   }, [urlSection]);
 
-  // 📱 Responsive columns based on screen width
+  // Responsive columns
   let columns = 10;
-  if (width < 480) columns = 3;      // Mobile portrait
-  else if (width < 768) columns = 4; // Mobile landscape / small tablet
-  else if (width < 1024) columns = 6; // Tablet
-  else if (width < 1280) columns = 8; // Small laptop
-  else if (width < 1920) columns = 10; // Desktop
-  else columns = 12;                   // Large desktop
+  if (width < 480) columns = 3;
+  else if (width < 768) columns = 4;
+  else if (width < 1024) columns = 6;
+  else if (width < 1280) columns = 8;
+  else if (width < 1920) columns = 10;
+  else columns = 12;
 
   const GAP = 12;
   const PADDING = width > 768 ? 24 : 16;
@@ -96,12 +150,10 @@ export default function Category() {
     }
   }, [activeTab]);
 
-  // 📏 Responsive fonts
   const numberFont = Math.max(12, Math.min(24, itemSize * 0.32));
   const smallFont = Math.max(9, Math.min(18, itemSize * 0.2));
   const tabFont = width > 768 ? 16 : 14;
 
-  // ✅ Filter tables based on active tab
   const currentTables = allTables.filter((table) => {
     if (activeTab === "TAKEAWAY") {
       return table.DiningSection === 3 || table.DiningSection === 4;
@@ -125,7 +177,6 @@ export default function Category() {
     let timeText = "";
     let orderText = "";
     let billAmount = 0;
-    let minutes = 0;
 
     if (tableData) {
       if (tableData.status === "HOLD") {
@@ -158,7 +209,7 @@ export default function Category() {
       }
 
       const elapsedMs = Date.now() - tableData.startTime;
-      minutes = Math.floor(elapsedMs / 60000);
+      const minutes = Math.floor(elapsedMs / 60000);
 
       switch (tableData.status) {
         case "HOLD":
@@ -206,12 +257,12 @@ export default function Category() {
           let newContext: any;
           if (activeTab === "TAKEAWAY") {
             newContext = {
-              orderType: "TAKEAWAY",
+              orderType: "TAKEAWAY" as const,
               takeawayNo: item.label,
             };
           } else {
             newContext = {
-              orderType: "DINE_IN",
+              orderType: "DINE_IN" as const,
               section: activeTab,
               tableNo: item.label,
             };
@@ -243,7 +294,7 @@ export default function Category() {
               <Text style={[styles.timeText, { fontSize: smallFont }]}>{timeText}</Text>
               <Text style={[styles.orderText, { fontSize: smallFont }]}>{orderText}</Text>
               <Text style={[styles.billText, { fontSize: smallFont + 1 }]}>
-                ${billAmount.toFixed(2)}
+                ₹{billAmount.toFixed(2)}
               </Text>
             </View>
           )}
@@ -254,15 +305,15 @@ export default function Category() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#000" }}>
+      <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#a7f3d0" />
-        <Text style={{ color: "#fff", marginTop: 10 }}>Loading tables...</Text>
+        <Text style={styles.loadingText}>Loading tables...</Text>
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#000" }}>
+    <SafeAreaView style={styles.safeArea}>
       <ImageBackground
         source={require("../../assets/images/a4.jpg")}
         style={styles.background}
@@ -277,54 +328,50 @@ export default function Category() {
             contentContainerStyle={styles.tabsScrollContent}
           >
             <View style={[styles.tabsWrapper, { gap: width > 768 ? 16 : 10 }]}>
-              {SECTIONS.map((section) => {
-                const isActive = activeTab === section;
-                return (
-                  <TouchableOpacity
-                    key={section}
-                    onPress={() => setActiveTab(section)}
+              {SECTIONS.map((section) => (
+                <TouchableOpacity
+                  key={section}
+                  onPress={() => setActiveTab(section)}
+                  style={[
+                    styles.tabBtn,
+                    activeTab === section && styles.activeTabBtn,
+                    { paddingHorizontal: width > 768 ? 24 : 16, paddingVertical: width > 768 ? 12 : 10 }
+                  ]}
+                >
+                  <Text
                     style={[
-                      styles.tabBtn,
-                      isActive && styles.activeTabBtn,
-                      { paddingHorizontal: width > 768 ? 24 : 16, paddingVertical: width > 768 ? 12 : 10 }
+                      styles.tabText,
+                      activeTab === section && styles.activeTabText,
+                      { fontSize: tabFont }
                     ]}
                   >
-                    <Text
-                      style={[
-                        styles.tabText,
-                        isActive && styles.activeTabText,
-                        { fontSize: tabFont, fontWeight: "600" }
-                      ]}
-                    >
-                      {section.replace("_", " ")}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+                    {section.replace("_", " ")}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </ScrollView>
 
           <View style={[styles.navRightGroup, { gap: width > 768 ? 12 : 8 }]}>
             <TouchableOpacity
-              style={[styles.headerActionBtn, { paddingHorizontal: width > 768 ? 16 : 12, paddingVertical: width > 768 ? 10 : 8 }]}
+              style={styles.headerActionBtn}
               onPress={() => router.push("/TimeEntry")}
             >
-              <Text style={[styles.headerActionText, { fontSize: width > 768 ? 14 : 12 }]}>Time Entry</Text>
+              <Text style={styles.headerActionText}>Time Entry</Text>
             </TouchableOpacity>
             
-            {/* 🔥 SALES BUTTON ADDED */}
             <TouchableOpacity
-              style={[styles.headerActionBtn, { paddingHorizontal: width > 768 ? 16 : 12, paddingVertical: width > 768 ? 10 : 8, backgroundColor: "rgba(46, 204, 113, 0.3)" }]}
+              style={[styles.headerActionBtn, styles.salesBtn]}
               onPress={() => router.push("/sales-report")}
             >
-              <Text style={[styles.headerActionText, { fontSize: width > 768 ? 14 : 12 }]}>Sales</Text>
+              <Text style={styles.headerActionText}>Sales</Text>
             </TouchableOpacity>
             
             <TouchableOpacity
-              style={[styles.headerActionBtn, styles.logoutBtn, { paddingHorizontal: width > 768 ? 16 : 12, paddingVertical: width > 768 ? 10 : 8 }]}
+              style={[styles.headerActionBtn, styles.logoutBtn]}
               onPress={() => router.replace("/")}
             >
-              <Text style={[styles.headerActionText, { fontSize: width > 768 ? 14 : 12 }]}>Logout</Text>
+              <Text style={styles.headerActionText}>Logout</Text>
             </TouchableOpacity>
           </View>
         </BlurView>
@@ -342,6 +389,14 @@ export default function Category() {
             paddingBottom: 50,
           }}
           showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>No tables found</Text>
+              <TouchableOpacity onPress={fetchTables} style={styles.retryBtn}>
+                <Text style={styles.retryText}>Refresh</Text>
+              </TouchableOpacity>
+            </View>
+          }
         />
       </ImageBackground>
     </SafeAreaView>
@@ -349,8 +404,11 @@ export default function Category() {
 }
 
 const styles = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: "#000" },
   background: { flex: 1, width: "100%", height: "100%" },
   overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.25)" },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#000" },
+  loadingText: { color: "#fff", marginTop: 10 },
   topNavContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -360,64 +418,24 @@ const styles = StyleSheet.create({
   },
   tabsWrapper: { flexDirection: "row" },
   tabsScrollContent: { alignItems: "center", paddingHorizontal: 8 },
-  tabBtn: {
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    marginHorizontal: 4,
-  },
-  activeTabBtn: {
-    backgroundColor: "rgba(167,243,208,0.2)",
-  },
-  tabText: {
-    color: "#e5e7eb",
-  },
-  activeTabText: {
-    color: "#a7f3d0",
-  },
-  navRightGroup: {
-    flexDirection: "row",
-  },
-  headerActionBtn: {
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    marginLeft: 8,
-  },
-  logoutBtn: {
-    backgroundColor: "rgba(239,68,68,0.3)",
-  },
-  headerActionText: {
-    color: "#fff",
-    fontWeight: "700",
-  },
-  tableBox: {
-    borderRadius: 16,
-    borderWidth: 1.5,
-    overflow: "hidden",
-  },
-  tableContent: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 8,
-  },
-  tableNumber: {
-    fontWeight: "900",
-    color: "#fff",
-    marginBottom: 2,
-  },
-  tableInfo: {
-    alignItems: "center",
-  },
-  timeText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-  orderText: {
-    color: "#fff",
-    fontWeight: "700",
-  },
-  billText: {
-    color: "#fff",
-    fontWeight: "900",
-  },
+  tabBtn: { borderRadius: 12, backgroundColor: "rgba(255,255,255,0.1)", marginHorizontal: 4 },
+  activeTabBtn: { backgroundColor: "rgba(167,243,208,0.2)" },
+  tabText: { color: "#e5e7eb" },
+  activeTabText: { color: "#a7f3d0" },
+  navRightGroup: { flexDirection: "row" },
+  headerActionBtn: { borderRadius: 10, backgroundColor: "rgba(255,255,255,0.15)", marginLeft: 8, paddingHorizontal: 16, paddingVertical: 10 },
+  salesBtn: { backgroundColor: "rgba(46, 204, 113, 0.3)" },
+  logoutBtn: { backgroundColor: "rgba(239,68,68,0.3)" },
+  headerActionText: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  tableBox: { borderRadius: 16, borderWidth: 1.5, overflow: "hidden" },
+  tableContent: { flex: 1, justifyContent: "center", alignItems: "center", padding: 8 },
+  tableNumber: { fontWeight: "900", color: "#fff", marginBottom: 2 },
+  tableInfo: { alignItems: "center" },
+  timeText: { color: "#fff", fontWeight: "600" },
+  orderText: { color: "#fff", fontWeight: "700" },
+  billText: { color: "#fff", fontWeight: "900" },
+  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", padding: 50 },
+  emptyText: { color: "#fff", fontSize: 16, marginBottom: 20 },
+  retryBtn: { backgroundColor: "#2ecc71", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
+  retryText: { color: "#fff", fontWeight: "bold" },
 });

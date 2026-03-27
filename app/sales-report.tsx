@@ -9,16 +9,16 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const API_URL = "https://cafepos-production-3428.up.railway.app";
 
 export default function SalesReport() {
-  const [sales, setSales] = useState([]);
+  const [sales, setSales] = useState<any[]>([]);  // ✅ Explicit array type
   const [summary, setSummary] = useState<any>(null);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState("daily");
 
   useEffect(() => {
     fetchData();
@@ -40,9 +40,16 @@ export default function SalesReport() {
     try {
       const response = await fetch(`${API_URL}/api/sales/all`);
       const data = await response.json();
-      setSales(data);
+      // ✅ Ensure data is array
+      if (Array.isArray(data)) {
+        setSales(data);
+      } else {
+        console.log("Sales data is not array:", data);
+        setSales([]);
+      }
     } catch (error) {
       console.error("Sales fetch error:", error);
+      setSales([]);
     }
   };
 
@@ -53,6 +60,7 @@ export default function SalesReport() {
       setSummary(data);
     } catch (error) {
       console.error("Summary fetch error:", error);
+      setSummary(null);
     }
   };
 
@@ -81,95 +89,97 @@ export default function SalesReport() {
   }
 
   return (
-    <ScrollView 
-      style={styles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Sales Report</Text>
-      </View>
-
-      {/* Date Selector */}
-      <View style={styles.dateSelector}>
-        <TouchableOpacity onPress={() => changeDate(-1)} style={styles.dateButton}>
-          <Text style={styles.dateButtonText}>←</Text>
-        </TouchableOpacity>
-        <View style={styles.dateCard}>
-          <Text style={styles.dateLabel}>Selected Date</Text>
-          <Text style={styles.dateValue}>{selectedDate}</Text>
+    <SafeAreaView style={styles.container}>
+      <ScrollView 
+        style={styles.container}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Sales Report</Text>
         </View>
-        <TouchableOpacity onPress={() => changeDate(1)} style={styles.dateButton}>
-          <Text style={styles.dateButtonText}>→</Text>
-        </TouchableOpacity>
-      </View>
 
-      {/* Summary Cards */}
-      {summary && summary.TotalSales > 0 ? (
-        <>
-          <View style={styles.summaryContainer}>
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>Total Sales</Text>
-              <Text style={styles.summaryValue}>{formatCurrency(summary.TotalSales)}</Text>
-            </View>
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>Transactions</Text>
-              <Text style={styles.summaryValue}>{summary.TotalTransactions || 0}</Text>
-            </View>
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>Items Sold</Text>
-              <Text style={styles.summaryValue}>{summary.TotalItems || 0}</Text>
-            </View>
+        {/* Date Selector */}
+        <View style={styles.dateSelector}>
+          <TouchableOpacity onPress={() => changeDate(-1)} style={styles.dateButton}>
+            <Text style={styles.dateButtonText}>←</Text>
+          </TouchableOpacity>
+          <View style={styles.dateCard}>
+            <Text style={styles.dateLabel}>Selected Date</Text>
+            <Text style={styles.dateValue}>{selectedDate}</Text>
           </View>
-
-          {/* Payment Mode Breakdown */}
-          <View style={styles.paymentCard}>
-            <Text style={styles.sectionTitle}>Payment Mode Breakdown</Text>
-            <View style={styles.paymentRow}>
-              <Text style={styles.paymentLabel}>Cash</Text>
-              <Text style={styles.paymentAmount}>{formatCurrency(summary.CashSales)}</Text>
-            </View>
-            <View style={styles.paymentRow}>
-              <Text style={styles.paymentLabel}>NETS</Text>
-              <Text style={styles.paymentAmount}>{formatCurrency(summary.NETS_Sales)}</Text>
-            </View>
-            <View style={styles.paymentRow}>
-              <Text style={styles.paymentLabel}>PayNow</Text>
-              <Text style={styles.paymentAmount}>{formatCurrency(summary.PayNow_Sales)}</Text>
-            </View>
-          </View>
-        </>
-      ) : (
-        <View style={styles.noDataCard}>
-          <Text style={styles.noDataText}>No sales data for {selectedDate}</Text>
+          <TouchableOpacity onPress={() => changeDate(1)} style={styles.dateButton}>
+            <Text style={styles.dateButtonText}>→</Text>
+          </TouchableOpacity>
         </View>
-      )}
 
-      {/* Recent Transactions */}
-      <View style={styles.transactionsCard}>
-        <Text style={styles.sectionTitle}>Recent Transactions</Text>
-        {sales.length === 0 ? (
-          <Text style={styles.noDataText}>No transactions found</Text>
-        ) : (
-          sales.slice(0, 10).map((item: any, index) => (
-            <View key={index} style={styles.transactionItem}>
-              <View style={styles.transactionLeft}>
-                <Text style={styles.transactionDate}>
-                  {item.SettlementDate ? new Date(item.SettlementDate).toLocaleDateString() : 'N/A'}
-                </Text>
-                <Text style={styles.transactionMode}>{item.PayMode}</Text>
-                <Text style={styles.transactionReceipts}>{item.ReceiptCount} items</Text>
+        {/* Summary Cards */}
+        {summary && summary.TotalSales > 0 ? (
+          <>
+            <View style={styles.summaryContainer}>
+              <View style={styles.summaryCard}>
+                <Text style={styles.summaryLabel}>Total Sales</Text>
+                <Text style={styles.summaryValue}>{formatCurrency(summary.TotalSales)}</Text>
               </View>
-              <Text style={styles.transactionAmount}>
-                {formatCurrency(item.SysAmount)}
-              </Text>
+              <View style={styles.summaryCard}>
+                <Text style={styles.summaryLabel}>Transactions</Text>
+                <Text style={styles.summaryValue}>{summary.TotalTransactions || 0}</Text>
+              </View>
+              <View style={styles.summaryCard}>
+                <Text style={styles.summaryLabel}>Items Sold</Text>
+                <Text style={styles.summaryValue}>{summary.TotalItems || 0}</Text>
+              </View>
             </View>
-          ))
+
+            {/* Payment Mode Breakdown */}
+            <View style={styles.paymentCard}>
+              <Text style={styles.sectionTitle}>Payment Mode Breakdown</Text>
+              <View style={styles.paymentRow}>
+                <Text style={styles.paymentLabel}>Cash</Text>
+                <Text style={styles.paymentAmount}>{formatCurrency(summary.CashSales)}</Text>
+              </View>
+              <View style={styles.paymentRow}>
+                <Text style={styles.paymentLabel}>NETS</Text>
+                <Text style={styles.paymentAmount}>{formatCurrency(summary.NETS_Sales)}</Text>
+              </View>
+              <View style={styles.paymentRow}>
+                <Text style={styles.paymentLabel}>PayNow</Text>
+                <Text style={styles.paymentAmount}>{formatCurrency(summary.PayNow_Sales)}</Text>
+              </View>
+            </View>
+          </>
+        ) : (
+          <View style={styles.noDataCard}>
+            <Text style={styles.noDataText}>No sales data for {selectedDate}</Text>
+          </View>
         )}
-      </View>
-    </ScrollView>
+
+        {/* Recent Transactions */}
+        <View style={styles.transactionsCard}>
+          <Text style={styles.sectionTitle}>Recent Transactions</Text>
+          {!Array.isArray(sales) || sales.length === 0 ? (
+            <Text style={styles.noDataText}>No transactions found</Text>
+          ) : (
+            sales.slice(0, 10).map((item: any, index) => (
+              <View key={index} style={styles.transactionItem}>
+                <View style={styles.transactionLeft}>
+                  <Text style={styles.transactionDate}>
+                    {item.SettlementDate ? new Date(item.SettlementDate).toLocaleDateString() : 'N/A'}
+                  </Text>
+                  <Text style={styles.transactionMode}>{item.PayMode}</Text>
+                  <Text style={styles.transactionReceipts}>{item.ReceiptCount} items</Text>
+                </View>
+                <Text style={styles.transactionAmount}>
+                  {formatCurrency(item.SysAmount)}
+                </Text>
+              </View>
+            ))
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 

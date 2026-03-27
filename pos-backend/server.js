@@ -2,6 +2,7 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
+const sql = require("mssql");
 const { poolPromise } = require("./db");
 
 const app = express();
@@ -11,13 +12,13 @@ const PORT = process.env.PORT || 3000;
 console.log("PORT:", PORT);
 console.log("DB_SERVER:", process.env.DB_SERVER);
 
-// ✅ FIXED CORS
+// ✅ CORS
 app.use(
   cors({
     origin: "*",
     methods: ["GET", "POST"],
     allowedHeaders: ["Content-Type"],
-  }),
+  })
 );
 
 app.use(express.json());
@@ -33,7 +34,7 @@ app.get("/test", (req, res) => {
 });
 
 /* ================= TABLES ================= */
-app.get("/tables", async (req, res) => {  
+app.get("/tables", async (req, res) => {
   try {
     const pool = await poolPromise;
     const result = await pool.request().query(`
@@ -42,6 +43,7 @@ app.get("/tables", async (req, res) => {
         TableNumber AS label,
         DiningSection
       FROM TableMaster
+      WHERE IsActive = 1
       ORDER BY SortCode
     `);
     res.json(result.recordset);
@@ -55,15 +57,13 @@ app.get("/tables", async (req, res) => {
 app.get("/kitchens", async (req, res) => {
   try {
     const pool = await poolPromise;
-
     const result = await pool.request().query(`
       SELECT 
-          CategoryId,             
+        CategoryId,             
         CategoryName AS KitchenTypeName
       FROM CategoryMaster
       WHERE IsActive = 1
     `);
-
     res.json(result.recordset);
   } catch (err) {
     console.error("KITCHEN ERROR:", err);
@@ -75,10 +75,10 @@ app.get("/kitchens", async (req, res) => {
 app.get("/dishgroups/:CategoryId", async (req, res) => {
   try {
     const pool = await poolPromise;
-
     const result = await pool
       .request()
-      .input("CategoryId", req.params.CategoryId).query(`
+      .input("CategoryId", req.params.CategoryId)
+      .query(`
         SELECT 
           a.DishGroupId,
           a.DishGroupName
@@ -88,7 +88,6 @@ app.get("/dishgroups/:CategoryId", async (req, res) => {
         WHERE a.CategoryId = @CategoryId
           AND a.IsActive = 1
       `);
-
     res.json(result.recordset);
   } catch (err) {
     console.error("DISH GROUP ERROR:", err);
@@ -96,21 +95,19 @@ app.get("/dishgroups/:CategoryId", async (req, res) => {
   }
 });
 
-/* ================= DISHES (🔥 IMAGE FIXED) ================= */
+/* ================= DISHES ================= */
 app.get("/dishes/:DishGroupId", async (req, res) => {
   try {
     const pool = await poolPromise;
-
     const result = await pool
       .request()
-      .input("DishGroupId", req.params.DishGroupId).query(`
+      .input("DishGroupId", req.params.DishGroupId)
+      .query(`
         SELECT
           d.DishId,
           d.Name,
           d.DishGroupId,
           ISNULL(p.Amount, 0) AS Price,
-
-          -- 🔥 BASE64 IMAGE
           CASE 
             WHEN i.ImageData IS NOT NULL THEN
               'data:image/jpeg;base64,' + 
@@ -120,20 +117,17 @@ app.get("/dishes/:DishGroupId", async (req, res) => {
               )
             ELSE NULL
           END AS ImageBase64
-
         FROM DishMaster d
         INNER JOIN DishPriceList p 
           ON d.DishId = p.DishId
         LEFT JOIN ImageList i 
           ON d.Imageid = i.Imageid
-
         WHERE d.IsActive = 1
         AND d.DishGroupId = @DishGroupId
       `);
-
     res.json(result.recordset);
   } catch (err) {
-    console.error("🔥 DISH ERROR:", err);
+    console.error("DISH ERROR:", err);
     res.status(500).send(err.message);
   }
 });
@@ -142,22 +136,20 @@ app.get("/dishes/:DishGroupId", async (req, res) => {
 app.get("/modifiers/:dishId", async (req, res) => {
   try {
     const pool = await poolPromise;
-
-    const result = await pool.request().input("dishId", req.params.dishId)
+    const result = await pool
+      .request()
+      .input("dishId", req.params.dishId)
       .query(`
         SELECT 
           dm.DishId,
           dm.ModifierId AS ModifierID,
           m.ModifierName,
-
           TRY_CAST(REPLACE(m.ModifierName, '$', '') AS FLOAT) AS Price
-
         FROM DishModifier dm 
         INNER JOIN ModifierMaster m 
           ON dm.ModifierId = m.ModifierId
         WHERE dm.DishId = @dishId
       `);
-
     res.json(result.recordset);
   } catch (err) {
     console.error("MODIFIER ERROR:", err);
@@ -165,7 +157,7 @@ app.get("/modifiers/:dishId", async (req, res) => {
   }
 });
 
-// ================= SALES REPORT APIs =================
+/* ================= SALES REPORT APIs ================= */
 
 // API 1: Get all sales
 app.get("/api/sales/all", async (req, res) => {
@@ -247,9 +239,7 @@ app.get("/api/sales/range", async (req, res) => {
   }
 });
 
-
 /* ================= SERVER ================= */
-
 console.log("🚀 Starting server...");
 
 app.listen(PORT, "0.0.0.0", () => {
