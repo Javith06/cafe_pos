@@ -1,6 +1,6 @@
 const sql = require("mssql");
  
-// MSSQL configuration with full optimization
+// MSSQL configuration
 const dbConfig = {
   user: "ups",
   password: "ups",
@@ -10,37 +10,20 @@ const dbConfig = {
   options: {
     encrypt: false,        
     enableArithAbort: true, 
-    requestTimeout: 120000,
-    connectionTimeout: 60000,
-    pool: {
-      max: 10,
-      min: 0,
-      idleTimeoutMillis: 30000
-    }
+     requestTimeout: 120000 
   },
-  pool: {
-    max: 10,
-    min: 0,
-    idleTimeoutMillis: 30000
-  }
 };
  
-// Create a single connection pool with retry
-let poolPromise = null;
-
-const getPool = async () => {
-  if (poolPromise) return poolPromise;
-  
-  try {
-    poolPromise = await new sql.ConnectionPool(dbConfig).connect();
+// Create a single connection pool
+const poolPromise = new sql.ConnectionPool(dbConfig)
+  .connect()
+  .then(pool => {
     console.log("✅ Connected to MSSQL");
-    return poolPromise;
-  } catch (err) {
-    console.error("❌ DB Connection Error: ", err.message);
-    // Don't exit, allow retry
-    poolPromise = null;
-    throw err;
-  }
-};
+    return pool;
+  })
+  .catch(err => {
+    console.error("❌ DB Connection Error: ", err);
+    process.exit(1); 
+  });
  
-module.exports = { sql, getPool };
+module.exports = { sql, poolPromise };
