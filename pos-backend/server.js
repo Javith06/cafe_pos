@@ -44,9 +44,15 @@ app.get("/test", (req, res) => {
 app.get("/tables", async (req, res) => {
   try {
     console.log("📊 Fetching tables...");
-    const pool = await poolPromise;
     
-    // 🔥 Optimized query - no ORDER BY for speed
+    const { getPool } = require("./db");
+    const pool = await getPool();
+    
+    if (!pool) {
+      throw new Error("No database connection");
+    }
+    
+    // Simple query - no ORDER BY
     const result = await pool.request().query(`
       SELECT 
         TableId AS id,
@@ -57,22 +63,17 @@ app.get("/tables", async (req, res) => {
     
     console.log(`✅ Found ${result.recordset.length} tables`);
     
-    // Sort in memory (faster than SQL ORDER BY sometimes)
+    // Sort in JavaScript
     const tables = result.recordset.sort((a, b) => {
       const numA = parseInt(a.label) || 0;
       const numB = parseInt(b.label) || 0;
       return numA - numB;
     });
     
-    // Add cache control headers
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    
     res.json(tables);
     
   } catch (err) {
-    console.error("❌ TABLES ERROR:", err);
+    console.error("❌ TABLES ERROR:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
