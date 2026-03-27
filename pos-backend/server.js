@@ -12,13 +12,6 @@ const PORT = process.env.PORT || 3000;
 console.log("PORT:", PORT);
 console.log("DB_SERVER:", process.env.DB_SERVER);
 
-// ✅ Increase timeout for all requests
-app.use((req, res, next) => {
-  req.setTimeout(30000); // 30 seconds
-  res.setTimeout(30000);
-  next();
-});
-
 // ✅ CORS
 app.use(
   cors({
@@ -43,37 +36,19 @@ app.get("/test", (req, res) => {
 /* ================= TABLES ================= */
 app.get("/tables", async (req, res) => {
   try {
-    console.log("📊 Fetching tables...");
-    
-    const { getPool } = require("./db");
-    const pool = await getPool();
-    
-    if (!pool) {
-      throw new Error("No database connection");
-    }
-    
-    // Simple query - no ORDER BY
+    const pool = await poolPromise;
     const result = await pool.request().query(`
       SELECT 
         TableId AS id,
         TableNumber AS label,
         DiningSection
       FROM TableMaster
+      WHERE IsActive = 1
+      ORDER BY SortCode
     `);
-    
-    console.log(`✅ Found ${result.recordset.length} tables`);
-    
-    // Sort in JavaScript
-    const tables = result.recordset.sort((a, b) => {
-      const numA = parseInt(a.label) || 0;
-      const numB = parseInt(b.label) || 0;
-      return numA - numB;
-    });
-    
-    res.json(tables);
-    
+    res.json(result.recordset);
   } catch (err) {
-    console.error("❌ TABLES ERROR:", err.message);
+    console.error("TABLES ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -260,79 +235,6 @@ app.get("/api/sales/range", async (req, res) => {
     res.json(result.recordset);
   } catch (err) {
     console.error("RANGE ERROR:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-/* ================= SAVE SALE API ================= */
-app.post("/api/sales/save", async (req, res) => {
-  try {
-    const pool = await poolPromise;
-    const {
-      orderId,
-      orderType,
-      tableNo,
-      section,
-      items,
-      subTotal,
-      taxAmount,
-      discountAmount,
-      totalAmount,
-      paymentMethod,
-      cashierId
-    } = req.body;
-
-    const crypto = require('crypto');
-    const settlementId = crypto.randomUUID();
-    const businessUnitId = "FBFD4E31-5C91-4DEC-86EA-989D3B5639CA";
-
-    // Start transaction
-    const transaction = new sql.Transaction(pool);
-    await transaction.begin();
-
-    try {
-      // Insert into SettlementHeader
-      await transaction.request()
-        .input("SettlementID", sql.UniqueIdentifier, settlementId)
-        .input("CashierID", sql.UniqueIdentifier, cashierId || "FFA46DDA-2871-42BB-BE6D-A547AE9C1B88")
-        .input("BusinessUnitID", sql.UniqueIdentifier, businessUnitId)
-        .input("Shift", sql.Numeric, 1)
-        .input("TerminalCode", sql.VarChar, "SR")
-        .input("LastSettlementDate", sql.DateTime, new Date())
-        .input("SysAmount", sql.Money, totalAmount)
-        .input("ManualAmount", sql.Money, totalAmount)
-        .query(`
-          INSERT INTO SettlementHeader 
-          (SettlementID, CashierID, BusinessUnitID, Shift, TerminalCode, LastSettlementDate, SysAmount, ManualAmount)
-          VALUES 
-          (@SettlementID, @CashierID, @BusinessUnitID, @Shift, @TerminalCode, @LastSettlementDate, @SysAmount, @ManualAmount)
-        `);
-
-      // Insert into SettlementTotalSales
-      await transaction.request()
-        .input("SettlementID", sql.UniqueIdentifier, settlementId)
-        .input("PayMode", sql.VarChar, paymentMethod || "CASH")
-        .input("SysAmount", sql.Money, totalAmount)
-        .input("ManualAmount", sql.Money, totalAmount)
-        .input("ReceiptCount", sql.Numeric, items?.length || 1)
-        .query(`
-          INSERT INTO SettlementTotalSales 
-          (SettlementID, PayMode, SysAmount, ManualAmount, ReceiptCount)
-          VALUES 
-          (@SettlementID, @PayMode, @SysAmount, @ManualAmount, @ReceiptCount)
-        `);
-
-      await transaction.commit();
-      console.log("✅ Sale saved:", settlementId);
-      res.json({ success: true, settlementId });
-
-    } catch (err) {
-      await transaction.rollback();
-      throw err;
-    }
-
-  } catch (err) {
-    console.error("SAVE SALE ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
