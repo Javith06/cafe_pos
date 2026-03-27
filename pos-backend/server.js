@@ -33,10 +33,9 @@ app.get("/test", (req, res) => {
 });
 
 /* ================= TABLES ================= */
-app.get("/tables", async (req, res) => {
+app.get("/tables", async (req, res) => {  
   try {
     const pool = await poolPromise;
-
     const result = await pool.request().query(`
       SELECT 
         TableId AS id,
@@ -45,14 +44,12 @@ app.get("/tables", async (req, res) => {
       FROM TableMaster
       ORDER BY SortCode
     `);
-
     res.json(result.recordset);
   } catch (err) {
-    console.error("TABLE ERROR:", err);
+    console.error("TABLES ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
-
 
 /* ================= KITCHENS ================= */
 app.get("/kitchens", async (req, res) => {

@@ -10,7 +10,7 @@ const dbConfig = {
   options: {
     encrypt: false,        
     enableArithAbort: true, 
-     requestTimeout: 60000 
+     requestTimeout: 120000 
   },
 };
  
