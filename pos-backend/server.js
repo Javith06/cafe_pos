@@ -32,6 +32,28 @@ app.get("/test", (req, res) => {
   res.send("TEST OK");
 });
 
+/* ================= TABLES ================= */
+app.get("/tables", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+
+    const result = await pool.request().query(`
+      SELECT 
+        TableId AS id,
+        TableNumber AS label,
+        DiningSection
+      FROM TableMaster
+      ORDER BY SortCode
+    `);
+
+    res.json(result.recordset);
+  } catch (err) {
+    console.error("TABLE ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 /* ================= KITCHENS ================= */
 app.get("/kitchens", async (req, res) => {
   try {

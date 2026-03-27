@@ -18,35 +18,15 @@ import { useActiveOrdersStore } from "../../stores/activeOrdersStore";
 import { getContextId, setCartItemsGlobal, useCartStore } from "../../stores/cartStore";
 import { getHeldOrders, removeHeldOrder } from "../../stores/heldOrdersStore";
 import { setOrderContext } from "../../stores/orderContextStore";
-import { clearTable, useTableStatusStore } from "../../stores/tableStatusStore";
+import { useTableStatusStore } from "../../stores/tableStatusStore";
+
+const API = "https://cafepos-production-3428.up.railway.app";
 
 type TableItem = {
   id: string;
   label: string;
+  DiningSection: number;
 };
-
-const DINE_IN_TABLES: TableItem[] = [
-  ...Array.from({ length: 35 }, (_, i) => ({
-    id: `${i + 1}`,
-    label: `${i + 1}`,
-  })),
-  { id: "36", label: "18-A" },
-  { id: "37", label: "19-A" },
-  { id: "38", label: "20-A" },
-  { id: "39", label: "21-A" },
-  { id: "40", label: "22-A" },
-];
-
-const TAKEAWAY_TABLES: TableItem[] = [
-  ...Array.from({ length: 20 }, (_, i) => ({
-    id: `T${i + 1}`,
-    label: `T${i + 1}`,
-  })),
-  ...Array.from({ length: 20 }, (_, i) => ({
-    id: `D${i + 1}`,
-    label: `D${i + 1}`,
-  })),
-];
 
 const SECTIONS = ["SECTION_1", "SECTION_2", "SECTION_3", "TAKEAWAY"];
 
@@ -56,14 +36,24 @@ export default function Category() {
   const { section: urlSection } = useLocalSearchParams<{ section?: string }>();
 
   const [activeTab, setActiveTab] = useState<string>("SECTION_1");
-  const sectionScrollRef = useRef<ScrollView>(null);
+  const [tablesFromDB, setTablesFromDB] = useState<TableItem[]>([]);
 
-  const closeActiveOrder = useActiveOrdersStore((s) => s.closeActiveOrder);
-  const clearTable = useTableStatusStore((s) => s.clearTable);
+  const sectionScrollRef = useRef<ScrollView>(null);
 
   const tables = useTableStatusStore((s) => s.tables);
   const activeOrders = useActiveOrdersStore((s) => s.activeOrders);
   const carts = useCartStore((s) => s.carts);
+
+  /* 🔥 FETCH TABLES */
+  useEffect(() => {
+    fetch(`${API}/tables`)
+      .then((res) => res.json())
+      .then((data) => {
+        console.log("TABLES:", data);
+        setTablesFromDB(data);
+      })
+      .catch((err) => console.error("TABLE ERROR:", err));
+  }, []);
 
   useEffect(() => {
     if (urlSection && SECTIONS.includes(urlSection)) {
@@ -75,7 +65,6 @@ export default function Category() {
   if (width < 600) columns = 4;
   else if (width < 900) columns = 5;
   else if (width < 1200) columns = 8;
-  else columns = 10;
 
   const GAP = 12;
   const PADDING = 20;
@@ -93,13 +82,18 @@ export default function Category() {
   const numberFont = Math.max(12, Math.min(22, itemSize * 0.32));
   const smallFont = Math.max(9, Math.min(16, itemSize * 0.18));
 
-  const currentTables =
-    activeTab === "TAKEAWAY" ? TAKEAWAY_TABLES : DINE_IN_TABLES;
+  /* 🔥 DB FILTER */
+  const currentTables = tablesFromDB.filter((t) => {
+    if (activeTab === "SECTION_1") return t.DiningSection === 1;
+    if (activeTab === "SECTION_2") return t.DiningSection === 2;
+    if (activeTab === "SECTION_3") return t.DiningSection === 3;
+    if (activeTab === "TAKEAWAY") return t.DiningSection === 4;
+    return false;
+  });
 
   const renderItem = ({ item }: { item: TableItem }) => {
-
     const tableData = tables.find(
-      (t) => t.section === activeTab && t.tableNo === item.label,
+      (t) => t.section === activeTab && t.tableNo === item.label
     );
 
     let borderColor = "rgba(255,255,255,0.25)";
@@ -107,91 +101,23 @@ export default function Category() {
     let timeText = "";
     let orderText = "";
     let billAmount = 0;
-    let minutes = 0;
-
-    let statusIcon: any = null;
-    let statusColor = "#fff";
 
     if (tableData) {
-      if (tableData.status === "HOLD") {
-        const helds = getHeldOrders();
-        const held = helds.find((h) => h.orderId === tableData.orderId);
-        if (held) {
-          billAmount = held.cart.reduce((sum: number, i: any) => sum + (i.price || 0) * i.qty, 0);
-        }
-      } else {
-        const activeOrder = activeOrders.find((o: any) => o.orderId === tableData.orderId);
-        if (activeOrder) {
-          billAmount = activeOrder.items.reduce((sum: number, i: any) => sum + (i.price || 0) * i.qty, 0);
-        }
-      }
-
-      const contextId = getContextId({
-        orderType: activeTab === "TAKEAWAY" ? "TAKEAWAY" : "DINE_IN",
-        section: activeTab,
-        tableNo: item.label,
-        takeawayNo: item.label,
-      });
-
-      if (contextId) {
-        const cartItems = carts[contextId] || [];
-        const cartSubtotal = cartItems.reduce(
+      const activeOrder = activeOrders.find((o: any) => o.orderId === tableData.orderId);
+      if (activeOrder) {
+        billAmount = activeOrder.items.reduce(
           (sum: number, i: any) => sum + (i.price || 0) * i.qty,
-          0,
+          0
         );
-        billAmount += cartSubtotal;
-      }
-
-      const elapsedMs = Date.now() - tableData.startTime;
-      minutes = Math.floor(elapsedMs / 60000);
-
-      switch (tableData.status) {
-        case "HOLD":
-          bgColor = "rgba(37, 99, 235, 0.7)";
-          borderColor = "#60a5fa";
-          statusIcon = "pause-circle";
-          statusColor = "#93c5fd";
-          break;
-
-        case "SENT":
-          if (minutes >= 60) {
-            bgColor = "rgba(220, 38, 38, 0.7)";
-            borderColor = "#f87171";
-            statusIcon = "warning";
-            statusColor = "#fca5a5";
-          } else {
-            bgColor = "rgba(21, 128, 61, 0.7)";
-            borderColor = "#4ade80";
-            statusIcon = "checkmark-circle";
-            statusColor = "#a7f3d0";
-          }
-          break;
-
-        case "BILL_REQUESTED":
-          bgColor = "rgba(180, 83, 9, 0.7)";
-          borderColor = "#fbbf24";
-          statusIcon = "receipt";
-          statusColor = "#fde68a";
-          break;
-
-        default:
-          bgColor = "rgba(30, 41, 59, 0.8)";
-          borderColor = "rgba(255,255,255,0.25)";
-          statusIcon = "person";
-          statusColor = "#94a3b8";
       }
 
       const time = new Date(tableData.startTime);
-      const hours = time.getHours().toString().padStart(2, "0");
-      const mins = time.getMinutes().toString().padStart(2, "0");
-
-      timeText = `${hours}:${mins}`;
+      timeText = `${time.getHours()}:${time.getMinutes()}`;
       orderText = `#${tableData.orderId}`;
     }
 
     return (
       <TouchableOpacity
-        activeOpacity={0.85}
         style={[
           styles.tableBox,
           {
@@ -202,33 +128,11 @@ export default function Category() {
           },
         ]}
         onPress={() => {
-          let newContext: any;
-          if (activeTab === "TAKEAWAY") {
-            newContext = {
-              orderType: "TAKEAWAY",
-              takeawayNo: item.label,
-            };
-          } else {
-            newContext = {
-              orderType: "DINE_IN",
-              section: activeTab,
-              tableNo: item.label,
-            };
-          }
-          
-          setOrderContext(newContext);
-
-          if (tableData && tableData.status === "HOLD") {
-            const helds = getHeldOrders();
-            const held = helds.find((h) => h.orderId === tableData.orderId);
-            if (held) {
-              const contextId = getContextId(newContext);
-              if (contextId) {
-                setCartItemsGlobal(contextId, held.cart);
-              }
-              removeHeldOrder(held.id);
-            }
-          }
+          setOrderContext({
+            orderType: activeTab === "TAKEAWAY" ? "TAKEAWAY" : "DINE_IN",
+            section: activeTab,
+            tableNo: item.label,
+          });
 
           router.push("/menu/thai_kitchen");
         }}
@@ -243,12 +147,10 @@ export default function Category() {
               <Text style={[styles.timeText, { fontSize: smallFont }]}>
                 {timeText}
               </Text>
-
               <Text style={[styles.orderText, { fontSize: smallFont }]}>
                 {orderText}
               </Text>
-
-              <Text style={[styles.billText, { fontSize: smallFont + 1 }]}>
+              <Text style={[styles.billText, { fontSize: smallFont }]}>
                 ${billAmount.toFixed(2)}
               </Text>
             </View>
@@ -263,68 +165,39 @@ export default function Category() {
       <ImageBackground
         source={require("../../assets/images/a4.jpg")}
         style={styles.background}
-        resizeMode="cover"
       >
         <View style={styles.overlay} />
 
         <BlurView intensity={35} tint="dark" style={styles.topNavContainer}>
-          <ScrollView
-            ref={sectionScrollRef}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tabsScrollContent}
-          >
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.tabsWrapper}>
-              {SECTIONS.map((section) => {
-                const isActive = activeTab === section;
-
-                return (
-                  <TouchableOpacity
-                    key={section}
-                    onPress={() => setActiveTab(section)}
-                    style={[styles.tabBtn, isActive && styles.activeTabBtn]}
-                  >
-                    <Text
-                      style={[styles.tabText, isActive && styles.activeTabText]}
-                    >
-                      {section.replace("_", " ")}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+              {SECTIONS.map((section) => (
+                <TouchableOpacity
+                  key={section}
+                  onPress={() => setActiveTab(section)}
+                  style={[
+                    styles.tabBtn,
+                    activeTab === section && styles.activeTabBtn,
+                  ]}
+                >
+                  <Text style={styles.tabText}>
+                    {section.replace("_", " ")}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </ScrollView>
-
-          <View style={styles.navRightGroup}>
-            <TouchableOpacity
-              style={styles.headerActionBtn}
-              onPress={() => router.push("/TimeEntry")}
-            >
-              <Text style={styles.headerActionText}>Time Entry</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.headerActionBtn, styles.logoutBtn]}
-              onPress={() => router.replace("/")}
-            >
-              <Text style={styles.headerActionText}>Logout</Text>
-            </TouchableOpacity>
-          </View>
         </BlurView>
 
         <FlatList
           data={currentTables}
-          key={columns}
-          numColumns={columns}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          columnWrapperStyle={{ gap: GAP }}
+          numColumns={columns}
           contentContainerStyle={{
-            gap: GAP,
             padding: PADDING,
-            paddingBottom: 50,
+            gap: GAP,
           }}
-          showsVerticalScrollIndicator={false}
         />
       </ImageBackground>
     </SafeAreaView>
@@ -332,110 +205,48 @@ export default function Category() {
 }
 
 const styles = StyleSheet.create({
-  background: {
-    flex: 1,
-    width: "100%",
-    height: "100%",
-  },
-
+  background: { flex: 1 },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.25)",
   },
-
   topNavContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
+    padding: 20,
   },
-
   tabsWrapper: {
     flexDirection: "row",
-    gap: 12,
+    gap: 10,
   },
-
-  tabsScrollContent: {
-    alignItems: "center",
-  },
-
   tabBtn: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.1)",
-  },
-
-  activeTabBtn: {
-    backgroundColor: "rgba(167,243,208,0.2)",
-  },
-
-  tabText: {
-    color: "#e5e7eb",
-    fontWeight: "700",
-  },
-
-  activeTabText: {
-    color: "#a7f3d0",
-  },
-
-  navRightGroup: {
-    flexDirection: "row",
-    gap: 12,
-  },
-
-  headerActionBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    padding: 10,
+    backgroundColor: "#333",
     borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.15)",
   },
-
-  logoutBtn: {
-    backgroundColor: "rgba(239,68,68,0.3)",
+  activeTabBtn: {
+    backgroundColor: "#16a34a",
   },
-
-  headerActionText: {
+  tabText: {
     color: "#fff",
-    fontWeight: "800",
+    fontWeight: "bold",
   },
-
   tableBox: {
-    borderRadius: 16,
-    borderWidth: 1.5,
-    overflow: "hidden",
+    borderWidth: 1,
+    borderRadius: 10,
+    margin: 5,
   },
-
   tableContent: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 8,
   },
-
   tableNumber: {
-    fontWeight: "900",
     color: "#fff",
-    marginBottom: 2,
+    fontWeight: "bold",
   },
-
   tableInfo: {
     alignItems: "center",
   },
-
-  timeText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-
-  orderText: {
-    color: "#fff",
-    fontWeight: "700",
-  },
-
-  billText: {
-    color: "#fff",
-    fontWeight: "900",
-  },
+  timeText: { color: "#fff" },
+  orderText: { color: "#fff" },
+  billText: { color: "#fff" },
 });
