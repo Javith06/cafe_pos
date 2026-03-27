@@ -11,6 +11,7 @@ import {
   useWindowDimensions,
   View,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -29,7 +30,7 @@ type TableItem = {
 const SECTIONS = ["SECTION_1", "SECTION_2", "SECTION_3", "TAKEAWAY"];
 
 export default function Category() {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const router = useRouter();
   const { section: urlSection } = useLocalSearchParams<{ section?: string }>();
 
@@ -74,15 +75,17 @@ export default function Category() {
     }
   }, [urlSection]);
 
-  // Grid calculations
+  // 📱 Responsive columns based on screen width
   let columns = 10;
-  if (width < 600) columns = 4;
-  else if (width < 900) columns = 5;
-  else if (width < 1200) columns = 8;
-  else columns = 10;
+  if (width < 480) columns = 3;      // Mobile portrait
+  else if (width < 768) columns = 4; // Mobile landscape / small tablet
+  else if (width < 1024) columns = 6; // Tablet
+  else if (width < 1280) columns = 8; // Small laptop
+  else if (width < 1920) columns = 10; // Desktop
+  else columns = 12;                   // Large desktop
 
   const GAP = 12;
-  const PADDING = 20;
+  const PADDING = width > 768 ? 24 : 16;
   const availableGridWidth = width - PADDING * 2;
   const itemSize = (availableGridWidth - GAP * (columns - 1)) / columns;
 
@@ -93,8 +96,10 @@ export default function Category() {
     }
   }, [activeTab]);
 
-  const numberFont = Math.max(12, Math.min(22, itemSize * 0.32));
-  const smallFont = Math.max(9, Math.min(16, itemSize * 0.18));
+  // 📏 Responsive fonts
+  const numberFont = Math.max(12, Math.min(24, itemSize * 0.32));
+  const smallFont = Math.max(9, Math.min(18, itemSize * 0.2));
+  const tabFont = width > 768 ? 16 : 14;
 
   // ✅ Filter tables based on active tab
   const currentTables = allTables.filter((table) => {
@@ -264,36 +269,66 @@ export default function Category() {
         resizeMode="cover"
       >
         <View style={styles.overlay} />
-        <BlurView intensity={35} tint="dark" style={styles.topNavContainer}>
+        <BlurView intensity={35} tint="dark" style={[styles.topNavContainer, { paddingHorizontal: width > 768 ? 24 : 16 }]}>
           <ScrollView
             ref={sectionScrollRef}
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.tabsScrollContent}
           >
-            <View style={styles.tabsWrapper}>
-              {SECTIONS.map((section) => (
-                <TouchableOpacity
-                  key={section}
-                  onPress={() => setActiveTab(section)}
-                  style={[styles.tabBtn, activeTab === section && styles.activeTabBtn]}
-                >
-                  <Text style={[styles.tabText, activeTab === section && styles.activeTabText]}>
-                    {section.replace("_", " ")}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <View style={[styles.tabsWrapper, { gap: width > 768 ? 16 : 10 }]}>
+              {SECTIONS.map((section) => {
+                const isActive = activeTab === section;
+                return (
+                  <TouchableOpacity
+                    key={section}
+                    onPress={() => setActiveTab(section)}
+                    style={[
+                      styles.tabBtn,
+                      isActive && styles.activeTabBtn,
+                      { paddingHorizontal: width > 768 ? 24 : 16, paddingVertical: width > 768 ? 12 : 10 }
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.tabText,
+                        isActive && styles.activeTabText,
+                        { fontSize: tabFont, fontWeight: "600" }
+                      ]}
+                    >
+                      {section.replace("_", " ")}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </ScrollView>
-          <View style={styles.navRightGroup}>
-            <TouchableOpacity style={styles.headerActionBtn} onPress={() => router.push("/TimeEntry")}>
-              <Text style={styles.headerActionText}>Time Entry</Text>
+
+          <View style={[styles.navRightGroup, { gap: width > 768 ? 12 : 8 }]}>
+            <TouchableOpacity
+              style={[styles.headerActionBtn, { paddingHorizontal: width > 768 ? 16 : 12, paddingVertical: width > 768 ? 10 : 8 }]}
+              onPress={() => router.push("/TimeEntry")}
+            >
+              <Text style={[styles.headerActionText, { fontSize: width > 768 ? 14 : 12 }]}>Time Entry</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.headerActionBtn, styles.logoutBtn]} onPress={() => router.replace("/")}>
-              <Text style={styles.headerActionText}>Logout</Text>
+            
+            {/* 🔥 SALES BUTTON ADDED */}
+            <TouchableOpacity
+              style={[styles.headerActionBtn, { paddingHorizontal: width > 768 ? 16 : 12, paddingVertical: width > 768 ? 10 : 8, backgroundColor: "rgba(46, 204, 113, 0.3)" }]}
+              onPress={() => router.push("/sales-report")}
+            >
+              <Text style={[styles.headerActionText, { fontSize: width > 768 ? 14 : 12 }]}>Sales</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.headerActionBtn, styles.logoutBtn, { paddingHorizontal: width > 768 ? 16 : 12, paddingVertical: width > 768 ? 10 : 8 }]}
+              onPress={() => router.replace("/")}
+            >
+              <Text style={[styles.headerActionText, { fontSize: width > 768 ? 14 : 12 }]}>Logout</Text>
             </TouchableOpacity>
           </View>
         </BlurView>
+
         <FlatList
           data={currentTables}
           key={columns}
@@ -301,7 +336,11 @@ export default function Category() {
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           columnWrapperStyle={{ gap: GAP }}
-          contentContainerStyle={{ gap: GAP, padding: PADDING, paddingBottom: 50 }}
+          contentContainerStyle={{
+            gap: GAP,
+            padding: PADDING,
+            paddingBottom: 50,
+          }}
           showsVerticalScrollIndicator={false}
         />
       </ImageBackground>
@@ -316,24 +355,69 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
     paddingVertical: 12,
+    backgroundColor: "rgba(0,0,0,0.5)",
   },
-  tabsWrapper: { flexDirection: "row", gap: 12 },
-  tabsScrollContent: { alignItems: "center" },
-  tabBtn: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.1)" },
-  activeTabBtn: { backgroundColor: "rgba(167,243,208,0.2)" },
-  tabText: { color: "#e5e7eb", fontWeight: "700" },
-  activeTabText: { color: "#a7f3d0" },
-  navRightGroup: { flexDirection: "row", gap: 12 },
-  headerActionBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, backgroundColor: "rgba(255,255,255,0.15)" },
-  logoutBtn: { backgroundColor: "rgba(239,68,68,0.3)" },
-  headerActionText: { color: "#fff", fontWeight: "800" },
-  tableBox: { borderRadius: 16, borderWidth: 1.5, overflow: "hidden" },
-  tableContent: { flex: 1, justifyContent: "center", alignItems: "center", padding: 8 },
-  tableNumber: { fontWeight: "900", color: "#fff", marginBottom: 2 },
-  tableInfo: { alignItems: "center" },
-  timeText: { color: "#fff", fontWeight: "600" },
-  orderText: { color: "#fff", fontWeight: "700" },
-  billText: { color: "#fff", fontWeight: "900" },
+  tabsWrapper: { flexDirection: "row" },
+  tabsScrollContent: { alignItems: "center", paddingHorizontal: 8 },
+  tabBtn: {
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    marginHorizontal: 4,
+  },
+  activeTabBtn: {
+    backgroundColor: "rgba(167,243,208,0.2)",
+  },
+  tabText: {
+    color: "#e5e7eb",
+  },
+  activeTabText: {
+    color: "#a7f3d0",
+  },
+  navRightGroup: {
+    flexDirection: "row",
+  },
+  headerActionBtn: {
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    marginLeft: 8,
+  },
+  logoutBtn: {
+    backgroundColor: "rgba(239,68,68,0.3)",
+  },
+  headerActionText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+  tableBox: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    overflow: "hidden",
+  },
+  tableContent: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 8,
+  },
+  tableNumber: {
+    fontWeight: "900",
+    color: "#fff",
+    marginBottom: 2,
+  },
+  tableInfo: {
+    alignItems: "center",
+  },
+  timeText: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+  orderText: {
+    color: "#fff",
+    fontWeight: "700",
+  },
+  billText: {
+    color: "#fff",
+    fontWeight: "900",
+  },
 });
