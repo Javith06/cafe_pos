@@ -3,6 +3,7 @@ import { BlurView } from "expo-blur";
 import { useRouter } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Image,
   ImageBackground,
@@ -117,6 +118,7 @@ export default function MenuScreen() {
   const [kitchens, setKitchens] = useState<Kitchen[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [items, setItems] = useState<Dish[]>([]);
+  const [isLoadingDishes, setIsLoadingDishes] = useState(false);
 
   const [selectedKitchenId, setSelectedKitchenId] = useState("");
   const [selectedKitchenName, setSelectedKitchenName] = useState("");
@@ -224,6 +226,7 @@ export default function MenuScreen() {
   const loadDishes = async (groupId: string) => {
     setSelectedGroup(groupId);
     setItems([]);
+    setIsLoadingDishes(true);
 
     console.log("Fetching dishes for group:", groupId);
 
@@ -243,6 +246,8 @@ export default function MenuScreen() {
       setItems(uniqueData);
     } catch (err) {
       console.log("DISH ERROR:", err);
+    } finally {
+      setIsLoadingDishes(false);
     }
 
     requestAnimationFrame(() => {
@@ -549,7 +554,16 @@ export default function MenuScreen() {
                 showsVerticalScrollIndicator={false}
                 ListEmptyComponent={
                   <View style={styles.emptyWrap}>
-                    <Text style={styles.emptyText}>No items available</Text>
+                    {isLoadingDishes ? (
+                      <>
+                        <ActivityIndicator size="large" color="#4ade80" />
+                        <Text style={[styles.emptyText, { marginTop: 16, color: "#4ade80", fontWeight: "bold" }]}>
+                          Loading Dishes...
+                        </Text>
+                      </>
+                    ) : (
+                      <Text style={styles.emptyText}>No items available</Text>
+                    )}
                   </View>
                 }
                 renderItem={({ item }) => (

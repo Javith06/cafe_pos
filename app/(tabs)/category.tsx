@@ -2,6 +2,7 @@ import { BlurView } from "expo-blur";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   ImageBackground,
   ScrollView,
@@ -10,12 +11,15 @@ import {
   TouchableOpacity,
   useWindowDimensions,
   View,
-  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useActiveOrdersStore } from "../../stores/activeOrdersStore";
-import { getContextId, setCartItemsGlobal, useCartStore } from "../../stores/cartStore";
+import {
+  getContextId,
+  setCartItemsGlobal,
+  useCartStore,
+} from "../../stores/cartStore";
 import { getHeldOrders, removeHeldOrder } from "../../stores/heldOrdersStore";
 import { setOrderContext } from "../../stores/orderContextStore";
 import { useTableStatusStore } from "../../stores/tableStatusStore";
@@ -75,23 +79,26 @@ export default function Category() {
   const fetchTables = async () => {
     try {
       console.log("🔄 Fetching tables...");
-      
+
       // Add timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
-      
-      const response = await fetch("https://cafepos-production-3428.up.railway.app/tables", {
-        signal: controller.signal
-      });
-      
+
+      const response = await fetch(
+        "https://cafepos-production-3428.up.railway.app/tables",
+        {
+          signal: controller.signal,
+        },
+      );
+
       clearTimeout(timeoutId);
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }
-      
+
       const data = await response.json();
-      
+
       let tablesArray: any[] = [];
       if (Array.isArray(data)) {
         tablesArray = data;
@@ -100,20 +107,21 @@ export default function Category() {
       } else if (data?.recordset && Array.isArray(data.recordset)) {
         tablesArray = data.recordset;
       }
-      
+
       if (tablesArray.length > 0) {
-        const convertedData = tablesArray.map((item: any) => ({
-          id: item.id || item.TableId,
-          label: item.label || item.TableNumber,
-          DiningSection: Number(item.DiningSection)
-        })).filter(item => item.id && item.label);
-        
+        const convertedData = tablesArray
+          .map((item: any) => ({
+            id: item.id || item.TableId,
+            label: item.label || item.TableNumber,
+            DiningSection: Number(item.DiningSection),
+          }))
+          .filter((item) => item.id && item.label);
+
         console.log("✅ API tables loaded:", convertedData.length);
         setAllTables(convertedData);
       } else {
         throw new Error("No data from API");
       }
-      
     } catch (error) {
       console.log("⚠️ Using fallback tables");
       const fallbackData = getFallbackTables();
@@ -152,7 +160,7 @@ export default function Category() {
 
   const numberFont = Math.max(12, Math.min(24, itemSize * 0.32));
   const smallFont = Math.max(9, Math.min(18, itemSize * 0.2));
-  const tabFont = width > 768 ? 16 : 14;
+  const tabFont = width > 768 ? 17 : 14.5;
 
   const currentTables = allTables.filter((table) => {
     if (activeTab === "TAKEAWAY") {
@@ -169,7 +177,7 @@ export default function Category() {
 
   const renderItem = ({ item }: { item: TableItem }) => {
     const tableData = tables.find(
-      (t) => t.section === activeTab && t.tableNo === item.label
+      (t) => t.section === activeTab && t.tableNo === item.label,
     );
 
     let borderColor = "rgba(255,255,255,0.25)";
@@ -183,12 +191,20 @@ export default function Category() {
         const helds = getHeldOrders();
         const held = helds.find((h) => h.orderId === tableData.orderId);
         if (held) {
-          billAmount = held.cart.reduce((sum: number, i: any) => sum + (i.price || 0) * i.qty, 0);
+          billAmount = held.cart.reduce(
+            (sum: number, i: any) => sum + (i.price || 0) * i.qty,
+            0,
+          );
         }
       } else {
-        const activeOrder = activeOrders.find((o: any) => o.orderId === tableData.orderId);
+        const activeOrder = activeOrders.find(
+          (o: any) => o.orderId === tableData.orderId,
+        );
         if (activeOrder) {
-          billAmount = activeOrder.items.reduce((sum: number, i: any) => sum + (i.price || 0) * i.qty, 0);
+          billAmount = activeOrder.items.reduce(
+            (sum: number, i: any) => sum + (i.price || 0) * i.qty,
+            0,
+          );
         }
       }
 
@@ -203,7 +219,7 @@ export default function Category() {
         const cartItems = carts[contextId] || [];
         const cartSubtotal = cartItems.reduce(
           (sum: number, i: any) => sum + (i.price || 0) * i.qty,
-          0
+          0,
         );
         billAmount += cartSubtotal;
       }
@@ -291,8 +307,12 @@ export default function Category() {
           </Text>
           {tableData && (
             <View style={styles.tableInfo}>
-              <Text style={[styles.timeText, { fontSize: smallFont }]}>{timeText}</Text>
-              <Text style={[styles.orderText, { fontSize: smallFont }]}>{orderText}</Text>
+              <Text style={[styles.timeText, { fontSize: smallFont }]}>
+                {timeText}
+              </Text>
+              <Text style={[styles.orderText, { fontSize: smallFont }]}>
+                {orderText}
+              </Text>
               <Text style={[styles.billText, { fontSize: smallFont + 1 }]}>
                 ₹{billAmount.toFixed(2)}
               </Text>
@@ -320,7 +340,14 @@ export default function Category() {
         resizeMode="cover"
       >
         <View style={styles.overlay} />
-        <BlurView intensity={35} tint="dark" style={[styles.topNavContainer, { paddingHorizontal: width > 768 ? 24 : 16 }]}>
+        <BlurView
+          intensity={35}
+          tint="dark"
+          style={[
+            styles.topNavContainer,
+            { paddingHorizontal: width > 768 ? 24 : 16 },
+          ]}
+        >
           <ScrollView
             ref={sectionScrollRef}
             horizontal
@@ -335,14 +362,17 @@ export default function Category() {
                   style={[
                     styles.tabBtn,
                     activeTab === section && styles.activeTabBtn,
-                    { paddingHorizontal: width > 768 ? 24 : 16, paddingVertical: width > 768 ? 12 : 10 }
+                    {
+                      paddingHorizontal: width > 768 ? 20 : 14,
+                      paddingVertical: width > 768 ? 10 : 8,
+                    },
                   ]}
                 >
                   <Text
                     style={[
                       styles.tabText,
                       activeTab === section && styles.activeTabText,
-                      { fontSize: tabFont }
+                      { fontSize: tabFont },
                     ]}
                   >
                     {section.replace("_", " ")}
@@ -359,14 +389,14 @@ export default function Category() {
             >
               <Text style={styles.headerActionText}>Time Entry</Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity
               style={[styles.headerActionBtn, styles.salesBtn]}
               onPress={() => router.push("/sales-report")}
             >
               <Text style={styles.headerActionText}>Sales</Text>
             </TouchableOpacity>
-            
+
             <TouchableOpacity
               style={[styles.headerActionBtn, styles.logoutBtn]}
               onPress={() => router.replace("/")}
@@ -406,8 +436,16 @@ export default function Category() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#000" },
   background: { flex: 1, width: "100%", height: "100%" },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.25)" },
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#000" },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.25)",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#000",
+  },
   loadingText: { color: "#fff", marginTop: 10 },
   topNavContainer: {
     flexDirection: "row",
@@ -418,24 +456,48 @@ const styles = StyleSheet.create({
   },
   tabsWrapper: { flexDirection: "row" },
   tabsScrollContent: { alignItems: "center", paddingHorizontal: 8 },
-  tabBtn: { borderRadius: 12, backgroundColor: "rgba(255,255,255,0.1)", marginHorizontal: 4 },
+  tabBtn: {
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
   activeTabBtn: { backgroundColor: "rgba(167,243,208,0.2)" },
-  tabText: { color: "#e5e7eb" },
-  activeTabText: { color: "#a7f3d0" },
+  tabText: { color: "#e5e7eb", fontWeight: "700", letterSpacing: 0.5 },
+  activeTabText: { color: "#a7f3d0", fontWeight: "700" },
   navRightGroup: { flexDirection: "row" },
-  headerActionBtn: { borderRadius: 10, backgroundColor: "rgba(255,255,255,0.15)", marginLeft: 8, paddingHorizontal: 16, paddingVertical: 10 },
+  headerActionBtn: {
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    marginLeft: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
   salesBtn: { backgroundColor: "rgba(46, 204, 113, 0.3)" },
   logoutBtn: { backgroundColor: "rgba(239,68,68,0.3)" },
   headerActionText: { color: "#fff", fontWeight: "700", fontSize: 14 },
   tableBox: { borderRadius: 16, borderWidth: 1.5, overflow: "hidden" },
-  tableContent: { flex: 1, justifyContent: "center", alignItems: "center", padding: 8 },
+  tableContent: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 8,
+  },
   tableNumber: { fontWeight: "900", color: "#fff", marginBottom: 2 },
   tableInfo: { alignItems: "center" },
   timeText: { color: "#fff", fontWeight: "600" },
   orderText: { color: "#fff", fontWeight: "700" },
   billText: { color: "#fff", fontWeight: "900" },
-  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center", padding: 50 },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 50,
+  },
   emptyText: { color: "#fff", fontSize: 16, marginBottom: 20 },
-  retryBtn: { backgroundColor: "#2ecc71", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
+  retryBtn: {
+    backgroundColor: "#2ecc71",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
   retryText: { color: "#fff", fontWeight: "bold" },
 });
