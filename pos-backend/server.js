@@ -12,6 +12,13 @@ const PORT = process.env.PORT || 3000;
 console.log("PORT:", PORT);
 console.log("DB_SERVER:", process.env.DB_SERVER);
 
+// ✅ Increase timeout for all requests
+app.use((req, res, next) => {
+  req.setTimeout(30000); // 30 seconds
+  res.setTimeout(30000);
+  next();
+});
+
 // ✅ CORS
 app.use(
   cors({
@@ -36,25 +43,36 @@ app.get("/test", (req, res) => {
 /* ================= TABLES ================= */
 app.get("/tables", async (req, res) => {
   try {
+    console.log("📊 Fetching tables...");
     const pool = await poolPromise;
+    
+    // 🔥 Optimized query - no ORDER BY for speed
     const result = await pool.request().query(`
       SELECT 
         TableId AS id,
         TableNumber AS label,
         DiningSection
       FROM TableMaster
-      ORDER BY SortCode
     `);
     
-    // 🔥 Add cache control headers to prevent caching
+    console.log(`✅ Found ${result.recordset.length} tables`);
+    
+    // Sort in memory (faster than SQL ORDER BY sometimes)
+    const tables = result.recordset.sort((a, b) => {
+      const numA = parseInt(a.label) || 0;
+      const numB = parseInt(b.label) || 0;
+      return numA - numB;
+    });
+    
+    // Add cache control headers
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     
-    console.log(`✅ Tables API: Returning ${result.recordset.length} tables`);
-    res.json(result.recordset);
+    res.json(tables);
+    
   } catch (err) {
-    console.error("TABLES ERROR:", err);
+    console.error("❌ TABLES ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -265,7 +283,7 @@ app.post("/api/sales/save", async (req, res) => {
 
     const crypto = require('crypto');
     const settlementId = crypto.randomUUID();
-    const businessUnitId = "FBFD4E31-5C91-4DEC-86EA-989D3B5639CA"; // Your BusinessUnitID
+    const businessUnitId = "FBFD4E31-5C91-4DEC-86EA-989D3B5639CA";
 
     // Start transaction
     const transaction = new sql.Transaction(pool);
