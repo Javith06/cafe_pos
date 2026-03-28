@@ -314,7 +314,7 @@ export default function Category() {
                 {orderText}
               </Text>
               <Text style={[styles.billText, { fontSize: smallFont + 1 }]}>
-                ₹{billAmount.toFixed(2)}
+                ${billAmount.toFixed(2)}
               </Text>
             </View>
           )}
