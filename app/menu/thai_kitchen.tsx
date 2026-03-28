@@ -430,7 +430,9 @@ export default function MenuScreen() {
                 )}
               </View>
 
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+              >
                 {width <= 900 && (
                   <TouchableOpacity
                     onPress={goToCart}
@@ -438,7 +440,10 @@ export default function MenuScreen() {
                       styles.backBtn,
                       totalItems > 0
                         ? { backgroundColor: "#22c55e", borderWidth: 0 }
-                        : { backgroundColor: "rgba(255,255,255,0.15)", borderWidth: 0 },
+                        : {
+                            backgroundColor: "rgba(255,255,255,0.15)",
+                            borderWidth: 0,
+                          },
                     ]}
                   >
                     <Text
@@ -557,7 +562,16 @@ export default function MenuScreen() {
                     {isLoadingDishes ? (
                       <>
                         <ActivityIndicator size="large" color="#4ade80" />
-                        <Text style={[styles.emptyText, { marginTop: 16, color: "#4ade80", fontWeight: "bold" }]}>
+                        <Text
+                          style={[
+                            styles.emptyText,
+                            {
+                              marginTop: 16,
+                              color: "#4ade80",
+                              fontWeight: "bold",
+                            },
+                          ]}
+                        >
                           Loading Dishes...
                         </Text>
                       </>
