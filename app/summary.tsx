@@ -9,6 +9,9 @@ import {
   Text,
   TouchableOpacity,
   useWindowDimensions,
+  Modal,
+  TextInput,
+  Alert,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -17,6 +20,7 @@ import DiscountModal from "../components/DiscountModal";
 import { findActiveOrder, useActiveOrdersStore } from "../stores/activeOrdersStore";
 import { useCartStore } from "../stores/cartStore";
 import { getOrderContext } from "../stores/orderContextStore";
+import { useTableStatusStore } from "../stores/tableStatusStore";
 
 export default function SummaryScreen() {
   const router = useRouter();
@@ -25,6 +29,8 @@ export default function SummaryScreen() {
   const activeOrder = context ? findActiveOrder(context) : undefined;
 
   const [showDiscount, setShowDiscount] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelPassword, setCancelPassword] = useState("");
 
   const cart = useMemo(() => {
     return activeOrder ? activeOrder.items : [];
@@ -36,7 +42,10 @@ export default function SummaryScreen() {
   });
 
   const applyDiscount = useCartStore((s) => s.applyDiscount);
+  const clearCart = useCartStore((s) => s.clearCart);
   const updateOrderDiscount = useActiveOrdersStore((s) => s.updateOrderDiscount);
+  const closeActiveOrder = useActiveOrdersStore((s) => s.closeActiveOrder);
+  const updateTableStatus = useTableStatusStore((s) => s.updateTableStatus);
 
   const handleFOC = () => {
     const discountData = {
@@ -54,6 +63,25 @@ export default function SummaryScreen() {
 
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const isLandscape = SCREEN_W > SCREEN_H;
+
+  const handleCancelOrder = () => {
+    if (cancelPassword !== "786") {
+      Alert.alert("Error", "Incorrect admin password.");
+      return;
+    }
+
+    if (context && activeOrder) {
+      closeActiveOrder(activeOrder.orderId);
+      clearCart();
+      if (context.orderType === "DINE_IN" && context.section && context.tableNo) {
+        updateTableStatus(context.section, context.tableNo, "", "EMPTY");
+      }
+    }
+    
+    setShowCancelModal(false);
+    setCancelPassword("");
+    router.replace("/(tabs)/category");
+  };
 
   /* ================= CALCULATIONS ================= */
 
@@ -133,6 +161,14 @@ export default function SummaryScreen() {
               </View>
 
               <View style={styles.headerRight}>
+                <TouchableOpacity
+                  style={[styles.actionBtn, { backgroundColor: "rgba(239, 68, 68, 0.25)", marginRight: 6 }]}
+                  onPress={() => setShowCancelModal(true)}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#fca5a5" />
+                  {isLandscape && <Text style={[styles.actionBtnText, { color: "#fca5a5" }]}>Cancel</Text>}
+                </TouchableOpacity>
+
                 <TouchableOpacity
                   style={[styles.actionBtn, { backgroundColor: "rgba(34,197,94,0.15)" }]}
                   onPress={() => router.push("/kds")}
@@ -281,6 +317,34 @@ export default function SummaryScreen() {
         onClose={() => setShowDiscount(false)}
         currentTotal={subtotal}
       />
+
+      {/* CANCEL MODAL */}
+      <Modal transparent visible={showCancelModal} animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Cancel Order?</Text>
+            <Text style={styles.modalDesc}>Please enter admin password to cancel.</Text>
+            <TextInput
+              style={styles.modalInput}
+              secureTextEntry
+              autoFocus
+              keyboardType="number-pad"
+              value={cancelPassword}
+              onChangeText={setCancelPassword}
+              placeholder="Admin Password"
+              placeholderTextColor="#6b7280"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalBtnCancel} onPress={() => { setShowCancelModal(false); setCancelPassword(""); }}>
+                <Text style={styles.modalBtnTextCancel}>Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalBtnConfirm} onPress={handleCancelOrder}>
+                <Text style={styles.modalBtnTextConfirm}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -500,6 +564,70 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 18,
     letterSpacing: 0.5,
+  },
+
+  /* MODAL STYLES */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: "#1f2937",
+    padding: 24,
+    borderRadius: 16,
+    width: "100%",
+    maxWidth: 340,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  modalTitle: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 8,
+  },
+  modalDesc: {
+    color: "#9ca3af",
+    fontSize: 14,
+    marginBottom: 20,
+  },
+  modalInput: {
+    backgroundColor: "rgba(0,0,0,0.3)",
+    color: "#fff",
+    padding: 14,
+    borderRadius: 8,
+    fontSize: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    marginBottom: 24,
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+  },
+  modalBtnCancel: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  modalBtnTextCancel: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  modalBtnConfirm: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: "#ef4444",
+  },
+  modalBtnTextConfirm: {
+    color: "#fff",
+    fontWeight: "bold",
   },
 });
 

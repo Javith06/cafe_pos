@@ -30,18 +30,23 @@ export default function Index() {
   );
 
   const handleLogin = () => {
-    const correctEmail = "unipro@gmail.com";
-    const correctPassword = "786";
+    // Admin
+    const adminEmail = "unipro@gmail.com";
+    const adminPassword = "786";
+
+    // Standard User
+    const userEmail = "user123";
+    const userPassword = "123";
 
     if (!email || !password) {
       Alert.alert("Error", "Please enter email and password");
       return;
     }
 
-    const isEmailCorrect = email === correctEmail;
-    const isPasswordCorrect = password === correctPassword;
+    const isAdmin = email === adminEmail && password === adminPassword;
+    const isUser = email.toLowerCase() === userEmail && password === userPassword;
 
-    if (isEmailCorrect && isPasswordCorrect) {
+    if (isAdmin || isUser) {
       // ✅ Clear before navigating
       setEmail("");
       setPassword("");
@@ -50,20 +55,7 @@ export default function Index() {
       return;
     }
 
-    if (!isEmailCorrect && !isPasswordCorrect) {
-      Alert.alert("Error", "Email and password are wrong");
-      return;
-    }
-
-    if (!isEmailCorrect) {
-      Alert.alert("Error", "Email is wrong");
-      return;
-    }
-
-    if (!isPasswordCorrect) {
-      Alert.alert("Error", "Password is wrong");
-      return;
-    }
+    Alert.alert("Error", "Invalid email or password");
   };
 
   return (

@@ -11,6 +11,10 @@ import {
   Text,
   View,
   useWindowDimensions,
+  Alert,
+  Modal,
+  TextInput,
+  TouchableOpacity,
 } from "react-native";
 
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -29,6 +33,13 @@ export default function CartScreen() {
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
 
+  const [showCancelModal, setShowCancelModal] = React.useState(false);
+  const [cancelPassword, setCancelPassword] = React.useState("");
+  
+  const [editingItem, setEditingItem] = React.useState<CartItem | null>(null);
+  const [editQty, setEditQty] = React.useState(1);
+  const [editNote, setEditNote] = React.useState("");
+
   const orderContext = useOrderContextStore((s) => s.currentOrder);
 
   const carts = useCartStore((s) => s.carts);
@@ -36,12 +47,14 @@ export default function CartScreen() {
   const clearCart = useCartStore((s) => s.clearCart);
   const removeFromCartGlobal = useCartStore((s) => s.removeFromCartGlobal);
   const addToCartGlobal = useCartStore((s) => s.addToCartGlobal);
+  const setCartItemsGlobal = useCartStore((s) => s.setCartItems);
 
   const cart = currentContextId ? carts[currentContextId] || STABLE_EMPTY_ARRAY : STABLE_EMPTY_ARRAY;
 
   const activeOrders = useActiveOrdersStore((s) => s.activeOrders);
   const appendOrder = useActiveOrdersStore((s) => s.appendOrder);
   const markItemsSent = useActiveOrdersStore((s) => s.markItemsSent);
+  const closeActiveOrder = useActiveOrdersStore((s) => s.closeActiveOrder);
 
   const activeOrder = useMemo(() => {
     if (!orderContext) return undefined;
@@ -135,6 +148,44 @@ export default function CartScreen() {
     }
   };
 
+  const handleCancelOrder = () => {
+    if (cancelPassword !== "786") {
+      Alert.alert("Error", "Incorrect admin password.");
+      return;
+    }
+
+    if (activeOrder) closeActiveOrder(activeOrder.orderId);
+    clearCart();
+    if (orderContext.orderType === "DINE_IN" && orderContext.section && orderContext.tableNo) {
+      updateTableStatus(orderContext.section, orderContext.tableNo, "", "EMPTY");
+    }
+    
+    setShowCancelModal(false);
+    setCancelPassword("");
+    router.replace("/(tabs)/category");
+  };
+
+  const handleEditItemSave = () => {
+    if (!editingItem || !currentContextId) return;
+    
+    // Create new cart list with updated item
+    const updatedCart = cart.map(item => {
+      if (item.lineItemId === editingItem.lineItemId) {
+        return { ...item, qty: editQty, note: editNote };
+      }
+      return item;
+    });
+
+    setCartItemsGlobal(currentContextId, updatedCart);
+    setEditingItem(null);
+  };
+
+  const handleEditItemDelete = () => {
+    if (!editingItem) return;
+    removeFromCartGlobal(editingItem.lineItemId);
+    setEditingItem(null);
+  };
+
   return (
     <SafeAreaView style={{ flex: 1 }}>
       <ImageBackground
@@ -152,9 +203,17 @@ export default function CartScreen() {
                 <Text style={styles.topBtnText}>Back</Text>
               </Pressable>
 
-              <Pressable style={styles.clear} onPress={() => clearCart()}>
-                <Text style={styles.topBtnText}>Clear Cart</Text>
-              </Pressable>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <Pressable 
+                  style={[styles.clear, { backgroundColor: "rgba(239, 68, 68, 0.25)" }]} 
+                  onPress={() => setShowCancelModal(true)}
+                >
+                  <Text style={[styles.topBtnText, { color: "#fca5a5" }]}>Cancel Order</Text>
+                </Pressable>
+                <Pressable style={styles.clear} onPress={() => clearCart()}>
+                  <Text style={styles.topBtnText}>Clear Cart</Text>
+                </Pressable>
+              </View>
             </View>
 
             <Text style={styles.contextText}>
@@ -174,7 +233,16 @@ export default function CartScreen() {
                 const isSent = "status" in item && item.status === "SENT";
 
                 return (
-                  <BlurView intensity={40} tint="dark" style={styles.row}>
+                  <TouchableOpacity 
+                    activeOpacity={0.7} 
+                    disabled={isSent}
+                    onPress={() => {
+                      setEditingItem(item as CartItem);
+                      setEditQty(item.qty);
+                      setEditNote(item.note || "");
+                    }}
+                  >
+                    <BlurView intensity={40} tint="dark" style={styles.row}>
                     <View style={styles.itemInfo}>
                       <View style={styles.nameRow}>
                         <Text style={[styles.name, isSent && styles.sentName]}>
@@ -259,6 +327,7 @@ export default function CartScreen() {
                       </View>
                     )}
                   </BlurView>
+                </TouchableOpacity>
                 );
               }}
             />
@@ -358,6 +427,92 @@ export default function CartScreen() {
           </View>
         </View>
       </ImageBackground>
+
+      {/* CANCEL MODAL */}
+      <Modal transparent visible={showCancelModal} animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Cancel Order?</Text>
+            <Text style={styles.modalDesc}>Please enter admin password to cancel.</Text>
+            <TextInput
+              style={styles.modalInput}
+              secureTextEntry
+              autoFocus
+              keyboardType="number-pad"
+              value={cancelPassword}
+              onChangeText={setCancelPassword}
+              placeholder="Admin Password"
+              placeholderTextColor="#6b7280"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalBtnCancel} onPress={() => { setShowCancelModal(false); setCancelPassword(""); }}>
+                <Text style={styles.modalBtnTextCancel}>Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalBtnConfirm} onPress={handleCancelOrder}>
+                <Text style={styles.modalBtnTextConfirm}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* EDIT ITEM MODAL */}
+      <Modal transparent visible={!!editingItem} animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Editing {editingItem?.name}</Text>
+            
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginVertical: 15 }}>
+              <Text style={{ color: "#fff", fontSize: 16 }}>Quantity</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 15 }}>
+                <TouchableOpacity 
+                  style={[styles.minus, { width: 40, height: 40 }]} 
+                  onPress={() => setEditQty(q => Math.max(1, q - 1))}
+                >
+                  <Ionicons name="remove" size={20} color="#fff" />
+                </TouchableOpacity>
+                <Text style={{ color: "#fff", fontSize: 20, fontWeight: "bold", width: 30, textAlign: "center" }}>
+                  {editQty}
+                </Text>
+                <TouchableOpacity 
+                  style={[styles.plus, { width: 40, height: 40 }]} 
+                  onPress={() => setEditQty(q => q + 1)}
+                >
+                  <Ionicons name="add" size={20} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <Text style={{ color: "#9ca3af", fontSize: 14, marginTop: 10, marginBottom: 5 }}>Special Instructions:</Text>
+            <TextInput
+              style={[styles.modalInput, { marginBottom: 15 }]}
+              value={editNote}
+              onChangeText={setEditNote}
+              placeholder="e.g. Less spicy, no onions"
+              placeholderTextColor="#6b7280"
+              multiline
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={[styles.modalBtnCancel, { backgroundColor: "rgba(239, 68, 68, 0.2)" }]} 
+                onPress={handleEditItemDelete}
+              >
+                <Text style={[styles.modalBtnTextCancel, { color: "#ef4444" }]}>Delete Item</Text>
+              </TouchableOpacity>
+              
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <TouchableOpacity style={styles.modalBtnCancel} onPress={() => setEditingItem(null)}>
+                  <Text style={styles.modalBtnTextCancel}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.modalBtnConfirm, { backgroundColor: "#3b82f6" }]} onPress={handleEditItemSave}>
+                  <Text style={styles.modalBtnTextConfirm}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -534,4 +689,68 @@ const styles = StyleSheet.create({
   },
 
   btnText: { color: "#fff", fontWeight: "900", fontSize: 20 },
+
+  /* MODAL STYLES */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: "#1f2937",
+    padding: 24,
+    borderRadius: 16,
+    width: "100%",
+    maxWidth: 340,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  modalTitle: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 8,
+  },
+  modalDesc: {
+    color: "#9ca3af",
+    fontSize: 14,
+    marginBottom: 20,
+  },
+  modalInput: {
+    backgroundColor: "rgba(0,0,0,0.3)",
+    color: "#fff",
+    padding: 14,
+    borderRadius: 8,
+    fontSize: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    marginBottom: 24,
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+  },
+  modalBtnCancel: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  modalBtnTextCancel: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  modalBtnConfirm: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: "#ef4444",
+  },
+  modalBtnTextConfirm: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
 });

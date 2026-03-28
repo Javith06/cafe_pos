@@ -209,7 +209,70 @@ app.get("/api/sales/daily/:date", async (req, res) => {
   }
 });
 
-// API 3: Get sales by date range
+// API 3: Save new sale
+app.post("/api/sales/save", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const { 
+      totalAmount, 
+      paymentMethod, 
+      items, 
+      subTotal,
+      taxAmount,
+      discountAmount,
+      orderId 
+    } = req.body;
+
+    console.log("Saving sale for Order:", orderId);
+
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin();
+
+    try {
+      // 1. Generate Settlement ID
+      const settlementIdResult = await transaction.request().query("SELECT NEWID() AS id");
+      const settlementId = settlementIdResult.recordset[0].id;
+
+      // 2. Insert into SettlementHeader
+      await transaction.request()
+        .input("SettlementID", settlementId)
+        .input("Date", new Date())
+        .input("SubTotal", subTotal || 0)
+        .input("TotalTax", taxAmount || 0)
+        .input("DiscountAmount", discountAmount || 0)
+        .query(`
+          INSERT INTO SettlementHeader (SettlementID, LastSettlementDate, SubTotal, TotalTax, DiscountAmount)
+          VALUES (@SettlementID, @Date, @SubTotal, @TotalTax, @DiscountAmount)
+        `);
+
+      // 3. Insert into SettlementTotalSales
+      const itemCount = items ? items.length : 0;
+      await transaction.request()
+        .input("SettlementID", settlementId)
+        .input("PayMode", paymentMethod || 'CASH')
+        .input("SysAmount", totalAmount || 0)
+        .input("ManualAmount", totalAmount || 0)
+        .input("AmountDiff", 0)
+        .input("ReceiptCount", itemCount)
+        .query(`
+          INSERT INTO SettlementTotalSales (SettlementID, PayMode, SysAmount, ManualAmount, AmountDiff, ReceiptCount)
+          VALUES (@SettlementID, UPPER(@PayMode), @SysAmount, @ManualAmount, @AmountDiff, @ReceiptCount)
+        `);
+
+      await transaction.commit();
+      console.log("✅ Sale saved successfully:", settlementId);
+      res.json({ success: true, settlementId });
+    } catch (err) {
+      if (transaction) await transaction.rollback();
+      throw err;
+    }
+  } catch (err) {
+    console.error("SAVE SALE ERROR:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// API 4: Get sales by date range
 app.get("/api/sales/range", async (req, res) => {
   try {
     const pool = await poolPromise;

@@ -9,6 +9,10 @@ import {
   StyleSheet,
   Text,
   View,
+  Alert,
+  Modal,
+  TextInput,
+  TouchableOpacity,
 } from "react-native";
 
 import { OrderItem, useActiveOrdersStore } from "../stores/activeOrdersStore";
@@ -25,12 +29,20 @@ interface CartSidebarProps {
 export default function CartSidebar({ width = 350 }: CartSidebarProps) {
   const router = useRouter();
 
+  const [showCancelModal, setShowCancelModal] = React.useState(false);
+  const [cancelPassword, setCancelPassword] = React.useState("");
+
+  const [editingItem, setEditingItem] = React.useState<CartItem | null>(null);
+  const [editQty, setEditQty] = React.useState(1);
+  const [editNote, setEditNote] = React.useState("");
+
   const orderContext = useOrderContextStore((state) => state.currentOrder);
   const carts = useCartStore((state) => state.carts);
   const currentContextId = useCartStore((state) => state.currentContextId);
   const removeFromCartGlobal = useCartStore((state) => state.removeFromCartGlobal);
   const addToCartGlobal = useCartStore((state) => state.addToCartGlobal);
   const clearCart = useCartStore((state) => state.clearCart);
+  const setCartItemsGlobal = useCartStore((state) => state.setCartItems);
 
   const cart = useMemo(() => {
     return (currentContextId && carts[currentContextId]) || [];
@@ -39,6 +51,7 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
   const activeOrders = useActiveOrdersStore((state) => state.activeOrders);
   const appendOrder = useActiveOrdersStore((state) => state.appendOrder);
   const markItemsSent = useActiveOrdersStore((state) => state.markItemsSent);
+  const closeActiveOrder = useActiveOrdersStore((state) => state.closeActiveOrder);
 
   const activeOrder = useMemo(() => {
     if (!orderContext) return undefined;
@@ -82,6 +95,44 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
     );
   }
 
+  const handleCancelOrder = () => {
+    if (cancelPassword !== "786") {
+      Alert.alert("Error", "Incorrect admin password.");
+      return;
+    }
+
+    if (activeOrder) closeActiveOrder(activeOrder.orderId);
+    clearCart();
+    if (orderContext.orderType === "DINE_IN" && orderContext.section && orderContext.tableNo) {
+      updateTableStatus(orderContext.section, orderContext.tableNo, "", "EMPTY");
+    }
+    
+    setShowCancelModal(false);
+    setCancelPassword("");
+    router.replace("/(tabs)/category");
+  };
+
+  const handleEditItemSave = () => {
+    if (!editingItem || !currentContextId) return;
+    
+    // Create new cart list with updated item
+    const updatedCart = cart.map(item => {
+      if (item.lineItemId === editingItem.lineItemId) {
+        return { ...item, qty: editQty, note: editNote };
+      }
+      return item;
+    });
+
+    setCartItemsGlobal(currentContextId, updatedCart);
+    setEditingItem(null);
+  };
+
+  const handleEditItemDelete = () => {
+    if (!editingItem) return;
+    removeFromCartGlobal(editingItem.lineItemId);
+    setEditingItem(null);
+  };
+
   const sendOrder = () => {
     const context = orderContext;
     if (!context || cart.length === 0) return;
@@ -123,7 +174,12 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
 
         {/* TOP BAR */}
         <View style={styles.topBar}>
-          <View />
+          <Pressable 
+            style={[styles.clear, { backgroundColor: "rgba(239, 68, 68, 0.25)" }]} 
+            onPress={() => setShowCancelModal(true)}
+          >
+            <Text style={[styles.topBtnText, { color: "#fca5a5" }]}>Cancel Order</Text>
+          </Pressable>
           <Pressable style={styles.clear} onPress={() => clearCart()}>
             <Text style={styles.topBtnText}>Clear Cart</Text>
           </Pressable>
@@ -156,69 +212,79 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
             const isSent = "status" in item && item.status === "SENT";
 
             return (
-              <View style={styles.row}>
-                <View style={styles.itemInfo}>
-                  <View style={{ flexDirection: "row", alignItems: "center" }}>
-                    <Text style={[styles.name, isSent && styles.sentName]}>
-                      {item.name}
-                    </Text>
-
-                    {isSent ? (
-                      <View style={styles.badgeRow}>
-                        <Ionicons name="checkmark-circle" size={14} color="#a7f3d0" />
-                        <Text style={styles.sentBadgeText}>SENT</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.badgeRow}>
-                        <Ionicons name="ellipse" size={10} color="#60a5fa" />
-                        <Text style={styles.newBadgeText}>NEW</Text>
-                      </View>
-                    )}
-                  </View>
-
-                  {/* MODIFIERS */}
-                  <View style={styles.modifierContainer}>
-                    {item.spicy && item.spicy !== "Medium" && <Text style={styles.modifierText}>Spicy: {item.spicy}</Text>}
-                    {item.oil && item.oil !== "Normal" && <Text style={styles.modifierText}>Oil: {item.oil}</Text>}
-                    {item.salt && item.salt !== "Normal" && <Text style={styles.modifierText}>Salt: {item.salt}</Text>}
-                    {item.sugar && item.sugar !== "Normal" && <Text style={styles.modifierText}>Sugar: {item.sugar}</Text>}
-                    {item.note && <Text style={styles.modifierText}>Note: {item.note}</Text>}
-                    {item.modifiers && Array.isArray(item.modifiers) && item.modifiers.map((mod: any, idx: number) => (
-                      <Text key={`mod-${idx}`} style={styles.modifierText}>
-                        + {mod.ModifierName}
-                        {mod.Price ? ` ($${mod.Price.toFixed(2)})` : ""}
+              <TouchableOpacity 
+                activeOpacity={0.7} 
+                disabled={isSent}
+                onPress={() => {
+                  setEditingItem(item as CartItem);
+                  setEditQty(item.qty);
+                  setEditNote(item.note || "");
+                }}
+              >
+                <View style={[styles.row, isSent && { opacity: 0.6 }]}>
+                  <View style={styles.itemInfo}>
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <Text style={[styles.name, isSent && styles.sentName]}>
+                        {item.name}
                       </Text>
-                    ))}
+
+                      {isSent ? (
+                        <View style={styles.badgeRow}>
+                          <Ionicons name="checkmark-circle" size={14} color="#a7f3d0" />
+                          <Text style={styles.sentBadgeText}>SENT</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.badgeRow}>
+                          <Ionicons name="ellipse" size={10} color="#60a5fa" />
+                          <Text style={styles.newBadgeText}>NEW</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* MODIFIERS */}
+                    <View style={styles.modifierContainer}>
+                      {item.spicy && item.spicy !== "Medium" && <Text style={styles.modifierText}>Spicy: {item.spicy}</Text>}
+                      {item.oil && item.oil !== "Normal" && <Text style={styles.modifierText}>Oil: {item.oil}</Text>}
+                      {item.salt && item.salt !== "Normal" && <Text style={styles.modifierText}>Salt: {item.salt}</Text>}
+                      {item.sugar && item.sugar !== "Normal" && <Text style={styles.modifierText}>Sugar: {item.sugar}</Text>}
+                      {item.note && <Text style={styles.modifierText}>Note: {item.note}</Text>}
+                      {item.modifiers && Array.isArray(item.modifiers) && item.modifiers.map((mod: any, idx: number) => (
+                        <Text key={`mod-${idx}`} style={styles.modifierText}>
+                          + {mod.ModifierName}
+                          {mod.Price ? ` ($${mod.Price.toFixed(2)})` : ""}
+                        </Text>
+                      ))}
+                    </View>
+
+                    <Text style={styles.qty}>Qty: {item.qty}</Text>
+
+                    <Text style={styles.price}>
+                      ${(item.price || 0).toFixed(2)}
+                    </Text>
                   </View>
 
-                  <Text style={styles.qty}>Qty: {item.qty}</Text>
+                  {!isSent && (
+                    <View style={styles.actionRow}>
+                      <Pressable
+                        style={styles.actionBtn}
+                        onPress={() => removeFromCartGlobal(item.lineItemId!)}
+                      >
+                        <Ionicons name="remove" size={20} color="#f3f4f6" />
+                      </Pressable>
 
-                  <Text style={styles.price}>
-                    ${(item.price || 0).toFixed(2)}
-                  </Text>
+                      <Pressable
+                        style={styles.actionBtn}
+                        onPress={() => {
+                          const { qty, lineItemId, ...rest } = item as CartItem;
+                          addToCartGlobal(rest);
+                        }}
+                      >
+                        <Ionicons name="add" size={20} color="#f3f4f6" />
+                      </Pressable>
+                    </View>
+                  )}
                 </View>
-
-                {!isSent && (
-                  <View style={styles.actionRow}>
-                    <Pressable
-                      style={styles.actionBtn}
-                      onPress={() => removeFromCartGlobal(item.lineItemId!)}
-                    >
-                      <Ionicons name="remove" size={20} color="#f3f4f6" />
-                    </Pressable>
-
-                    <Pressable
-                      style={styles.actionBtn}
-                      onPress={() => {
-                        const { qty, lineItemId, ...rest } = item as CartItem;
-                        addToCartGlobal(rest);
-                      }}
-                    >
-                      <Ionicons name="add" size={20} color="#f3f4f6" />
-                    </Pressable>
-                  </View>
-                )}
-              </View>
+              </TouchableOpacity>
             );
           }}
         />
@@ -306,6 +372,92 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
             </View>
         </View>
       </BlurView>
+
+      {/* CANCEL MODAL */}
+      <Modal transparent visible={showCancelModal} animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Cancel Order?</Text>
+            <Text style={styles.modalDesc}>Please enter admin password to cancel.</Text>
+            <TextInput
+              style={styles.modalInput}
+              secureTextEntry
+              autoFocus
+              keyboardType="number-pad"
+              value={cancelPassword}
+              onChangeText={setCancelPassword}
+              placeholder="Admin Password"
+              placeholderTextColor="#6b7280"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalBtnCancel} onPress={() => { setShowCancelModal(false); setCancelPassword(""); }}>
+                <Text style={styles.modalBtnTextCancel}>Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalBtnConfirm} onPress={handleCancelOrder}>
+                <Text style={styles.modalBtnTextConfirm}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* EDIT ITEM MODAL */}
+      <Modal transparent visible={!!editingItem} animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Editing {editingItem?.name}</Text>
+            
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginVertical: 15 }}>
+              <Text style={{ color: "#fff", fontSize: 16 }}>Quantity</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 15 }}>
+                <TouchableOpacity 
+                  style={[styles.minus, { width: 40, height: 40 }]} 
+                  onPress={() => setEditQty(q => Math.max(1, q - 1))}
+                >
+                  <Ionicons name="remove" size={20} color="#fff" />
+                </TouchableOpacity>
+                <Text style={{ color: "#fff", fontSize: 20, fontWeight: "bold", width: 30, textAlign: "center" }}>
+                  {editQty}
+                </Text>
+                <TouchableOpacity 
+                  style={[styles.plus, { width: 40, height: 40 }]} 
+                  onPress={() => setEditQty(q => q + 1)}
+                >
+                  <Ionicons name="add" size={20} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <Text style={{ color: "#9ca3af", fontSize: 14, marginTop: 10, marginBottom: 5 }}>Special Instructions:</Text>
+            <TextInput
+              style={[styles.modalInput, { marginBottom: 15 }]}
+              value={editNote}
+              onChangeText={setEditNote}
+              placeholder="e.g. Less spicy, no onions"
+              placeholderTextColor="#6b7280"
+              multiline
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={[styles.modalBtnCancel, { backgroundColor: "rgba(239, 68, 68, 0.2)" }]} 
+                onPress={handleEditItemDelete}
+              >
+                <Text style={[styles.modalBtnTextCancel, { color: "#ef4444" }]}>Delete Item</Text>
+              </TouchableOpacity>
+              
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <TouchableOpacity style={styles.modalBtnCancel} onPress={() => setEditingItem(null)}>
+                  <Text style={styles.modalBtnTextCancel}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.modalBtnConfirm, { backgroundColor: "#3b82f6" }]} onPress={handleEditItemSave}>
+                  <Text style={styles.modalBtnTextConfirm}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -389,6 +541,81 @@ const styles = StyleSheet.create({
     color: "#9ca3af",
     fontSize: 12,
     fontWeight: "500",
+  },
+  /* MODAL STYLES */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: "#1f2937",
+    padding: 24,
+    borderRadius: 16,
+    width: "100%",
+    maxWidth: 340,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  modalTitle: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "bold",
+    marginBottom: 8,
+  },
+  modalDesc: {
+    color: "#9ca3af",
+    fontSize: 14,
+    marginBottom: 20,
+  },
+  modalInput: {
+    backgroundColor: "rgba(0,0,0,0.3)",
+    color: "#fff",
+    padding: 14,
+    borderRadius: 8,
+    fontSize: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    marginBottom: 24,
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+  },
+  modalBtnCancel: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  modalBtnTextCancel: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  modalBtnConfirm: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    backgroundColor: "#ef4444",
+  },
+  modalBtnTextConfirm: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  minus: {
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 8,
+  },
+  plus: {
+    backgroundColor: "rgba(59, 130, 246, 0.8)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 8,
   },
 });
  

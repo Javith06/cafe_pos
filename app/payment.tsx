@@ -210,31 +210,86 @@ export default function PaymentScreen() {
     const saved = await saveSaleToDatabase();
     console.log("✅ saveSaleToDatabase completed, success:", saved);
 
-    const printBill = () => {
-      const html = `
-        <html>
-          <body>
-            <h2>POS BILL</h2>
-            <p>Order: ${activeOrder?.orderId}</p>
-            <hr/>
-            ${cart
-              .map(
-                (i) => `
-              <p>${i.qty} x ${i.name} - $${((i.price || 0) * i.qty).toFixed(2)}</p>
-            `,
-              )
-              .join("")}
-            <hr/>
-            <p>Subtotal: $${subtotal.toFixed(2)}</p>
-            <p>Discount: -$${discountAmount.toFixed(2)}</p>
-            <p>Tax: $${tax.toFixed(2)}</p>
-            <p><b>Total: $${total.toFixed(2)}</b></p>
-            <p>Paid: $${paidNum.toFixed(2)}</p>
-            <p>Change: $${change.toFixed(2)}</p>
-            <h4>Thank You!</h4>
-          </body>
-        </html>
-      `;
+      const printBill = () => {
+        const dateStr = new Date().toLocaleString();
+        
+        let itemsHtml = "";
+        cart.forEach((i) => {
+          const nameLine = `${i.qty}x ${i.name}`;
+          const priceLine = `$${((i.price || 0) * i.qty).toFixed(2)}`;
+          const dots = ".".repeat(Math.max(0, 32 - nameLine.length - priceLine.length));
+          itemsHtml += `<div><span style="float:left">${nameLine}</span><span style="float:right">${priceLine}</span><div style="clear:both"></div></div>`;
+          
+          if (i.modifiers && i.modifiers.length > 0) {
+            i.modifiers.forEach(mod => {
+              itemsHtml += `<div style="color: #444; font-size: 11px; padding-left: 15px;">+ ${mod.ModifierName}</div>`;
+            });
+          }
+        });
+
+        const html = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Receipt</title>
+              <style>
+                body {
+                  font-family: 'Courier New', Courier, monospace;
+                  width: 300px;
+                  margin: 0 auto;
+                  padding: 10px;
+                  color: #000;
+                  font-size: 12px;
+                  line-height: 1.4;
+                }
+                .text-center { text-align: center; }
+                .text-right { text-align: right; }
+                .bold { font-weight: bold; }
+                .title { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
+                .divider { border-top: 1px dashed #000; margin: 8px 0; }
+                .flex-row { display: flex; justify-content: space-between; }
+              </style>
+            </head>
+            <body>
+              <div class="text-center">
+                <div class="title">SMART CAFE POS</div>
+                <div>123 Coffee Street</div>
+                <div>Tel: +65 1234 5678</div>
+              </div>
+              
+              <div class="divider"></div>
+              
+              <div>
+                <div>Date: ${dateStr}</div>
+                <div>Order #: ${activeOrder?.orderId || 'N/A'}</div>
+                <div>Method: ${method}</div>
+              </div>
+              
+              <div class="divider"></div>
+              
+              ${itemsHtml}
+              
+              <div class="divider"></div>
+              
+              <div class="flex-row"><span>Subtotal:</span><span>$${subtotal.toFixed(2)}</span></div>
+              ${discountAmount > 0 ? `<div class="flex-row"><span>Discount:</span><span>-$${discountAmount.toFixed(2)}</span></div>` : ''}
+              <div class="flex-row"><span>Tax (9%):</span><span>$${tax.toFixed(2)}</span></div>
+              <div class="flex-row bold" style="font-size: 14px; margin-top: 5px;"><span>TOTAL:</span><span>$${total.toFixed(2)}</span></div>
+              
+              <div class="divider"></div>
+              
+              <div class="flex-row"><span>Paid (${method}):</span><span>$${paidNum.toFixed(2)}</span></div>
+              <div class="flex-row"><span>Change:</span><span>$${change.toFixed(2)}</span></div>
+              
+              <div class="divider"></div>
+              
+              <div class="text-center" style="margin-top: 15px;">
+                <div>Thank you for dining with us!</div>
+                <div>Please come again</div>
+              </div>
+            </body>
+          </html>
+        `;
 
       if (Platform.OS === "web") {
         const win = window.open("", "", "width=300,height=600");
@@ -339,12 +394,6 @@ export default function PaymentScreen() {
             </View>
 
             <View style={styles.rightHeader}>
-              <TouchableOpacity
-                style={styles.testBtn}
-                onPress={testAPI}
-              >
-                <Text style={styles.testBtnText}>Test</Text>
-              </TouchableOpacity>
               <Text style={styles.dateTime}>
                 {time.toLocaleTimeString([], {
                   hour: "2-digit",

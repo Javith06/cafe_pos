@@ -109,6 +109,20 @@ const DishImage = ({ dish, style }: { dish: Dish; style: any }) => {
   );
 };
 
+// --- PREMIUM SKELETON LOADER ---
+const DishSkeleton = ({ width }: { width: number }) => {
+  return (
+    <View style={[styles.card, { width, opacity: 0.6 }]}>
+      <View style={[styles.imagePlaceholder, { backgroundColor: "#1e293b" }]} />
+      <View style={styles.cardContent}>
+        <View style={{ height: 16, backgroundColor: "#334155", borderRadius: 4, width: "80%", marginBottom: 8 }} />
+        <View style={{ height: 16, backgroundColor: "#334155", borderRadius: 4, width: "60%", marginBottom: 8 }} />
+        <View style={{ height: 20, backgroundColor: "#064e3b", borderRadius: 4, width: "40%", marginTop: 4 }} />
+      </View>
+    </View>
+  );
+};
+
 const STABLE_EMPTY_ARRAY: any[] = [];
 
 export default function MenuScreen() {
@@ -119,6 +133,7 @@ export default function MenuScreen() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [items, setItems] = useState<Dish[]>([]);
   const [isLoadingDishes, setIsLoadingDishes] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
   const [selectedKitchenId, setSelectedKitchenId] = useState("");
   const [selectedKitchenName, setSelectedKitchenName] = useState("");
@@ -187,6 +202,7 @@ export default function MenuScreen() {
         );
 
         setKitchens(filteredKitchens);
+        setIsInitialLoading(false);
 
         if (filteredKitchens.length > 0 && orderContext) {
           loadGroups(
@@ -195,7 +211,10 @@ export default function MenuScreen() {
           );
         }
       })
-      .catch((err) => console.log("KITCHEN ERROR:", err));
+      .catch((err) => {
+        console.log("KITCHEN ERROR:", err);
+        setIsInitialLoading(false);
+      });
   }, [orderContext]);
 
   const loadGroups = async (kitchenId: string, kitchenName: string) => {
@@ -401,6 +420,19 @@ export default function MenuScreen() {
     );
   }
 
+  if (isInitialLoading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.noContextContainer}>
+          <ActivityIndicator size="large" color="#4ade80" />
+          <Text style={[styles.emptyText, { marginTop: 20, color: "#4ade80" }]}>
+            Initializing Kitchen...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={{ flex: 1 }}>
       <ImageBackground
@@ -542,10 +574,12 @@ export default function MenuScreen() {
               <Text style={styles.sectionLabel}>DISHES</Text>
               <FlatList
                 ref={listRef}
-                data={items}
+                data={(isLoadingDishes ? [1, 2, 3, 4, 5, 6, 7, 8] : items) as any[]}
                 numColumns={columns}
                 key={`grid-${columns}`}
-                keyExtractor={(item, index) => item.DishId + "_" + index}
+                keyExtractor={(item, index) =>
+                  isLoadingDishes ? `skeleton-${index}` : item.DishId + "_" + index
+                }
                 columnWrapperStyle={
                   columns > 1
                     ? {
@@ -558,45 +592,33 @@ export default function MenuScreen() {
                 contentContainerStyle={styles.gridContent}
                 showsVerticalScrollIndicator={false}
                 ListEmptyComponent={
-                  <View style={styles.emptyWrap}>
-                    {isLoadingDishes ? (
-                      <>
-                        <ActivityIndicator size="large" color="#4ade80" />
-                        <Text
-                          style={[
-                            styles.emptyText,
-                            {
-                              marginTop: 16,
-                              color: "#4ade80",
-                              fontWeight: "bold",
-                            },
-                          ]}
-                        >
-                          Loading Dishes...
-                        </Text>
-                      </>
-                    ) : (
+                  !isLoadingDishes ? (
+                    <View style={styles.emptyWrap}>
                       <Text style={styles.emptyText}>No items available</Text>
-                    )}
-                  </View>
-                }
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={[styles.card, { width: cardWidth }]}
-                    onPress={() => openModifiers(item)}
-                    activeOpacity={0.9}
-                  >
-                    <DishImage dish={item} style={styles.image} />
-                    <View style={styles.cardContent}>
-                      <Text style={styles.name} numberOfLines={2}>
-                        {item.Name}
-                      </Text>
-                      <Text style={styles.price} numberOfLines={1}>
-                        $ {item.Price?.toFixed(2) ?? "0.00"}
-                      </Text>
                     </View>
-                  </TouchableOpacity>
-                )}
+                  ) : null
+                }
+                renderItem={({ item }) =>
+                  isLoadingDishes ? (
+                    <DishSkeleton width={cardWidth} />
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.card, { width: cardWidth }]}
+                      onPress={() => openModifiers(item)}
+                      activeOpacity={0.9}
+                    >
+                      <DishImage dish={item} style={styles.image} />
+                      <View style={styles.cardContent}>
+                        <Text style={styles.name} numberOfLines={2}>
+                          {item.Name}
+                        </Text>
+                        <Text style={styles.price} numberOfLines={1}>
+                          $ {item.Price?.toFixed(2) ?? "0.00"}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  )
+                }
               />
             </View>
           </BlurView>
