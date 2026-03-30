@@ -11,10 +11,11 @@ const PORT = process.env.PORT || 3000;
 
 /* ================= INITIALIZATION ================= */
 
-// Ensure our custom table exists for detailed reports and sequence exists for Bill IDs
 const initDB = async () => {
   try {
     const pool = await poolPromise;
+    
+    // Ensure our custom table exists for detailed reports
     await pool.request().query(`
       IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='SettlementItemDetail' AND xtype='U')
       CREATE TABLE SettlementItemDetail (
@@ -26,30 +27,29 @@ const initDB = async () => {
       )
     `);
 
-    // Create a sequence for sequential Bill IDs starting at #1001
+    // Ensure SettlementHeader has a BillNo string column to store random IDs (e.g., #A996E780)
     await pool.request().query(`
-      IF NOT EXISTS (SELECT * FROM sys.sequences WHERE name = 'BillIdSeq')
+      IF EXISTS(SELECT * FROM sys.columns WHERE Name = N'BillNo' AND Object_ID = Object_ID(N'SettlementHeader') AND system_type_id = 56) -- 56 is INT
       BEGIN
-        CREATE SEQUENCE BillIdSeq
-          START WITH 1001
-          INCREMENT BY 1;
+         ALTER TABLE SettlementHeader ALTER COLUMN BillNo NVARCHAR(50);
+      END
+      ELSE IF NOT EXISTS(SELECT * FROM sys.columns WHERE Name = N'BillNo' AND Object_ID = Object_ID(N'SettlementHeader'))
+      BEGIN
+         ALTER TABLE SettlementHeader ADD BillNo NVARCHAR(50);
       END
     `);
 
-    // Ensure SettlementHeader has a BillNo integer column to store it
-    await pool.request().query(`
-      IF NOT EXISTS(SELECT * FROM sys.columns WHERE Name = N'BillNo' AND Object_ID = Object_ID(N'SettlementHeader'))
-      BEGIN
-         ALTER TABLE SettlementHeader ADD BillNo INT;
-      END
-    `);
-
-    console.log("✅ Database initialized: SettlementItemDetail and BillIdSeq ready.");
+    console.log("✅ Database initialized: SettlementItemDetail and BillNo column ready.");
   } catch (err) {
     console.error("❌ DB Initialization Error:", err);
   }
 };
 initDB();
+
+// Helper to generate a random 8-character hex ID (e.g. A996E780)
+const generateRandomBillId = () => {
+  return Math.random().toString(16).slice(2, 10).toUpperCase();
+};
 
 console.log("PORT:", PORT);
 console.log("DB_SERVER:", process.env.DB_SERVER);
@@ -321,12 +321,10 @@ app.post("/api/sales/save", async (req, res) => {
     await transaction.begin();
 
     try {
-      // 1. Generate Settlement ID and Next Bill No
-      const settlementIdResult = await transaction.request().query(`
-        SELECT NEWID() AS id, NEXT VALUE FOR BillIdSeq AS billNo
-      `);
+      // 1. Generate Settlement ID and Random Bill No
+      const settlementIdResult = await transaction.request().query(`SELECT NEWID() AS id`);
       const settlementId = settlementIdResult.recordset[0].id;
-      const billNo = settlementIdResult.recordset[0].billNo;
+      const billNo = generateRandomBillId();
 
       console.log(`📝 Processing Sale: Bill #${billNo} (ID: ${settlementId})`);
 

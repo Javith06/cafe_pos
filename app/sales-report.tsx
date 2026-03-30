@@ -10,6 +10,7 @@ import {
   ImageBackground,
   Dimensions,
   Modal,
+  TextInput,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -39,6 +40,7 @@ export default function SalesReport() {
   const [activePaymentModes, setActivePaymentModes] = useState<string[]>(["CASH", "CARD", "NETS", "PAYNOW"]);
   const [activeOrderTypes, setActiveOrderTypes] = useState<string[]>(["DINE-IN", "TAKEAWAY"]);
   const [sortOrder, setSortOrder] = useState<"NEWEST" | "HIGHEST">("NEWEST");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const isTablet = SCREEN_W >= 768;
 
@@ -171,19 +173,27 @@ export default function SalesReport() {
 
   // CLIENT-SIDE FILTERING & SORTING
   const filteredSales = useMemo(() => {
-    const filtered = sales.filter((s) => {
+    let filtered = sales.filter((s) => {
        const modeMatch = activePaymentModes.includes(s.PayMode);
        // Mock for now: assume all are DINE-IN if field missing OR if takeaway badge not applied yet
        const typeMatch = activeOrderTypes.length === 2 || (s.OrderType ? activeOrderTypes.includes(s.OrderType) : activeOrderTypes.includes("DINE-IN"));
        return modeMatch && typeMatch;
     });
 
+    if (searchQuery.trim()) {
+      const q = searchQuery.toUpperCase();
+      filtered = filtered.filter(s => 
+        (s.BillNo && s.BillNo.toString().toUpperCase().includes(q)) ||
+        (s.SettlementID && s.SettlementID.toString().toUpperCase().includes(q))
+      );
+    }
+
     if (sortOrder === "NEWEST") {
       return [...filtered].sort((a, b) => new Date(b.SettlementDate).getTime() - new Date(a.SettlementDate).getTime());
     } else {
       return [...filtered].sort((a, b) => b.SysAmount - a.SysAmount);
     }
-  }, [sales, activePaymentModes, activeOrderTypes, sortOrder]);
+  }, [sales, activePaymentModes, activeOrderTypes, sortOrder, searchQuery]);
 
   const filteredMetrics = useMemo(() => {
     if (!summary || selectedFilter === "DAILY") {
@@ -440,41 +450,68 @@ export default function SalesReport() {
               {/* Recent Activity */}
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionHeaderText}>RECENT ACTIVITY</Text>
-                <TouchableOpacity onPress={() => fetchData()}>
+                <TouchableOpacity onPress={() => { setSearchQuery(""); fetchData(); }}>
                   <Text style={styles.seeAllText}>REFRESH</Text>
                 </TouchableOpacity>
               </View>
 
-              {filteredSales.slice(0, 30).map((item, idx) => (
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  key={idx}
-                  onPress={() => handleOrderPress(item)}
-                  style={styles.transactionCard}
-                >
-                  <View style={styles.txLeft}>
-                    <View style={styles.txIconWrap}>
-                       <Ionicons 
-                        name={item.PayMode === "CASH" ? "cash-outline" : item.PayMode === "NETS" ? "card-outline" : "qr-code-outline"} 
-                        size={18} 
-                        color="#94a3b8" 
-                       />
+              {/* SEARCH BAR */}
+              <View style={styles.searchContainer}>
+                <Ionicons name="search" size={18} color="#94a3b8" style={styles.searchIcon} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search Bill ID (e.g. A996E780)"
+                  placeholderTextColor="#475569"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  autoCapitalize="characters"
+                  clearButtonMode="while-editing"
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery("")}>
+                    <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {filteredSales.length === 0 && searchQuery.length > 0 ? (
+                <View style={styles.noResultsContainer}>
+                  <Ionicons name="search-outline" size={48} color="#475569" />
+                  <Text style={styles.noResultsTitle}>No matching bills found</Text>
+                  <Text style={styles.noResultsDesc}>Try searching for a different ID or Refresh</Text>
+                </View>
+              ) : (
+                filteredSales.slice(0, 30).map((item, idx) => (
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    key={idx}
+                    onPress={() => handleOrderPress(item)}
+                    style={styles.transactionCard}
+                  >
+                    <View style={styles.txLeft}>
+                      <View style={styles.txIconWrap}>
+                         <Ionicons 
+                          name={item.PayMode === "CASH" ? "cash-outline" : item.PayMode === "NETS" ? "card-outline" : "qr-code-outline"} 
+                          size={18} 
+                          color="#94a3b8" 
+                         />
+                      </View>
+                      <View>
+                        <Text style={styles.txTitle}># {item.BillNo || item.SettlementID?.slice(0, 8)}</Text>
+                        <Text style={styles.txSub}>
+                          {new Date(item.SettlementDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {item.PayMode}
+                        </Text>
+                      </View>
                     </View>
-                    <View>
-                      <Text style={styles.txTitle}># {item.BillNo || item.SettlementID?.slice(0, 8)}</Text>
-                      <Text style={styles.txSub}>
-                        {new Date(item.SettlementDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {item.PayMode}
-                      </Text>
+                    <View style={styles.txRight}>
+                      <Text style={styles.txAmount}>{formatCurrency(item.SysAmount)}</Text>
+                      <View style={styles.paidBadge}>
+                        <Text style={styles.paidText}>PAID</Text>
+                      </View>
                     </View>
-                  </View>
-                  <View style={styles.txRight}>
-                    <Text style={styles.txAmount}>{formatCurrency(item.SysAmount)}</Text>
-                    <View style={styles.paidBadge}>
-                      <Text style={styles.paidText}>PAID</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))}
+                  </TouchableOpacity>
+                ))
+              )}
             </ScrollView>
 
             {/* ORDER DETAIL MODAL */}
@@ -858,14 +895,51 @@ const styles = StyleSheet.create({
   },
   transactionCard: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    padding: 14,
-    borderRadius: 14,
-    marginBottom: 10,
+    backgroundColor: "rgba(15, 23, 42, 0.5)",
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.05)",
-    backgroundColor: "rgba(15, 23, 42, 0.75)",
+  },
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(15, 23, 42, 0.8)",
+    paddingHorizontal: 12,
+    height: 50,
+    borderRadius: 12,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    color: "#fff",
+    fontFamily: Fonts.medium,
+    fontSize: 14,
+  },
+  noResultsContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+    gap: 12,
+  },
+  noResultsTitle: {
+    color: "#e2e8f0",
+    fontFamily: Fonts.bold,
+    fontSize: 18,
+    marginTop: 8,
+  },
+  noResultsDesc: {
+    color: "#64748b",
+    fontFamily: Fonts.medium,
+    fontSize: 14,
+    textAlign: "center",
   },
   txLeft: {
     flexDirection: "row",
