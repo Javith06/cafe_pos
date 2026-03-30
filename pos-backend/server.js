@@ -258,7 +258,6 @@ app.get("/api/sales/all", async (req, res) => {
       SELECT 
         sh.SettlementID,
         sh.LastSettlementDate AS SettlementDate,
-        sh.BillNo,
         sts.PayMode,
         sts.SysAmount,
         sts.ManualAmount,
