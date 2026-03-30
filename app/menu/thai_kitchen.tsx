@@ -478,7 +478,7 @@ export default function MenuScreen() {
   return (
     <SafeAreaView style={{ flex: 1 }}>
       <ImageBackground
-        source={require("../../assets/images/ag.jpg")}
+        source={require("../../assets/images/mesh_bg.png")}
         style={{ flex: 1 }}
         resizeMode="cover"
       >

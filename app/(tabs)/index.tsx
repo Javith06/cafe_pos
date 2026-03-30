@@ -61,7 +61,7 @@ export default function Index() {
 
   return (
     <ImageBackground
-      source={require("../../assets/images/1.avif")}
+      source={require("../../assets/images/mesh_bg.png")}
       style={styles.background}
       resizeMode="cover"
     >

@@ -189,7 +189,7 @@ export default function CartScreen() {
   return (
     <SafeAreaView style={{ flex: 1 }}>
       <ImageBackground
-        source={require("../assets/images/a4.jpg")}
+        source={require("../assets/images/mesh_bg.png")}
         style={{ flex: 1 }}
         resizeMode="cover"
       >

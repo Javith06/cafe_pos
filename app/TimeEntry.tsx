@@ -97,7 +97,7 @@ export default function TimeEntry() {
 
   return (
     <ImageBackground
-      source={require("../assets/images/11.jpg")}
+      source={require("../assets/images/mesh_bg.png")}
       style={styles.background}
       resizeMode="cover"
     >

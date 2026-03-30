@@ -9,6 +9,29 @@ const app = express();
 
 const PORT = process.env.PORT || 3000;
 
+/* ================= INITIALIZATION ================= */
+
+// Ensure our custom table exists for detailed reports
+const initDB = async () => {
+  try {
+    const pool = await poolPromise;
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='SettlementItemDetail' AND xtype='U')
+      CREATE TABLE SettlementItemDetail (
+        SettlementID UNIQUEIDENTIFIER,
+        DishName NVARCHAR(255),
+        Qty INT,
+        Price DECIMAL(18,2),
+        OrderDateTime DATETIME DEFAULT GETDATE()
+      )
+    `);
+    console.log("✅ Database initialized: SettlementItemDetail table ready.");
+  } catch (err) {
+    console.error("❌ DB Initialization Error:", err);
+  }
+};
+initDB();
+
 console.log("PORT:", PORT);
 console.log("DB_SERVER:", process.env.DB_SERVER);
 
@@ -259,6 +282,26 @@ app.post("/api/sales/save", async (req, res) => {
           VALUES (@SettlementID, UPPER(@PayMode), @SysAmount, @ManualAmount, @AmountDiff, @ReceiptCount)
         `);
 
+      // 4. Insert individual dishes into SettlementItemDetail
+      if (items && Array.isArray(items)) {
+        for (const item of items) {
+          // In some versions of the cart, property names might be dish_name or DishName
+          const name = item.dish_name || item.DishName || item.name;
+          const qty = item.qty || item.Qty || item.quantity || 1;
+          const price = item.price || item.Price || 0;
+
+          await transaction.request()
+            .input("SettlementID", settlementId)
+            .input("DishName", name)
+            .input("Qty", qty)
+            .input("Price", price)
+            .query(`
+              INSERT INTO SettlementItemDetail (SettlementID, DishName, Qty, Price)
+              VALUES (@SettlementID, @DishName, @Qty, @Price)
+            `);
+        }
+      }
+
       await transaction.commit();
       console.log("✅ Sale saved successfully:", settlementId);
       res.json({ success: true, settlementId });
@@ -299,6 +342,29 @@ app.get("/api/sales/range", async (req, res) => {
   } catch (err) {
     console.error("RANGE ERROR:", err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+// API 5: Get settlement details (items eaten)
+app.get("/api/sales/detail/:id", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const { id } = req.params;
+    
+    const result = await pool.request()
+      .input("Id", id)
+      .query(`
+        SELECT 
+          DishName,
+          Qty,
+          Price
+        FROM SettlementItemDetail
+        WHERE SettlementID = @Id
+      `);
+    res.json(result.recordset);
+  } catch (err) {
+    console.error("DETAIL ERROR:", err);
+    res.json([]);
   }
 });
 

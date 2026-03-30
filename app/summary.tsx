@@ -135,7 +135,7 @@ export default function SummaryScreen() {
   return (
     <View style={{ flex: 1 }}>
       <ImageBackground
-        source={require("../assets/images/a4.jpg")}
+        source={require("../assets/images/mesh_bg.png")}
         style={{ width: SCREEN_W, height: SCREEN_H }}
         resizeMode="cover"
       >

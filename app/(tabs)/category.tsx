@@ -335,7 +335,7 @@ export default function Category() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ImageBackground
-        source={require("../../assets/images/a4.jpg")}
+        source={require("../../assets/images/mesh_bg.png")}
         style={styles.background}
         resizeMode="cover"
       >
@@ -351,16 +351,8 @@ export default function Category() {
             { paddingHorizontal: isTablet ? 20 : 14 },
           ]}
         >
-          {/* LEFT — Branding */}
-          <View style={styles.brandBlock}>
-            <View style={styles.brandIconWrap}>
-              <Ionicons name="restaurant" size={18} color="#22c55e" />
-            </View>
-            <View>
-              <Text style={styles.brandName}>Smart Cafe</Text>
-              <Text style={styles.brandSub}>Point of Sale</Text>
-            </View>
-          </View>
+          {/* LEFT — Branding (Removed) */}
+          <View style={{ width: 0 }} />
 
           {/* CENTER — Section Tabs */}
           <ScrollView
@@ -581,9 +573,9 @@ const styles = StyleSheet.create({
   tabBtn: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     backgroundColor: "rgba(255,255,255,0.06)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
@@ -601,8 +593,8 @@ const styles = StyleSheet.create({
 
   /* Code badge inside tab (S1, S2, S3, TW) */
   tabCodeBadge: {
-    width: 24,
-    height: 20,
+    width: 21,
+    height: 18,
     borderRadius: 6,
     backgroundColor: "rgba(255,255,255,0.1)",
     justifyContent: "center",
@@ -625,9 +617,9 @@ const styles = StyleSheet.create({
   tabBadge: {
     marginLeft: 6,
     backgroundColor: "rgba(255,255,255,0.1)",
-    borderRadius: 10,
-    minWidth: 18,
-    height: 18,
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 4,
@@ -650,8 +642,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
   },
   salesBtn: {
     backgroundColor: "rgba(34,197,94,0.1)",
