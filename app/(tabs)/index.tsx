@@ -1,7 +1,6 @@
 import { useRouter, useFocusEffect } from "expo-router";
 import React, { useState, useCallback } from "react";
 import {
-  Alert,
   ImageBackground,
   SafeAreaView,
   StatusBar,
@@ -12,12 +11,14 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { useToast } from "../../components/Toast";
 
 export default function Index() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const router = useRouter();
+  const { showToast } = useToast();
   const { width } = useWindowDimensions();
   const containerWidth = Math.min(width - 40, 640);
 
@@ -39,7 +40,7 @@ export default function Index() {
     const userPassword = "123";
 
     if (!email || !password) {
-      Alert.alert("Error", "Please enter email and password");
+      showToast({ type: "warning", message: "Fields Required", subtitle: "Please enter your email and password" });
       return;
     }
 
@@ -55,7 +56,7 @@ export default function Index() {
       return;
     }
 
-    Alert.alert("Error", "Invalid email or password");
+    showToast({ type: "error", message: "Invalid Credentials", subtitle: "Email or password is incorrect" });
   };
 
   return (

@@ -18,6 +18,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import CartSidebar from "../../components/CartSidebar";
+import { Fonts } from "../../constants/Fonts";
 import {
   addToCartGlobal,
   getContextId,
@@ -36,6 +37,17 @@ const kitchenIcons: Record<string, string> = {
   DRINKS: "🥤",
   FISH: "🐟",
 };
+
+// Per-kitchen gradient colors for placeholder backgrounds
+const kitchenGradients: Record<string, string[]> = {
+  "THAI KITCHEN": ["#134e4a", "#065f46"],
+  "INDIAN KITCHEN": ["#78350f", "#92400e"],
+  "SOUTH INDIAN": ["#7c2d12", "#9a3412"],
+  "WESTERN KITCHEN": ["#1e3a5f", "#1e40af"],
+  DRINKS: ["#312e81", "#4c1d95"],
+  FISH: ["#164e63", "#155e75"],
+};
+const defaultGradient = ["#1e293b", "#0f172a"];
 
 type Kitchen = {
   CategoryId: string;
@@ -62,7 +74,15 @@ type Modifier = {
 };
 
 // Image Component with Error Handling
-const DishImage = ({ dish, style }: { dish: Dish; style: any }) => {
+const DishImage = ({
+  dish,
+  style,
+  kitchenName,
+}: {
+  dish: Dish;
+  style: any;
+  kitchenName?: string;
+}) => {
   const [error, setError] = useState(false);
 
   useEffect(() => {
@@ -71,34 +91,32 @@ const DishImage = ({ dish, style }: { dish: Dish; style: any }) => {
 
   const getImageUrl = () => {
     if (error) return null;
-
     if (dish.ImageBase64) {
       return { uri: dish.ImageBase64 };
     }
-
     return null;
   };
 
-  if (error) {
-    return (
-      <View style={[style, styles.imagePlaceholder]}>
-        <Ionicons
-          name="restaurant-outline"
-          size={32}
-          color="rgba(255,255,255,0.2)"
-        />
-      </View>
-    );
-  }
-
   const imageUrl = getImageUrl();
-  if (!imageUrl) {
+
+  // Placeholder: kitchen color bg + subtle icon
+  if (!imageUrl || error) {
+    const gradColors = kitchenGradients[kitchenName || ""] || defaultGradient;
     return (
-      <View style={[style, styles.imagePlaceholder]}>
+      <View
+        style={[
+          style,
+          {
+            backgroundColor: gradColors[0],
+            justifyContent: "center",
+            alignItems: "center",
+          },
+        ]}
+      >
         <Ionicons
           name="restaurant-outline"
           size={32}
-          color="rgba(255,255,255,0.2)"
+          color="rgba(255,255,255,0.25)"
         />
       </View>
     );
@@ -115,9 +133,33 @@ const DishSkeleton = ({ width }: { width: number }) => {
     <View style={[styles.card, { width, opacity: 0.6 }]}>
       <View style={[styles.imagePlaceholder, { backgroundColor: "#1e293b" }]} />
       <View style={styles.cardContent}>
-        <View style={{ height: 16, backgroundColor: "#334155", borderRadius: 4, width: "80%", marginBottom: 8 }} />
-        <View style={{ height: 16, backgroundColor: "#334155", borderRadius: 4, width: "60%", marginBottom: 8 }} />
-        <View style={{ height: 20, backgroundColor: "#064e3b", borderRadius: 4, width: "40%", marginTop: 4 }} />
+        <View
+          style={{
+            height: 16,
+            backgroundColor: "#334155",
+            borderRadius: 4,
+            width: "80%",
+            marginBottom: 8,
+          }}
+        />
+        <View
+          style={{
+            height: 16,
+            backgroundColor: "#334155",
+            borderRadius: 4,
+            width: "60%",
+            marginBottom: 8,
+          }}
+        />
+        <View
+          style={{
+            height: 20,
+            backgroundColor: "#064e3b",
+            borderRadius: 4,
+            width: "40%",
+            marginTop: 4,
+          }}
+        />
       </View>
     </View>
   );
@@ -511,7 +553,11 @@ export default function MenuScreen() {
 
             {/* Kitchens */}
             <View style={styles.sectionContainer}>
-              <Text style={styles.sectionLabel}>KITCHENS</Text>
+              {/* Accent section label */}
+              <View style={styles.accentLabelRow}>
+                <View style={styles.accentBar} />
+                <Text style={styles.sectionLabel}>KITCHENS</Text>
+              </View>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -519,23 +565,47 @@ export default function MenuScreen() {
               >
                 {kitchens.map((k) => {
                   const active = k.CategoryId === selectedKitchenId;
+                  const gradColors =
+                    kitchenGradients[k.KitchenTypeName] || defaultGradient;
                   return (
                     <TouchableOpacity
                       key={k.CategoryId}
                       style={[
                         styles.kitchenCard,
                         active && styles.kitchenActive,
+                        active && {
+                          shadowColor: "#22c55e",
+                          shadowOpacity: 0.5,
+                          shadowRadius: 10,
+                          shadowOffset: { width: 0, height: 0 },
+                          elevation: 8,
+                        },
                       ]}
                       onPress={() =>
                         loadGroups(k.CategoryId, k.KitchenTypeName)
                       }
                     >
+                      {/* Gradient background strip */}
+                      <View
+                        style={[
+                          styles.kitchenGradientBg,
+                          { backgroundColor: gradColors[0] },
+                          active && { opacity: 0.9 },
+                        ]}
+                      />
                       <Text style={styles.kitchenIcon}>
                         {kitchenIcons[k.KitchenTypeName] || "🍽️"}
                       </Text>
-                      <Text style={styles.kitchenText} numberOfLines={2}>
+                      <Text
+                        style={[
+                          styles.kitchenText,
+                          active && styles.kitchenTextActive,
+                        ]}
+                        numberOfLines={2}
+                      >
                         {k.KitchenTypeName}
                       </Text>
+                      {active && <View style={styles.kitchenActiveDot} />}
                     </TouchableOpacity>
                   );
                 })}
@@ -545,7 +615,10 @@ export default function MenuScreen() {
             {/* Groups */}
             {groups.length > 0 && (
               <View style={styles.sectionContainer}>
-                <Text style={styles.sectionLabel}>CATEGORIES</Text>
+                <View style={styles.accentLabelRow}>
+                  <View style={styles.accentBar} />
+                  <Text style={styles.sectionLabel}>CATEGORIES</Text>
+                </View>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -559,7 +632,13 @@ export default function MenuScreen() {
                         style={[styles.chip, active && styles.activeChip]}
                         onPress={() => loadDishes(g.DishGroupId)}
                       >
-                        <Text style={styles.chipText} numberOfLines={1}>
+                        <Text
+                          style={[
+                            styles.chipText,
+                            active && styles.activeChipText,
+                          ]}
+                          numberOfLines={1}
+                        >
                           {g.DishGroupName}
                         </Text>
                       </TouchableOpacity>
@@ -571,14 +650,24 @@ export default function MenuScreen() {
 
             {/* Dishes Grid */}
             <View style={[styles.sectionContainer, { flex: 1 }]}>
-              <Text style={styles.sectionLabel}>DISHES</Text>
+              <View style={styles.accentLabelRow}>
+                <View style={styles.accentBar} />
+                <Text style={styles.sectionLabel}>DISHES</Text>
+                {items.length > 0 && !isLoadingDishes && (
+                  <Text style={styles.dishCount}>{items.length} items</Text>
+                )}
+              </View>
               <FlatList
                 ref={listRef}
-                data={(isLoadingDishes ? [1, 2, 3, 4, 5, 6, 7, 8] : items) as any[]}
+                data={
+                  (isLoadingDishes ? [1, 2, 3, 4, 5, 6, 7, 8] : items) as any[]
+                }
                 numColumns={columns}
                 key={`grid-${columns}`}
                 keyExtractor={(item, index) =>
-                  isLoadingDishes ? `skeleton-${index}` : item.DishId + "_" + index
+                  isLoadingDishes
+                    ? `skeleton-${index}`
+                    : item.DishId + "_" + index
                 }
                 columnWrapperStyle={
                   columns > 1
@@ -605,15 +694,23 @@ export default function MenuScreen() {
                     <TouchableOpacity
                       style={[styles.card, { width: cardWidth }]}
                       onPress={() => openModifiers(item)}
-                      activeOpacity={0.9}
+                      activeOpacity={0.85}
                     >
-                      <DishImage dish={item} style={styles.image} />
+                      <View style={styles.imageWrap}>
+                        <DishImage
+                          dish={item}
+                          style={styles.image}
+                          kitchenName={selectedKitchenName}
+                        />
+                        <View style={styles.priceBadge}>
+                          <Text style={styles.priceBadgeText}>
+                            ${item.Price?.toFixed(2) ?? "0.00"}
+                          </Text>
+                        </View>
+                      </View>
                       <View style={styles.cardContent}>
                         <Text style={styles.name} numberOfLines={2}>
                           {item.Name}
-                        </Text>
-                        <Text style={styles.price} numberOfLines={1}>
-                          $ {item.Price?.toFixed(2) ?? "0.00"}
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -624,7 +721,7 @@ export default function MenuScreen() {
           </BlurView>
 
           {/* Cart Sidebar for wide screens */}
-          {width > 900 && <CartSidebar width={350} />}
+          {width > 900 && <CartSidebar width={373} />}
 
           {/* Modifier Modal */}
           <Modal
@@ -810,7 +907,7 @@ const styles = StyleSheet.create({
   noContextText: {
     color: "#ff4444",
     fontSize: 24,
-    fontWeight: "bold",
+    fontFamily: Fonts.bold,
     marginBottom: 10,
   },
   noContextSubText: {
@@ -818,6 +915,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 20,
     textAlign: "center",
+    fontFamily: Fonts.regular,
   },
   goBackButton: {
     backgroundColor: "#22c55e",
@@ -827,7 +925,7 @@ const styles = StyleSheet.create({
   },
   goBackText: {
     color: "#fff",
-    fontWeight: "bold",
+    fontFamily: Fonts.bold,
     fontSize: 16,
   },
   contextContainer: {
@@ -839,7 +937,7 @@ const styles = StyleSheet.create({
   },
   contextText: {
     color: "#22c55e",
-    fontWeight: "600",
+    fontFamily: Fonts.semiBold,
     fontSize: 14,
   },
   sectionContainer: {
@@ -848,9 +946,28 @@ const styles = StyleSheet.create({
   sectionLabel: {
     color: "rgba(255,255,255,0.5)",
     fontSize: 11,
-    fontWeight: "600",
+    fontFamily: Fonts.semiBold,
     letterSpacing: 0.5,
     marginBottom: 8,
+    marginLeft: 4,
+  },
+  /* Accent label row */
+  accentLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+  },
+  accentBar: {
+    width: 3,
+    height: 14,
+    borderRadius: 2,
+    backgroundColor: "#22c55e",
+  },
+  dishCount: {
+    color: "#4ade80",
+    fontFamily: Fonts.semiBold,
+    fontSize: 11,
     marginLeft: 4,
   },
   header: {
@@ -863,13 +980,14 @@ const styles = StyleSheet.create({
   },
   title: {
     color: "#22c55e",
-    fontWeight: "800",
+    fontFamily: Fonts.extraBold,
     fontSize: 20,
   },
   subTitle: {
     color: "rgba(255,255,255,0.6)",
     fontSize: 13,
     marginTop: 2,
+    fontFamily: Fonts.regular,
   },
   backBtn: {
     backgroundColor: "rgba(255,255,255,0.12)",
@@ -879,7 +997,7 @@ const styles = StyleSheet.create({
   },
   backText: {
     color: "#fff",
-    fontWeight: "700",
+    fontFamily: Fonts.bold,
     fontSize: 14,
   },
   kitchenRow: {
@@ -889,28 +1007,50 @@ const styles = StyleSheet.create({
   },
   kitchenCard: {
     width: 110,
-    height: 80,
+    height: 84,
     borderRadius: 16,
-    backgroundColor: "rgba(17, 24, 39, 0.8)",
+    backgroundColor: "rgba(17, 24, 39, 0.9)",
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 8,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.15)",
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    overflow: "hidden",
+    position: "relative",
+  },
+  kitchenGradientBg: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 0.45,
   },
   kitchenActive: {
-    backgroundColor: "rgba(34, 197, 94, 0.3)",
     borderColor: "#4ade80",
+    borderWidth: 1.5,
+  },
+  kitchenActiveDot: {
+    position: "absolute",
+    bottom: 6,
+    width: 20,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: "#22c55e",
   },
   kitchenIcon: {
-    fontSize: 24,
+    fontSize: 26,
     marginBottom: 4,
   },
   kitchenText: {
-    color: "#fff",
-    fontWeight: "700",
+    color: "rgba(255,255,255,0.7)",
+    fontFamily: Fonts.bold,
     fontSize: 11,
     textAlign: "center",
+  },
+  kitchenTextActive: {
+    color: "#fff",
+    fontFamily: Fonts.extraBold,
   },
   groupRow: {
     gap: 10,
@@ -928,13 +1068,17 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255, 255, 255, 0.15)",
   },
   activeChip: {
-    backgroundColor: "rgba(34, 197, 94, 0.3)",
+    backgroundColor: "rgba(34, 197, 94, 0.2)",
     borderColor: "#4ade80",
+    borderWidth: 1.5,
   },
   chipText: {
-    color: "#fff",
-    fontWeight: "800",
+    color: "rgba(255,255,255,0.65)",
+    fontFamily: Fonts.extraBold,
     fontSize: 13,
+  },
+  activeChipText: {
+    color: "#22c55e",
   },
   gridContent: {
     paddingBottom: 20,
@@ -947,17 +1091,45 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.45)",
     fontSize: 16,
   },
+  /* Dish card */
   card: {
-    backgroundColor: "rgba(17, 24, 39, 0.85)",
+    backgroundColor: "rgba(17, 24, 39, 0.9)",
     borderRadius: 16,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.15)",
+    borderColor: "rgba(255, 255, 255, 0.1)",
+  },
+  imageWrap: {
+    position: "relative",
+    width: "100%",
+    height: 120,
   },
   image: {
     width: "100%",
     height: 120,
     resizeMode: "cover",
+  },
+  imageGradientOverlay: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 60,
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  priceBadge: {
+    position: "absolute",
+    bottom: 6,
+    right: 8,
+    backgroundColor: "rgba(34,197,94,0.85)",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  priceBadgeText: {
+    color: "#052b12",
+    fontFamily: Fonts.black,
+    fontSize: 13,
   },
   imagePlaceholder: {
     backgroundColor: "rgba(30, 41, 59, 1)",
@@ -970,18 +1142,18 @@ const styles = StyleSheet.create({
     fontSize: 40,
   },
   cardContent: {
-    padding: 12,
-    gap: 4,
+    padding: 10,
+    gap: 2,
   },
   name: {
     color: "#fff",
-    fontWeight: "800",
-    fontSize: 15,
-    minHeight: 40,
+    fontFamily: Fonts.extraBold,
+    fontSize: 14,
+    minHeight: 38,
   },
   price: {
     color: "#22c55e",
-    fontWeight: "900",
+    fontFamily: Fonts.black,
     fontSize: 15,
   },
   mobileCartButton: {
@@ -1001,7 +1173,7 @@ const styles = StyleSheet.create({
   },
   mobileCartText: {
     color: "#fff",
-    fontWeight: "800",
+    fontFamily: Fonts.extraBold,
     fontSize: 16,
   },
   modalOverlay: {
@@ -1021,7 +1193,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     color: "#22c55e",
     fontSize: 18,
-    fontWeight: "bold",
+    fontFamily: Fonts.bold,
     marginBottom: 20,
     textAlign: "center",
   },
@@ -1055,7 +1227,7 @@ const styles = StyleSheet.create({
   checkmark: {
     color: "#22c55e",
     fontSize: 16,
-    fontWeight: "bold",
+    fontFamily: Fonts.bold,
   },
   modalButtons: {
     flexDirection: "row",
@@ -1077,7 +1249,7 @@ const styles = StyleSheet.create({
   },
   btnText: {
     color: "#fff",
-    fontWeight: "bold",
+    fontFamily: Fonts.bold,
     fontSize: 15,
   },
   customSection: {
@@ -1089,7 +1261,7 @@ const styles = StyleSheet.create({
   customSectionTitle: {
     color: "#22c55e",
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: Fonts.semiBold,
     marginBottom: 10,
   },
   customItemRow: {
@@ -1110,7 +1282,7 @@ const styles = StyleSheet.create({
   removeText: {
     color: "#ff4444",
     fontSize: 12,
-    fontWeight: "600",
+    fontFamily: Fonts.semiBold,
   },
   customModalContent: {
     width: "90%",
@@ -1128,11 +1300,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.2)",
+    fontFamily: Fonts.regular,
   },
   inputLabel: {
     color: "#fff",
     fontSize: 14,
-    fontWeight: "600",
+    fontFamily: Fonts.semiBold,
     marginBottom: 8,
     marginTop: 8,
   },

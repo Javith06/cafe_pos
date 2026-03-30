@@ -13,9 +13,10 @@ import {
   useWindowDimensions,
   View,
   Platform,
-  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Fonts } from "../constants/Fonts";
+import { useToast } from "../components/Toast";
 
 import {
   findActiveOrder,
@@ -34,6 +35,7 @@ export default function PaymentScreen() {
   const closeActiveOrder = useActiveOrdersStore((s) => s.closeActiveOrder);
   const clearTable = useTableStatusStore((s) => s.clearTable);
   const router = useRouter();
+  const { showToast } = useToast();
   const { width, height } = useWindowDimensions();
 
   const isMobile = width < 768;
@@ -92,7 +94,7 @@ export default function PaymentScreen() {
   const testAPI = async () => {
     try {
       console.log("🧪 Testing API connection...");
-      Alert.alert("Testing", "Checking API connection...");
+      showToast({ type: "info", message: "Testing API...", subtitle: "Checking connection to server" });
       
       // Test basic endpoint
       const response = await fetch(`${API_URL}/test`);
@@ -121,10 +123,10 @@ export default function PaymentScreen() {
       const testResult = await testSave.json();
       console.log("✅ Save test result:", testResult);
       
-      Alert.alert("API Test", `Success!\n${JSON.stringify(testResult)}`);
+      showToast({ type: "success", message: "API Connected", subtitle: "Server is reachable" });
     } catch (error: any) {
       console.error("❌ Test error:", error);
-      Alert.alert("API Test Failed", error.message);
+      showToast({ type: "error", message: "API Test Failed", subtitle: error.message });
     }
   };
 
@@ -194,7 +196,7 @@ export default function PaymentScreen() {
 
   const confirmPayment = async () => {
     if (method === "CASH" && paidNum < total) {
-      Alert.alert("Insufficient Payment", `Please enter at least $${total.toFixed(2)}`);
+      showToast({ type: "warning", message: "Insufficient Payment", subtitle: `Please enter at least $${total.toFixed(2)}` });
       return;
     }
 
@@ -570,10 +572,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   backBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
-  backText: { color: "#fff", fontWeight: "700" },
+  backText: { color: "#fff", fontFamily: Fonts.bold },
   orderInfo: { alignItems: "center" },
-  orderTitle: { color: "#fff", fontWeight: "900", fontSize: 16 },
-  orderSub: { color: "#94a3b8", fontSize: 12 },
+  orderTitle: { color: "#fff", fontFamily: Fonts.black, fontSize: 16 },
+  orderSub: { color: "#94a3b8", fontSize: 12, fontFamily: Fonts.regular },
   rightHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
   testBtn: {
     backgroundColor: "rgba(255,165,0,0.3)",
@@ -581,8 +583,8 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
   },
-  testBtnText: { color: "#fff", fontWeight: "700", fontSize: 12 },
-  dateTime: { color: "#94a3b8" },
+  testBtnText: { color: "#fff", fontFamily: Fonts.bold, fontSize: 12 },
+  dateTime: { color: "#94a3b8", fontFamily: Fonts.medium },
 
   mainLayout: { flex: 1, flexDirection: "row", gap: 16 },
   mobileLayout: { flexDirection: "column" },
@@ -591,13 +593,13 @@ const styles = StyleSheet.create({
   centerPane: { flex: 2, padding: 16, borderRadius: 18 },
   rightPane: { flex: 1, padding: 16, borderRadius: 18 },
 
-  sectionLabel: { color: "#94a3b8", marginBottom: 6 },
-  grandTotal: { fontSize: 40, fontWeight: "900", color: "#22c55e" },
+  sectionLabel: { color: "#94a3b8", marginBottom: 6, fontFamily: Fonts.medium },
+  grandTotal: { fontSize: 40, fontFamily: Fonts.black, color: "#22c55e" },
 
   breakdown: { flexDirection: "column", gap: 12, marginTop: 24, paddingRight: 8 },
   breakRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  breakLabel: { color: "#64748b", fontSize: 16 },
-  breakValue: { color: "#fff", fontSize: 18, fontWeight: "800" },
+  breakLabel: { color: "#64748b", fontSize: 16, fontFamily: Fonts.regular },
+  breakValue: { color: "#fff", fontSize: 18, fontFamily: Fonts.extraBold },
 
   methodRow: { flexDirection: "row", gap: 8, marginBottom: 12 },
   methodCard: {
@@ -611,7 +613,7 @@ const styles = StyleSheet.create({
   activeMethod: { backgroundColor: "#22c55e" },
   methodText: {
     marginTop: 4,
-    fontWeight: "800",
+    fontFamily: Fonts.extraBold,
     fontSize: 12,
     color: "#94a3b8",
   },
@@ -625,8 +627,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     marginBottom: 12,
   },
-  currency: { color: "#94a3b8", fontSize: 24 },
-  cashInput: { flex: 1, color: "#fff", fontSize: 30, fontWeight: "900" },
+  currency: { color: "#94a3b8", fontSize: 24, fontFamily: Fonts.regular },
+  cashInput: { flex: 1, color: "#fff", fontSize: 30, fontFamily: Fonts.black },
 
   quickGrid: {
     flexDirection: "row",
@@ -642,11 +644,11 @@ const styles = StyleSheet.create({
     minWidth: "30%",
     alignItems: "center",
   },
-  quickText: { color: "#fff", fontWeight: "900", fontSize: 18 },
+  quickText: { color: "#fff", fontFamily: Fonts.black, fontSize: 18 },
 
   changeBox: { marginBottom: 12 },
-  changeLabel: { color: "#94a3b8" },
-  changeValue: { fontSize: 36, fontWeight: "900", color: "#22c55e" },
+  changeLabel: { color: "#94a3b8", fontFamily: Fonts.medium },
+  changeValue: { fontSize: 36, fontFamily: Fonts.black, color: "#22c55e" },
 
   confirmBtn: {
     backgroundColor: "#22c55e",
@@ -657,12 +659,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
   },
-  confirmText: { color: "#052b12", fontWeight: "900", fontSize: 16 },
+  confirmText: { color: "#052b12", fontFamily: Fonts.black, fontSize: 16 },
   disabled: { backgroundColor: "rgba(34,197,94,0.4)" },
 
   receiptTitle: {
     color: "#fff",
-    fontWeight: "800",
+    fontFamily: Fonts.extraBold,
     fontSize: 14,
     marginBottom: 10,
   },
@@ -672,9 +674,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.1)",
   },
-  itemQty: { width: 30, color: "#94a3b8" },
-  itemName: { flex: 1, color: "#fff" },
-  itemPrice: { color: "#22c55e", fontWeight: "800" },
+  itemQty: { width: 30, color: "#94a3b8", fontFamily: Fonts.medium },
+  itemName: { flex: 1, color: "#fff", fontFamily: Fonts.regular },
+  itemPrice: { color: "#22c55e", fontFamily: Fonts.extraBold },
 
   receiptTotalRow: {
     flexDirection: "row",
@@ -684,6 +686,6 @@ const styles = StyleSheet.create({
     borderTopColor: "rgba(255,255,255,0.2)",
     paddingTop: 10,
   },
-  receiptTotalLabel: { color: "#fff", fontWeight: "800" },
-  receiptTotalValue: { color: "#22c55e", fontWeight: "900", fontSize: 18 },
+  receiptTotalLabel: { color: "#fff", fontFamily: Fonts.extraBold },
+  receiptTotalValue: { color: "#22c55e", fontFamily: Fonts.black, fontSize: 18 },
 });

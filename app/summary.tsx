@@ -1,3 +1,4 @@
+
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
@@ -11,10 +12,12 @@ import {
   useWindowDimensions,
   Modal,
   TextInput,
-  Alert,
   View,
 } from "react-native";
+import { BlurView } from "expo-blur";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Fonts } from "../constants/Fonts";
+import { useToast } from "../components/Toast";
 
 import DiscountModal from "../components/DiscountModal";
 import { findActiveOrder, useActiveOrdersStore } from "../stores/activeOrdersStore";
@@ -24,6 +27,7 @@ import { useTableStatusStore } from "../stores/tableStatusStore";
 
 export default function SummaryScreen() {
   const router = useRouter();
+  const { showToast } = useToast();
 
   const context = getOrderContext();
   const activeOrder = context ? findActiveOrder(context) : undefined;
@@ -66,7 +70,7 @@ export default function SummaryScreen() {
 
   const handleCancelOrder = () => {
     if (cancelPassword !== "786") {
-      Alert.alert("Error", "Incorrect admin password.");
+      showToast({ type: "error", message: "Incorrect Password", subtitle: "Admin password required to cancel order" });
       return;
     }
 
@@ -77,7 +81,7 @@ export default function SummaryScreen() {
         updateTableStatus(context.section, context.tableNo, "", "EMPTY");
       }
     }
-    
+
     setShowCancelModal(false);
     setCancelPassword("");
     router.replace("/(tabs)/category");
@@ -197,7 +201,7 @@ export default function SummaryScreen() {
 
             {/* MAIN CONTENT AREA */}
             <View style={[styles.mainContent, isLandscape && styles.mainContentLandscape]}>
-              
+
               {/* LIST */}
               <View style={[styles.listContainer, isLandscape && styles.listContainerLandscape]}>
                 <FlatList
@@ -207,44 +211,43 @@ export default function SummaryScreen() {
                   contentContainerStyle={{ paddingBottom: 20 }}
                   renderItem={({ item }) => (
                     <View style={styles.row}>
-                      <View style={styles.rowContent}>
-                        <Text style={styles.name}>
-                          {item.name}
-                        </Text>
-
-                        <View style={styles.subInfoRow}>
-                          <Text style={styles.qty}>Qty: {item.qty}</Text>
-                          {(item.spicy && item.spicy !== "Medium") ||
-                          (item.oil && item.oil !== "Normal") ||
-                          (item.salt && item.salt !== "Normal") ||
-                          (item.sugar && item.sugar !== "Normal") ||
-                          item.note ? (
-                            <Text style={styles.sub}>
-                              {[
-                                item.spicy && item.spicy !== "Medium"
-                                  ? `Spicy: ${item.spicy}`
-                                  : "",
-                                item.oil && item.oil !== "Normal"
-                                  ? `Oil: ${item.oil}`
-                                  : "",
-                                item.salt && item.salt !== "Normal"
-                                  ? `Salt: ${item.salt}`
-                                  : "",
-                                item.sugar && item.sugar !== "Normal"
-                                  ? `Sugar: ${item.sugar}`
-                                  : "",
-                                item.note ? `Note: ${item.note}` : "",
-                              ]
-                                .filter(Boolean)
-                                .join(" | ")}
-                            </Text>
-                          ) : null}
-                        </View>
+                      {/* Qty badge */}
+                      <View style={styles.qtyBadge}>
+                        <Text style={styles.qtyBadgeText}>{item.qty}</Text>
                       </View>
 
-                      <Text style={styles.price}>
-                        ${((item.price || 0) * item.qty).toFixed(2)}
-                      </Text>
+                      {/* Name + modifiers */}
+                      <View style={styles.rowContent}>
+                        <Text style={styles.name} numberOfLines={2}>
+                          {item.name}
+                        </Text>
+                        {(item.spicy && item.spicy !== "Medium") ||
+                        (item.oil && item.oil !== "Normal") ||
+                        (item.salt && item.salt !== "Normal") ||
+                        (item.sugar && item.sugar !== "Normal") ||
+                        item.note ? (
+                          <Text style={styles.sub} numberOfLines={1}>
+                            {[
+                              item.spicy && item.spicy !== "Medium" ? `🌶 ${item.spicy}` : "",
+                              item.oil && item.oil !== "Normal" ? `Oil: ${item.oil}` : "",
+                              item.salt && item.salt !== "Normal" ? `Salt: ${item.salt}` : "",
+                              item.sugar && item.sugar !== "Normal" ? `Sugar: ${item.sugar}` : "",
+                              item.note ? `📝 ${item.note}` : "",
+                            ].filter(Boolean).join("  ·  ")}
+                          </Text>
+                        ) : null}
+                        {/* Modifiers */}
+                        {item.modifiers && Array.isArray(item.modifiers) && item.modifiers.length > 0 && (
+                          <Text style={styles.sub} numberOfLines={1}>
+                            {item.modifiers.map((m: any) => `+ ${m.ModifierName}`).join("  ·  ")}
+                          </Text>
+                        )}
+                      </View>
+
+                      {/* Price */}
+                      <View style={styles.priceBlock}>
+                        <Text style={styles.price}>${((item.price || 0) * item.qty).toFixed(2)}</Text>
+                      </View>
                     </View>
                   )}
                 />
@@ -252,26 +255,36 @@ export default function SummaryScreen() {
 
               {/* TOTALS RECEIPT CARD */}
               <View style={[styles.receiptContainer, isLandscape && styles.receiptContainerLandscape]}>
-                <View style={styles.receiptCard}>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Total Items</Text>
-                    <Text style={styles.summaryValue}>{totalItems}</Text>
+                <BlurView intensity={50} tint="dark" style={styles.receiptCard}>
+
+                  {/* Receipt header */}
+                  <View style={styles.receiptHeader}>
+                    <Ionicons name="receipt-outline" size={16} color="#4ade80" />
+                    <Text style={styles.receiptHeaderText}>Bill Summary</Text>
+                    <View style={styles.itemCountChip}>
+                      <Text style={styles.itemCountChipText}>{totalItems} items</Text>
+                    </View>
                   </View>
+
+                  <View style={styles.receiptDivider} />
 
                   <View style={styles.summaryRow}>
                     <Text style={styles.summaryLabel}>Subtotal</Text>
                     <Text style={styles.summaryValue}>${subtotal.toFixed(2)}</Text>
                   </View>
 
-                  {/* 🔥 DISCOUNT DISPLAY */}
+                  {/* Discount row — styled as a badge */}
                   {discountInfo?.applied && (
-                    <View style={styles.summaryRow}>
-                      <Text style={[styles.summaryLabel, { color: "#ff4444" }]}>
-                        Discount
-                      </Text>
-                      <Text style={[styles.summaryValue, { color: "#ff4444" }]}>
-                        -${discountAmount.toFixed(2)}
-                      </Text>
+                    <View style={styles.discountRow}>
+                      <View style={styles.discountBadge}>
+                        <Ionicons name="pricetag" size={12} color="#f87171" />
+                        <Text style={styles.discountBadgeText}>
+                          {discountInfo.type === "percentage"
+                            ? `${discountInfo.value}% OFF`
+                            : `$${discountInfo.value} OFF`}
+                        </Text>
+                      </View>
+                      <Text style={styles.discountValue}>-${discountAmount.toFixed(2)}</Text>
                     </View>
                   )}
 
@@ -280,30 +293,30 @@ export default function SummaryScreen() {
                     <Text style={styles.summaryValue}>${gst.toFixed(2)}</Text>
                   </View>
 
-                  {/* DASHED DIVIDER */}
+                  {/* Dashed divider */}
                   <View style={styles.dashedDivider}>
                     <View style={styles.dashLine} />
                   </View>
 
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.grandLabel}>Grand Total</Text>
+                  {/* Grand total */}
+                  <View style={styles.grandRow}>
+                    <View>
+                      <Text style={styles.grandLabel}>TOTAL</Text>
+                      <Text style={styles.grandSub}>inc. GST</Text>
+                    </View>
                     <Text style={styles.grandValue}>${grandTotal.toFixed(2)}</Text>
                   </View>
 
-                  {/* CHECKOUT BUTTON */}
+                  {/* Proceed button */}
                   <Pressable
                     style={styles.proceedBtn}
                     onPress={() => router.push("/payment")}
                   >
-                    <Ionicons
-                      name="card"
-                      size={24}
-                      color="#052b12"
-                      style={{ marginRight: 8 }}
-                    />
+                    <Ionicons name="card-outline" size={22} color="#052b12" />
                     <Text style={styles.proceedText}>Proceed to Payment</Text>
+                    <Ionicons name="arrow-forward" size={18} color="#052b12" />
                   </Pressable>
-                </View>
+                </BlurView>
               </View>
 
             </View>
@@ -401,12 +414,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   actionBtnText: {
-    fontWeight: "700",
+    fontFamily: Fonts.bold,
     fontSize: 13,
   },
   contextText: {
     color: "#d7ff9a",
-    fontWeight: "800",
+    fontFamily: Fonts.extraBold,
     fontSize: 13,
     letterSpacing: 0.5,
     textTransform: "uppercase",
@@ -415,7 +428,7 @@ const styles = StyleSheet.create({
   title: {
     color: "#fff",
     fontSize: 24,
-    fontWeight: "900",
+    fontFamily: Fonts.black,
     letterSpacing: 1.5,
   },
 
@@ -440,26 +453,41 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(17, 24, 39, 0.65)",
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 16,
-    marginBottom: 10,
+    backgroundColor: "rgba(15,23,42,0.7)",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    marginBottom: 8,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    borderLeftWidth: 4,
-    borderLeftColor: "#9ef01a", // Accent strip
+    borderColor: "rgba(255,255,255,0.07)",
+    borderLeftWidth: 3,
+    borderLeftColor: "#4ade80",
+    gap: 12,
+  },
+  qtyBadge: {
+    backgroundColor: "rgba(74,222,128,0.15)",
+    borderRadius: 10,
+    width: 36,
+    height: 36,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(74,222,128,0.25)",
+  },
+  qtyBadgeText: {
+    color: "#4ade80",
+    fontFamily: Fonts.black,
+    fontSize: 15,
   },
   rowContent: {
     flex: 1,
     justifyContent: "center",
-    paddingRight: 12,
   },
   name: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: 17,
-    marginBottom: 4,
+    color: "#f1f5f9",
+    fontFamily: Fonts.extraBold,
+    fontSize: 15,
+    marginBottom: 3,
   },
   subInfoRow: {
     flexDirection: "row",
@@ -467,42 +495,75 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   qty: {
-    color: "#9ef01a",
-    fontWeight: "900",
-    fontSize: 14,
-    marginRight: 10,
-    backgroundColor: "rgba(158, 240, 26, 0.15)",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    overflow: "hidden",
+    color: "#4ade80",
+    fontFamily: Fonts.black,
+    fontSize: 13,
+    marginRight: 8,
   },
   sub: {
-    color: "#a1a1aa",
-    fontSize: 13,
-    flex: 1,
-    fontWeight: "500",
-    lineHeight: 18,
+    color: "#64748b",
+    fontSize: 12,
+    fontFamily: Fonts.medium,
+    lineHeight: 17,
+  },
+  priceBlock: {
+    alignItems: "flex-end",
+  },
+  unitPrice: {
+    color: "#475569",
+    fontFamily: Fonts.medium,
+    fontSize: 11,
+    marginBottom: 2,
   },
   price: {
-    color: "#fff",
-    fontWeight: "900",
-    fontSize: 18,
+    color: "#f1f5f9",
+    fontFamily: Fonts.black,
+    fontSize: 16,
   },
 
+  /* Receipt card */
   receiptContainer: {
     width: "100%",
   },
   receiptContainerLandscape: {
-    width: 360, // Fixed width for right-side totals on tablet
+    width: 380,
   },
   receiptCard: {
-    backgroundColor: "rgba(0, 0, 0, 0.55)",
-    borderRadius: 24,
-    padding: 24,
+    borderRadius: 20,
+    padding: 20,
     marginTop: 10,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
+    overflow: "hidden",
+  },
+  receiptHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 14,
+  },
+  receiptHeaderText: {
+    color: "#e2e8f0",
+    fontFamily: Fonts.black,
+    fontSize: 14,
+    flex: 1,
+    letterSpacing: 0.5,
+  },
+  itemCountChip: {
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  itemCountChipText: {
+    color: "#94a3b8",
+    fontFamily: Fonts.semiBold,
+    fontSize: 11,
+  },
+  receiptDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    marginBottom: 14,
   },
   summaryRow: {
     flexDirection: "row",
@@ -511,59 +572,102 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   summaryLabel: {
-    color: "#a1a1aa",
-    fontWeight: "600",
-    fontSize: 15,
+    color: "#94a3b8",
+    fontFamily: Fonts.semiBold,
+    fontSize: 14,
   },
   summaryValue: {
-    color: "#fff",
-    fontWeight: "800",
+    color: "#e2e8f0",
+    fontFamily: Fonts.extraBold,
+    fontSize: 14,
+  },
+  /* Discount */
+  discountRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  discountBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(248,113,113,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(248,113,113,0.3)",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  discountBadgeText: {
+    color: "#f87171",
+    fontFamily: Fonts.bold,
+    fontSize: 12,
+  },
+  discountValue: {
+    color: "#f87171",
+    fontFamily: Fonts.black,
     fontSize: 15,
   },
   dashedDivider: {
     height: 1,
     width: "100%",
     overflow: "hidden",
-    marginVertical: 16,
+    marginVertical: 14,
   },
   dashLine: {
     borderStyle: "dashed",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
+    borderColor: "rgba(255,255,255,0.15)",
     margin: -1,
     marginBottom: 0,
   },
+  /* Grand total */
+  grandRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    marginBottom: 18,
+  },
   grandLabel: {
-    color: "#fff",
-    fontWeight: "900",
-    fontSize: 18,
+    color: "#f1f5f9",
+    fontFamily: Fonts.black,
+    fontSize: 13,
+    letterSpacing: 1.5,
     textTransform: "uppercase",
+  },
+  grandSub: {
+    color: "#475569",
+    fontFamily: Fonts.medium,
+    fontSize: 11,
+    marginTop: 2,
   },
   grandValue: {
     color: "#4ade80",
-    fontWeight: "900",
-    fontSize: 26,
+    fontFamily: Fonts.black,
+    fontSize: 34,
+    letterSpacing: -0.5,
   },
 
   proceedBtn: {
     flexDirection: "row",
     backgroundColor: "#22c55e",
-    height: 60,
+    height: 56,
     justifyContent: "center",
     alignItems: "center",
-    borderRadius: 16,
-    marginTop: 20,
+    borderRadius: 14,
+    gap: 10,
     shadowColor: "#22c55e",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
+    elevation: 10,
   },
   proceedText: {
     color: "#052b12",
-    fontWeight: "900",
-    fontSize: 18,
-    letterSpacing: 0.5,
+    fontFamily: Fonts.black,
+    fontSize: 17,
+    letterSpacing: 0.3,
   },
 
   /* MODAL STYLES */
@@ -586,13 +690,14 @@ const styles = StyleSheet.create({
   modalTitle: {
     color: "#fff",
     fontSize: 20,
-    fontWeight: "bold",
+    fontFamily: Fonts.bold,
     marginBottom: 8,
   },
   modalDesc: {
     color: "#9ca3af",
     fontSize: 14,
     marginBottom: 20,
+    fontFamily: Fonts.regular,
   },
   modalInput: {
     backgroundColor: "rgba(0,0,0,0.3)",
@@ -603,6 +708,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.2)",
     marginBottom: 24,
+    fontFamily: Fonts.regular,
   },
   modalActions: {
     flexDirection: "row",
@@ -617,7 +723,7 @@ const styles = StyleSheet.create({
   },
   modalBtnTextCancel: {
     color: "#fff",
-    fontWeight: "bold",
+    fontFamily: Fonts.bold,
   },
   modalBtnConfirm: {
     paddingVertical: 10,
@@ -627,7 +733,7 @@ const styles = StyleSheet.create({
   },
   modalBtnTextConfirm: {
     color: "#fff",
-    fontWeight: "bold",
+    fontFamily: Fonts.bold,
   },
 });
 

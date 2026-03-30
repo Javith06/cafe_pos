@@ -9,11 +9,12 @@ import {
   StyleSheet,
   Text,
   View,
-  Alert,
   Modal,
   TextInput,
   TouchableOpacity,
 } from "react-native";
+import { Fonts } from "../constants/Fonts";
+import { useToast } from "./Toast";
 
 import { OrderItem, useActiveOrdersStore } from "../stores/activeOrdersStore";
 import { CartItem, useCartStore } from "../stores/cartStore";
@@ -26,8 +27,9 @@ interface CartSidebarProps {
   width?: DimensionValue;
 }
 
-export default function CartSidebar({ width = 350 }: CartSidebarProps) {
+export default function CartSidebar({ width = 440 }: CartSidebarProps) {
   const router = useRouter();
+  const { showToast } = useToast();
 
   const [showCancelModal, setShowCancelModal] = React.useState(false);
   const [cancelPassword, setCancelPassword] = React.useState("");
@@ -97,7 +99,7 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
 
   const handleCancelOrder = () => {
     if (cancelPassword !== "786") {
-      Alert.alert("Error", "Incorrect admin password.");
+      showToast({ type: "error", message: "Incorrect Password", subtitle: "Admin password required to cancel" });
       return;
     }
 
@@ -174,31 +176,53 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
 
         {/* TOP BAR */}
         <View style={styles.topBar}>
-          <Pressable 
-            style={[styles.clear, { backgroundColor: "rgba(239, 68, 68, 0.25)" }]} 
+          <Pressable
+            style={[styles.topActionBtn, { backgroundColor: "rgba(239,68,68,0.15)", borderColor: "rgba(239,68,68,0.25)" }]}
             onPress={() => setShowCancelModal(true)}
           >
-            <Text style={[styles.topBtnText, { color: "#fca5a5" }]}>Cancel Order</Text>
+            <Ionicons name="close-circle-outline" size={16} color="#fca5a5" />
+            <Text style={[styles.topBtnText, { color: "#fca5a5" }]}>Cancel</Text>
           </Pressable>
-          <Pressable style={styles.clear} onPress={() => clearCart()}>
-            <Text style={styles.topBtnText}>Clear Cart</Text>
+          <Pressable
+            style={[styles.topActionBtn, { backgroundColor: "rgba(255,255,255,0.07)", borderColor: "rgba(255,255,255,0.1)" }]}
+            onPress={() => clearCart()}
+          >
+            <Ionicons name="trash-outline" size={16} color="#94a3b8" />
+            <Text style={[styles.topBtnText, { color: "#94a3b8" }]}>Clear</Text>
           </Pressable>
         </View>
 
         {/* ORDER HEADER */}
-        {orderContext.orderType === "DINE_IN" && (
-          <Text style={styles.contextText}>
-            DINE-IN | {orderContext.section} | Table {orderContext.tableNo}
-          </Text>
-        )}
+        <View style={styles.orderHeader}>
+          <View style={styles.orderHeaderIcon}>
+            <Ionicons
+              name={orderContext.orderType === "DINE_IN" ? "restaurant" : "bag-handle"}
+              size={14}
+              color="#4ade80"
+            />
+          </View>
+          <View>
+            {orderContext.orderType === "DINE_IN" && (
+              <Text style={styles.contextText}>
+                Table {orderContext.tableNo} · {orderContext.section?.replace("_", " ")}
+              </Text>
+            )}
+            {orderContext.orderType === "TAKEAWAY" && (
+              <Text style={styles.contextText}>
+                Takeaway · #{orderContext.takeawayNo}
+              </Text>
+            )}
+          </View>
+        </View>
 
-        {orderContext.orderType === "TAKEAWAY" && (
-          <Text style={styles.contextText}>
-            TAKEAWAY | Order {orderContext.takeawayNo}
-          </Text>
-        )}
-
-        <Text style={styles.title}>CART</Text>
+        <View style={styles.cartTitleRow}>
+          <Text style={styles.title}>ORDER</Text>
+          {displayItems.length > 0 && (
+            <View style={styles.itemCountBadge}>
+              <Text style={styles.itemCountText}>{displayItems.length}</Text>
+            </View>
+          )}
+        </View>
 
         <FlatList
           data={displayItems}
@@ -210,10 +234,11 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
           }
           renderItem={({ item }) => {
             const isSent = "status" in item && item.status === "SENT";
+            const borderColor = isSent ? "rgba(74,222,128,0.35)" : "#3b82f6";
 
             return (
-              <TouchableOpacity 
-                activeOpacity={0.7} 
+              <TouchableOpacity
+                activeOpacity={0.7}
                 disabled={isSent}
                 onPress={() => {
                   setEditingItem(item as CartItem);
@@ -221,21 +246,25 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
                   setEditNote(item.note || "");
                 }}
               >
-                <View style={[styles.row, isSent && { opacity: 0.6 }]}>
+                <View style={[
+                  styles.row,
+                  { borderLeftColor: borderColor, borderLeftWidth: 3 },
+                  isSent && { opacity: 0.65 },
+                ]}>
                   <View style={styles.itemInfo}>
                     <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <Text style={[styles.name, isSent && styles.sentName]}>
+                      <Text style={[styles.name, isSent && styles.sentName]} numberOfLines={1}>
                         {item.name}
                       </Text>
 
                       {isSent ? (
                         <View style={styles.badgeRow}>
-                          <Ionicons name="checkmark-circle" size={14} color="#a7f3d0" />
+                          <Ionicons name="checkmark-circle" size={13} color="#4ade80" />
                           <Text style={styles.sentBadgeText}>SENT</Text>
                         </View>
                       ) : (
                         <View style={styles.badgeRow}>
-                          <Ionicons name="ellipse" size={10} color="#60a5fa" />
+                          <Ionicons name="ellipse" size={8} color="#60a5fa" />
                           <Text style={styles.newBadgeText}>NEW</Text>
                         </View>
                       )}
@@ -247,20 +276,18 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
                       {item.oil && item.oil !== "Normal" && <Text style={styles.modifierText}>Oil: {item.oil}</Text>}
                       {item.salt && item.salt !== "Normal" && <Text style={styles.modifierText}>Salt: {item.salt}</Text>}
                       {item.sugar && item.sugar !== "Normal" && <Text style={styles.modifierText}>Sugar: {item.sugar}</Text>}
-                      {item.note && <Text style={styles.modifierText}>Note: {item.note}</Text>}
+                      {item.note && <Text style={styles.modifierText}>📝 {item.note}</Text>}
                       {item.modifiers && Array.isArray(item.modifiers) && item.modifiers.map((mod: any, idx: number) => (
                         <Text key={`mod-${idx}`} style={styles.modifierText}>
-                          + {mod.ModifierName}
-                          {mod.Price ? ` ($${mod.Price.toFixed(2)})` : ""}
+                          + {mod.ModifierName}{mod.Price ? ` ($${mod.Price.toFixed(2)})` : ""}
                         </Text>
                       ))}
                     </View>
 
-                    <Text style={styles.qty}>Qty: {item.qty}</Text>
-
-                    <Text style={styles.price}>
-                      ${(item.price || 0).toFixed(2)}
-                    </Text>
+                    <View style={styles.itemFooter}>
+                      <Text style={styles.qty}>×{item.qty}</Text>
+                      <Text style={styles.price}>${((item.price || 0) * item.qty).toFixed(2)}</Text>
+                    </View>
                   </View>
 
                   {!isSent && (
@@ -269,17 +296,17 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
                         style={styles.actionBtn}
                         onPress={() => removeFromCartGlobal(item.lineItemId!)}
                       >
-                        <Ionicons name="remove" size={20} color="#f3f4f6" />
+                        <Ionicons name="remove" size={18} color="#f3f4f6" />
                       </Pressable>
 
                       <Pressable
-                        style={styles.actionBtn}
+                        style={[styles.actionBtn, { backgroundColor: "rgba(34,197,94,0.15)" }]}
                         onPress={() => {
                           const { qty, lineItemId, ...rest } = item as CartItem;
                           addToCartGlobal(rest);
                         }}
                       >
-                        <Ionicons name="add" size={20} color="#f3f4f6" />
+                        <Ionicons name="add" size={18} color="#4ade80" />
                       </Pressable>
                     </View>
                   )}
@@ -290,86 +317,81 @@ export default function CartSidebar({ width = 350 }: CartSidebarProps) {
         />
 
         <View style={styles.bottomBlock}>
-          <Text style={styles.subtotalText}>
-            Subtotal: ${subtotal.toFixed(2)}
-          </Text>
+          {/* Subtotal — larger and prominent */}
+          <View style={styles.subtotalCard}>
+            <Text style={styles.subtotalLabel}>SUBTOTAL</Text>
+            <Text style={styles.subtotalAmount}>${subtotal.toFixed(2)}</Text>
+          </View>
 
-            {/* BUTTON LOGIC */}
-            <View style={styles.checkoutRow}>
-              {/* If cart has items, show Hold and Send */}
-              {cart.length > 0 && (
-                <>
+          {/* BUTTON LOGIC */}
+          <View style={styles.checkoutRow}>
+            {cart.length > 0 && (
+              <>
+                <Pressable
+                  style={[styles.checkoutBtn, { backgroundColor: "#3b82f6" }]}
+                  onPress={() => {
+                    let targetOrderId = activeOrder?.orderId;
+                    if (!targetOrderId) targetOrderId = getNextOrderId();
+
+                    if (orderContext.orderType === "DINE_IN") {
+                      updateTableStatus(orderContext.section!, orderContext.tableNo!, targetOrderId, 'HOLD');
+                      holdOrder(targetOrderId, cart, orderContext);
+                      clearCart();
+                      router.replace(`/(tabs)/category?section=${orderContext.section}`);
+                    } else if (orderContext.orderType === "TAKEAWAY") {
+                      updateTableStatus("TAKEAWAY", orderContext.takeawayNo!, targetOrderId, 'HOLD');
+                      holdOrder(targetOrderId, cart, orderContext);
+                      clearCart();
+                      router.replace(`/(tabs)/category?section=TAKEAWAY`);
+                    } else {
+                      clearCart();
+                      router.replace("/(tabs)/category");
+                    }
+                  }}
+                >
+                  <Ionicons name="pause-circle-outline" size={18} color="#fff" />
+                  <Text style={styles.checkoutBtnText}>Hold</Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.checkoutBtn, { backgroundColor: "#22c55e" }]}
+                  onPress={sendOrder}
+                >
+                  <Ionicons name="send-outline" size={18} color="#052b12" />
+                  <Text style={[styles.checkoutBtnText, { color: "#052b12" }]}>Send</Text>
+                </Pressable>
+              </>
+            )}
+
+            {cart.length === 0 && activeOrder && (
+              <>
+                {(!currentTableData || currentTableData.status === 'SENT' || currentTableData.status === 'HOLD') ? (
                   <Pressable
-                    style={[styles.checkoutBtn, { backgroundColor: "#3b82f6" }]} // BLUE for HOLD
+                    style={[styles.checkoutBtn, { backgroundColor: "#f59e0b" }]}
                     onPress={() => {
-                      let targetOrderId = activeOrder?.orderId;
-                      if (!targetOrderId) {
-                        targetOrderId = getNextOrderId();
-                      }
-
-                      // Update table status to HOLD
                       if (orderContext.orderType === "DINE_IN") {
-                        updateTableStatus(orderContext.section!, orderContext.tableNo!, targetOrderId, 'HOLD');
-                        holdOrder(targetOrderId, cart, orderContext);
-                        clearCart();
-                      } else if (orderContext.orderType === "TAKEAWAY") {
-                        updateTableStatus("TAKEAWAY", orderContext.takeawayNo!, targetOrderId, 'HOLD');
-                        holdOrder(targetOrderId, cart, orderContext);
-                        clearCart();
-                      }
-
-                      if (orderContext.orderType === "DINE_IN") {
-
+                        updateTableStatus(orderContext.section!, orderContext.tableNo!, activeOrder.orderId, 'BILL_REQUESTED');
                         router.replace(`/(tabs)/category?section=${orderContext.section}`);
-                      } else if (orderContext.orderType === "TAKEAWAY") {
-                        router.replace(`/(tabs)/category?section=TAKEAWAY`);
                       } else {
-                        router.replace("/(tabs)/category");
+                        router.push("/summary");
                       }
                     }}
                   >
-                    <Text style={styles.checkoutBtnText}>Hold</Text>
+                    <Ionicons name="receipt-outline" size={18} color="#fff" />
+                    <Text style={styles.checkoutBtnText}>Checkout</Text>
                   </Pressable>
-
+                ) : (
                   <Pressable
-                    style={[styles.checkoutBtn, { backgroundColor: "#22c55e" }]} // GREEN for SENT
-                    onPress={sendOrder}
+                    style={[styles.checkoutBtn, { backgroundColor: "#0ea5e9" }]}
+                    onPress={() => router.push("/summary")}
                   >
-                    <Text style={[styles.checkoutBtnText, { color: "#052b12" }]}>
-                      Send
-                    </Text>
+                    <Ionicons name="arrow-forward-circle-outline" size={18} color="#fff" />
+                    <Text style={styles.checkoutBtnText}>Proceed</Text>
                   </Pressable>
-                </>
-              )}
-
-              {/* If no new items, check table status for Checkout or Proceed */}
-              {cart.length === 0 && activeOrder && (
-                <>
-                  {(!currentTableData || currentTableData.status === 'SENT' || currentTableData.status === 'HOLD') ? (
-                    <Pressable
-                      style={[styles.checkoutBtn, { backgroundColor: "#f59e0b" }]} // YELLOW for Checkout
-                      onPress={() => {
-                        if (orderContext.orderType === "DINE_IN") {
-                          updateTableStatus(orderContext.section!, orderContext.tableNo!, activeOrder.orderId, 'BILL_REQUESTED');
-                          router.replace(`/(tabs)/category?section=${orderContext.section}`);
-                        } else {
-                          router.push("/summary");
-                        }
-                      }}
-                    >
-                      <Text style={styles.checkoutBtnText}>Checkout</Text>
-                    </Pressable>
-                  ) : (
-                    <Pressable
-                      style={[styles.checkoutBtn, { backgroundColor: "#0ea5e9" }]} // SKY BLUE for Proceed
-                      onPress={() => router.push("/summary")}
-                    >
-                      <Text style={styles.checkoutBtnText}>Proceed</Text>
-                    </Pressable>
-                  )}
-                </>
-              )}
-            </View>
+                )}
+              </>
+            )}
+          </View>
         </View>
       </BlurView>
 
@@ -483,25 +505,66 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
   },
-  topBtnText: { color: "#ef4444", fontWeight: "700", fontSize: 14 },
-  contextText: { color: "#9ca3af", fontSize: 14, fontWeight: "600", marginBottom: 6 },
-  title: { color: "#e5e7eb", fontSize: 22, fontWeight: "900", marginBottom: 10 },
-  emptyText: { color: "#6b7280", fontSize: 16, textAlign: "center", marginTop: 40 },
+  topActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  topBtnText: { fontFamily: Fonts.bold, fontSize: 13 },
+  /* Order header */
+  orderHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 4,
+  },
+  orderHeaderIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 7,
+    backgroundColor: "rgba(74,222,128,0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(74,222,128,0.25)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  contextText: { color: "#4ade80", fontSize: 13, fontFamily: Fonts.semiBold },
+  /* Cart title */
+  cartTitleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10, marginTop: 4 },
+  title: { color: "#f1f5f9", fontSize: 18, fontFamily: Fonts.black, letterSpacing: 1 },
+  itemCountBadge: {
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  itemCountText: { color: "#94a3b8", fontFamily: Fonts.bold, fontSize: 12 },
+  emptyText: { color: "#6b7280", fontSize: 16, textAlign: "center", marginTop: 40, fontFamily: Fonts.medium },
   row: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingVertical: 12,
+    paddingVertical: 14,
+    paddingLeft: 12,
+    paddingRight: 8,
     borderBottomWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
+    borderColor: "rgba(255,255,255,0.07)",
+    borderLeftWidth: 3,
+    borderRadius: 2,
+    marginBottom: 6,
   },
-  itemInfo: { flex: 1 },
-  name: { color: "#f3f4f6", fontWeight: "800", fontSize: 16 },
+  itemInfo: { flex: 1, paddingRight: 8 },
+  name: { color: "#f3f4f6", fontFamily: Fonts.extraBold, fontSize: 15, flex: 1 },
   sentName: { color: "#6b7280" },
   badgeRow: { flexDirection: "row", alignItems: "center", marginLeft: 6 },
-  sentBadgeText: { color: "#a7f3d0", fontSize: 12, fontWeight: "800", marginLeft: 2 },
-  newBadgeText: { color: "#93c5fd", fontSize: 12, fontWeight: "800", marginLeft: 2 },
-  qty: { color: "#6b7280", marginTop: 2, fontSize: 14, fontWeight: "600" },
-  price: { color: "#059669", fontWeight: "800", fontSize: 15, marginTop: 4 },
+  sentBadgeText: { color: "#4ade80", fontSize: 11, fontFamily: Fonts.extraBold, marginLeft: 2 },
+  newBadgeText: { color: "#93c5fd", fontSize: 11, fontFamily: Fonts.extraBold, marginLeft: 2 },
+  itemFooter: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4 },
+  qty: { color: "#64748b", fontSize: 13, fontFamily: Fonts.semiBold },
+  price: { color: "#22c55e", fontFamily: Fonts.black, fontSize: 15 },
   actionRow: { flexDirection: "row", gap: 10 },
   actionBtn: {
     width: 36,
@@ -517,21 +580,42 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.1)",
     marginTop: 10,
   },
-  subtotalText: {
-    color: "#f3f4f6",
-    fontSize: 18,
-    fontWeight: "900",
-    textAlign: "right",
-    marginBottom: 16,
-  },
-  checkoutRow: { flexDirection: "row", gap: 12 },
-  checkoutBtn: {
-    flex: 1,
-    paddingVertical: 16,
+  /* Subtotal — large & prominent */
+  subtotalCard: {
+    backgroundColor: "rgba(17,24,39,0.6)",
     borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
   },
-  checkoutBtnText: { color: "#fff", fontWeight: "900", fontSize: 18 },
+  subtotalLabel: {
+    color: "#64748b",
+    fontFamily: Fonts.semiBold,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  subtotalAmount: {
+    color: "#4ade80",
+    fontFamily: Fonts.black,
+    fontSize: 20,
+  },
+  checkoutRow: { flexDirection: "row", gap: 8 },
+  checkoutBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 13,
+    borderRadius: 12,
+    gap: 6,
+  },
+  checkoutBtnText: { color: "#fff", fontFamily: Fonts.black, fontSize: 15.5 },
   modifierContainer: {
     marginTop: 4,
     marginBottom: 4,
@@ -540,7 +624,7 @@ const styles = StyleSheet.create({
   modifierText: {
     color: "#9ca3af",
     fontSize: 12,
-    fontWeight: "500",
+    fontFamily: Fonts.medium,
   },
   /* MODAL STYLES */
   modalOverlay: {
@@ -562,13 +646,14 @@ const styles = StyleSheet.create({
   modalTitle: {
     color: "#fff",
     fontSize: 20,
-    fontWeight: "bold",
+    fontFamily: Fonts.bold,
     marginBottom: 8,
   },
   modalDesc: {
     color: "#9ca3af",
     fontSize: 14,
     marginBottom: 20,
+    fontFamily: Fonts.regular,
   },
   modalInput: {
     backgroundColor: "rgba(0,0,0,0.3)",
@@ -579,6 +664,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.2)",
     marginBottom: 24,
+    fontFamily: Fonts.regular,
   },
   modalActions: {
     flexDirection: "row",
@@ -593,7 +679,7 @@ const styles = StyleSheet.create({
   },
   modalBtnTextCancel: {
     color: "#fff",
-    fontWeight: "bold",
+    fontFamily: Fonts.bold,
   },
   modalBtnConfirm: {
     paddingVertical: 10,
@@ -603,7 +689,7 @@ const styles = StyleSheet.create({
   },
   modalBtnTextConfirm: {
     color: "#fff",
-    fontWeight: "bold",
+    fontFamily: Fonts.bold,
   },
   minus: {
     backgroundColor: "rgba(255, 255, 255, 0.1)",
