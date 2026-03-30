@@ -211,6 +211,17 @@ export default function PaymentScreen() {
     console.log("💾 Calling saveSaleToDatabase...");
     const saved = await saveSaleToDatabase();
     console.log("✅ saveSaleToDatabase completed, success:", saved);
+
+    if (!saved) {
+      setProcessing(false);
+      showToast({ 
+        type: "error", 
+        message: "Save Failed", 
+        subtitle: "Could not record the sale in the database. Please try again." 
+      });
+      return;
+    }
+
     const billNo = (saved && saved.billNo) ? saved.billNo : "";
 
       const printBill = () => {

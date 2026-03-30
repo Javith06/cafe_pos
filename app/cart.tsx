@@ -389,39 +389,12 @@ export default function CartScreen() {
 
               {/* If no new items, check table status for Checkout or Proceed */}
               {cart.length === 0 && activeOrder && (
-                <>
-                  {!currentTableData ||
-                  currentTableData.status === "SENT" ||
-                  currentTableData.status === "HOLD" ? (
-                    <Pressable
-                      style={[styles.btn, { backgroundColor: "#f59e0b" }]} 
-                      onPress={() => {
-                        if (orderContext.orderType === "DINE_IN") {
-                          updateTableStatus(
-                            orderContext.section!,
-                            orderContext.tableNo!,
-                            activeOrder.orderId,
-                            "BILL_REQUESTED",
-                          );
-                          router.replace(
-                            `/(tabs)/category?section=${orderContext.section}`,
-                          );
-                        } else {
-                          router.push("/summary");
-                        }
-                      }}
-                    >
-                      <Text style={styles.btnText}>Checkout</Text>
-                    </Pressable>
-                  ) : (
-                    <Pressable
-                      style={[styles.btn, { backgroundColor: "#0ea5e9" }]} 
-                      onPress={() => router.push("/summary")}
-                    >
-                      <Text style={styles.btnText}>Proceed</Text>
-                    </Pressable>
-                  )}
-                </>
+                <Pressable
+                  style={[styles.btn, { backgroundColor: "#f59e0b" }]} 
+                  onPress={() => router.push("/summary")}
+                >
+                  <Text style={styles.btnText}>Checkout</Text>
+                </Pressable>
               )}
             </View>
           </View>

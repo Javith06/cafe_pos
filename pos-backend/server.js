@@ -328,6 +328,8 @@ app.post("/api/sales/save", async (req, res) => {
       const settlementId = settlementIdResult.recordset[0].id;
       const billNo = settlementIdResult.recordset[0].billNo;
 
+      console.log(`📝 Processing Sale: Bill #${billNo} (ID: ${settlementId})`);
+
       // 2. Insert into SettlementHeader
       await transaction.request()
         .input("SettlementID", settlementId)
@@ -345,21 +347,20 @@ app.post("/api/sales/save", async (req, res) => {
       const itemCount = items ? items.length : 0;
       await transaction.request()
         .input("SettlementID", settlementId)
-        .input("PayMode", paymentMethod || 'CASH')
+        .input("PayMode", (paymentMethod || 'CASH').toUpperCase())
         .input("SysAmount", totalAmount || 0)
         .input("ManualAmount", totalAmount || 0)
         .input("AmountDiff", 0)
         .input("ReceiptCount", itemCount)
         .query(`
           INSERT INTO SettlementTotalSales (SettlementID, PayMode, SysAmount, ManualAmount, AmountDiff, ReceiptCount)
-          VALUES (@SettlementID, UPPER(@PayMode), @SysAmount, @ManualAmount, @AmountDiff, @ReceiptCount)
+          VALUES (@SettlementID, @PayMode, @SysAmount, @ManualAmount, @AmountDiff, @ReceiptCount)
         `);
 
       // 4. Insert individual dishes into SettlementItemDetail
       if (items && Array.isArray(items)) {
         for (const item of items) {
-          // In some versions of the cart, property names might be dish_name or DishName
-          const name = item.dish_name || item.DishName || item.name;
+          const name = item.dish_name || item.DishName || item.name || "Unknown Item";
           const qty = item.qty || item.Qty || item.quantity || 1;
           const price = item.price || item.Price || 0;
 
@@ -379,7 +380,6 @@ app.post("/api/sales/save", async (req, res) => {
       
       // Auto-unlock the table if it was locked.
       if (orderId) {
-        // e.g. orderId might be a contextId like 'T3'
         tableLocks.delete(orderId);
       }
 
