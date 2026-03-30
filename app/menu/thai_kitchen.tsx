@@ -26,8 +26,9 @@ import {
   useCartStore,
 } from "../../stores/cartStore";
 import { useOrderContextStore } from "../../stores/orderContextStore";
+import { API_URL } from "../../constants/Config";
 
-const API = "https://cafepos-production-3428.up.railway.app";
+const API = API_URL;
 
 const kitchenIcons: Record<string, string> = {
   "THAI KITCHEN": "🍜",

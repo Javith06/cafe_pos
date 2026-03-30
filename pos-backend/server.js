@@ -254,19 +254,23 @@ app.get("/modifiers/:dishId", async (req, res) => {
 app.get("/api/sales/all", async (req, res) => {
   try {
     const pool = await poolPromise;
+    console.log("📊 Fetching all sales...");
+
     const result = await pool.request().query(`
       SELECT 
         sh.SettlementID,
         sh.LastSettlementDate AS SettlementDate,
         sh.BillNo,
-        sts.PayMode,
-        sts.SysAmount,
-        sts.ManualAmount,
-        sts.ReceiptCount
+        ISNULL(sts.PayMode, 'CASH') as PayMode,
+        ISNULL(sts.SysAmount, 0) as SysAmount,
+        ISNULL(sts.ManualAmount, 0) as ManualAmount,
+        ISNULL(sts.ReceiptCount, 0) as ReceiptCount
       FROM SettlementHeader sh
-      INNER JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
+      LEFT JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
       ORDER BY sh.LastSettlementDate DESC
     `);
+    
+    console.log(`✅ Found ${result.recordset.length} sales records.`);
     res.json(result.recordset);
   } catch (err) {
     console.error("SALES ERROR:", err);

@@ -27,8 +27,9 @@ import {
 import { getHeldOrders, removeHeldOrder } from "../../stores/heldOrdersStore";
 import { setOrderContext } from "../../stores/orderContextStore";
 import { useTableStatusStore } from "../../stores/tableStatusStore";
+import { API_URL } from "../../constants/Config";
 
-const API = "https://cafepos-production-3428.up.railway.app";
+const API = API_URL;
 // Unique ID for this session/user (persists in memory)
 const SESSION_USER_ID = `user_${Date.now()}_${Math.floor(Math.random() * 9999)}`;
 

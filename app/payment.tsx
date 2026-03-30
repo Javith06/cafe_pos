@@ -28,8 +28,7 @@ import {
   getOrderContext,
 } from "../stores/orderContextStore";
 import { useTableStatusStore } from "../stores/tableStatusStore";
-
-const API_URL = "https://cafepos-production-3428.up.railway.app";
+import { API_URL } from "../constants/Config";
 
 export default function PaymentScreen() {
   const closeActiveOrder = useActiveOrdersStore((s) => s.closeActiveOrder);
@@ -351,7 +350,7 @@ export default function PaymentScreen() {
 
           // 🔥 Unlock table on server
           const lockKey = `${context.section}::${context.tableNo}`;
-          fetch(`https://cafepos-production-3428.up.railway.app/api/tables/unlock`, {
+          fetch(`${API_URL}/api/tables/unlock`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
