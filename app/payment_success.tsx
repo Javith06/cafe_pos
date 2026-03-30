@@ -20,6 +20,7 @@ export default function PaymentSuccess() {
   const change = String(params.change ?? "0");
 
   const orderId = String(params.orderId ?? "");
+  const billNo = String(params.billNo ?? "");
   const tableNo = String(params.tableNo ?? "");
   const section = String(params.section ?? "");
   const orderType = String(params.orderType ?? "");
@@ -47,7 +48,7 @@ export default function PaymentSuccess() {
 
             <Text style={styles.title}>Payment Successful</Text>
 
-            <Text style={styles.orderText}>Order #{orderId}</Text>
+            <Text style={styles.orderText}>Bill #{billNo || orderId}</Text>
 
             <Text style={styles.sub}>
               {orderType === "DINE_IN"

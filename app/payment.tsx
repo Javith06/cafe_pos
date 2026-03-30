@@ -178,7 +178,7 @@ export default function PaymentScreen() {
       
       if (result.success) {
         console.log("✅ Sale saved successfully:", result.settlementId);
-        return true;
+        return { success: true, billNo: result.billNo };
       } else {
         console.log("⚠️ Sale save failed:", result);
         return false;
@@ -211,6 +211,7 @@ export default function PaymentScreen() {
     console.log("💾 Calling saveSaleToDatabase...");
     const saved = await saveSaleToDatabase();
     console.log("✅ saveSaleToDatabase completed, success:", saved);
+    const billNo = (saved && saved.billNo) ? saved.billNo : "";
 
       const printBill = () => {
         const dateStr = new Date().toLocaleString();
@@ -263,7 +264,7 @@ export default function PaymentScreen() {
               
               <div>
                 <div>Date: ${dateStr}</div>
-                <div>Order #: ${activeOrder?.orderId || 'N/A'}</div>
+                <div>Bill #: ${billNo ? billNo : 'N/A'}</div>
                 <div>Method: ${method}</div>
               </div>
               
@@ -316,6 +317,7 @@ export default function PaymentScreen() {
           change: change.toFixed(2),
           method,
           orderId: activeOrder?.orderId ?? "",
+          billNo: billNo,
           tableNo: context?.tableNo ?? "",
           section: context?.section ?? "",
           orderType: context?.orderType ?? "",
@@ -334,7 +336,18 @@ export default function PaymentScreen() {
           context.tableNo
         ) {
           clearTable(context.section, context.tableNo);
-          console.log("✅ Cleared table:", context.section, context.tableNo);
+          console.log("✅ Cleared table locally:", context.section, context.tableNo);
+
+          // 🔥 Unlock table on server
+          const lockKey = `${context.section}::${context.tableNo}`;
+          fetch(`https://cafepos-production-3428.up.railway.app/api/tables/unlock`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              tableId: lockKey,
+              userId: "SYSTEM_RECOVERY", // or use original SESSION_USER_ID if available
+            }),
+          }).catch(err => console.log("Unlock failed:", err));
         }
 
         if (context.orderType === "TAKEAWAY" && context.takeawayNo) {

@@ -712,6 +712,17 @@ export default function MenuScreen() {
                         <Text style={styles.name} numberOfLines={2}>
                           {item.Name}
                         </Text>
+                        <TouchableOpacity
+                          style={styles.addToCartBtn}
+                          activeOpacity={0.75}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            openModifiers(item);
+                          }}
+                        >
+                          <Ionicons name="add-circle" size={14} color="#052b12" />
+                          <Text style={styles.addToCartText}>Add to Cart</Text>
+                        </TouchableOpacity>
                       </View>
                     </TouchableOpacity>
                   )
@@ -1150,6 +1161,22 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.extraBold,
     fontSize: 14,
     minHeight: 38,
+  },
+  addToCartBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 5,
+    backgroundColor: "#22c55e",
+    borderRadius: 8,
+    paddingVertical: 7,
+    marginTop: 6,
+  },
+  addToCartText: {
+    color: "#052b12",
+    fontFamily: Fonts.black,
+    fontSize: 12,
+    letterSpacing: 0.3,
   },
   price: {
     color: "#22c55e",

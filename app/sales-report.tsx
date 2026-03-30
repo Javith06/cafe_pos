@@ -461,7 +461,7 @@ export default function SalesReport() {
                        />
                     </View>
                     <View>
-                      <Text style={styles.txTitle}>Order Settled</Text>
+                      <Text style={styles.txTitle}># {item.BillNo || item.SettlementID?.slice(0, 8)}</Text>
                       <Text style={styles.txSub}>
                         {new Date(item.SettlementDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {item.PayMode}
                       </Text>
@@ -493,7 +493,7 @@ export default function SalesReport() {
                 <View style={styles.modalContent}>
                   <View style={styles.modalHeader}>
                     <View>
-                      <Text style={styles.modalTitle}># {selectedOrder?.SettlementID?.slice(0, 8)}</Text>
+                      <Text style={styles.modalTitle}># {selectedOrder?.BillNo || selectedOrder?.SettlementID?.slice(0, 8)}</Text>
                       <Text style={styles.modalSub}>{new Date(selectedOrder?.SettlementDate).toLocaleString()}</Text>
                     </View>
                     <TouchableOpacity onPress={() => setSelectedOrder(null)} style={styles.closeBtn}>

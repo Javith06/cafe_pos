@@ -4,8 +4,10 @@ import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   ImageBackground,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -25,6 +27,11 @@ import {
 import { getHeldOrders, removeHeldOrder } from "../../stores/heldOrdersStore";
 import { setOrderContext } from "../../stores/orderContextStore";
 import { useTableStatusStore } from "../../stores/tableStatusStore";
+
+const API = "https://cafepos-production-3428.up.railway.app";
+// Unique ID for this session/user (persists in memory)
+const SESSION_USER_ID = `user_${Date.now()}_${Math.floor(Math.random() * 9999)}`;
+
 
 type TableItem = {
   id: string;
@@ -82,8 +89,26 @@ export default function Category() {
   const tables = useTableStatusStore((s) => s.tables);
   const activeOrders = useActiveOrdersStore((s) => s.activeOrders);
   const carts = useCartStore((s) => s.carts);
+  const [serverLocks, setServerLocks] = useState<Record<string, string>>({});
+  const [showCartModal, setShowCartModal] = useState(false);
 
   const isTablet = width >= 768;
+
+  // Poll server locks every 5 seconds to keep floor plan in sync across users
+  useEffect(() => {
+    const fetchLocks = async () => {
+      try {
+        const res = await fetch(`${API}/api/tables/locks`);
+        if (res.ok) {
+          const data = await res.json();
+          setServerLocks(data);
+        }
+      } catch (_) {}
+    };
+    fetchLocks();
+    const interval = setInterval(fetchLocks, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     fetchTables();
@@ -180,6 +205,11 @@ export default function Category() {
       (t) => t.section === activeTab && t.tableNo === item.label,
     );
 
+    // --- SERVER LOCK CHECK ---
+    const lockKey = `${activeTab}::${item.label}`;
+    const lockedByUser = serverLocks[lockKey];
+    const isLockedByOther = lockedByUser && lockedByUser !== SESSION_USER_ID;
+
     let borderColor = "rgba(255,255,255,0.12)";
     let bgColor = "rgba(15, 23, 42, 0.6)";
     let timeText = "";
@@ -257,9 +287,15 @@ export default function Category() {
       orderText = `#${tableData.orderId}`;
     }
 
+    // Locked by another user override
+    if (isLockedByOther) {
+      bgColor = "rgba(100, 50, 0, 0.7)";
+      borderColor = "#f59e0b";
+    }
+
     return (
       <TouchableOpacity
-        activeOpacity={0.8}
+        activeOpacity={isLockedByOther ? 1 : 0.8}
         style={[
           styles.tableBox,
           {
@@ -267,9 +303,40 @@ export default function Category() {
             height: itemSize,
             borderColor,
             backgroundColor: bgColor,
+            opacity: isLockedByOther ? 0.75 : 1,
           },
         ]}
-        onPress={() => {
+        onPress={async () => {
+          if (isLockedByOther) {
+            Alert.alert(
+              "🔒 Table Occupied",
+              `This table is currently being used by another staff member.`,
+              [{ text: "OK" }]
+            );
+            return;
+          }
+
+          // Attempt server lock
+          try {
+            const lockRes = await fetch(`${API}/api/tables/lock`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                tableId: lockKey,
+                userId: SESSION_USER_ID,
+              }),
+            });
+            const lockData = await lockRes.json();
+            if (!lockData.success) {
+              Alert.alert("🔒 Table Locked", lockData.message || "Table is in use by another staff.");
+              setServerLocks(prev => ({ ...prev, [lockKey]: lockData.lockedBy || "someone" }));
+              return;
+            }
+            setServerLocks(prev => ({ ...prev, [lockKey]: SESSION_USER_ID }));
+          } catch (_) {
+            // If lock API fails (offline), allow navigation anyway
+          }
+
           let newContext: any;
           if (activeTab === "TAKEAWAY") {
             newContext = {
@@ -301,6 +368,14 @@ export default function Category() {
           router.push("/menu/thai_kitchen");
         }}
       >
+        {/* Locked overlay badge */}
+        {isLockedByOther && (
+          <View style={styles.lockBadge}>
+            <Ionicons name="lock-closed" size={10} color="#fff" />
+            <Text style={styles.lockBadgeText}>In Use</Text>
+          </View>
+        )}
+
         <View style={styles.tableContent}>
           <Text style={[styles.tableNumber, { fontSize: numberFont }]}>
             {item.label}
@@ -428,6 +503,24 @@ export default function Category() {
             </TouchableOpacity>
 
             <TouchableOpacity
+              style={[styles.headerActionBtn, styles.cartHeaderBtn]}
+              onPress={() => setShowCartModal(true)}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="cart-outline" size={16} color="#f59e0b" />
+              {isTablet && (
+                <Text style={[styles.headerActionText, { color: "#f59e0b" }]}>Cart</Text>
+              )}
+              {tables.filter(t => t.section === activeTab).length > 0 && (
+                <View style={styles.cartBadge}>
+                  <Text style={styles.cartBadgeText}>
+                    {tables.filter(t => t.section === activeTab).length}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={[styles.headerActionBtn, styles.salesBtn]}
               onPress={() => router.push("/sales-report")}
               activeOpacity={0.75}
@@ -498,6 +591,96 @@ export default function Category() {
             </View>
           }
         />
+
+        {/* ═══════════ CART MODAL ═══════════ */}
+        <Modal
+          visible={showCartModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowCartModal(false)}
+        >
+          <View style={styles.cartModalOverlay}>
+            <View style={styles.cartModalContent}>
+              <View style={styles.cartModalHeader}>
+                <Text style={styles.cartModalTitle}>🛒 Active Table Orders</Text>
+                <TouchableOpacity onPress={() => setShowCartModal(false)}>
+                  <Ionicons name="close-circle" size={28} color="#94a3b8" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+                {tables.filter(t => t.section === activeTab).length === 0 ? (
+                  <View style={styles.cartEmpty}>
+                    <Ionicons name="restaurant-outline" size={48} color="rgba(255,255,255,0.15)" />
+                    <Text style={styles.cartEmptyText}>No active orders in this section</Text>
+                  </View>
+                ) : (
+                  tables
+                    .filter(t => t.section === activeTab)
+                    .map((tableData) => {
+                      // Gather items for this table
+                      let items: any[] = [];
+                      let total = 0;
+
+                      if (tableData.status === "HOLD") {
+                        const helds = getHeldOrders();
+                        const held = helds.find((h) => h.orderId === tableData.orderId);
+                        if (held) {
+                          items = held.cart;
+                          total = items.reduce((s: number, i: any) => s + (i.price || 0) * i.qty, 0);
+                        }
+                      } else {
+                        const ao = activeOrders.find((o: any) => o.orderId === tableData.orderId);
+                        if (ao) {
+                          items = ao.items;
+                          total = items.reduce((s: number, i: any) => s + (i.price || 0) * i.qty, 0);
+                        }
+                      }
+
+                      // Also include cart items
+                      const contextId = getContextId({
+                        orderType: activeTab === "TAKEAWAY" ? "TAKEAWAY" : "DINE_IN",
+                        section: activeTab,
+                        tableNo: tableData.tableNo,
+                        takeawayNo: tableData.tableNo,
+                      });
+                      if (contextId) {
+                        const cartItems = carts[contextId] || [];
+                        if (items.length === 0) items = cartItems;
+                        total += cartItems.reduce((s: number, i: any) => s + (i.price || 0) * i.qty, 0);
+                      }
+
+                      return (
+                        <View key={tableData.orderId} style={styles.cartTableCard}>
+                          <View style={styles.cartTableHeader}>
+                            <View style={styles.cartTableBadge}>
+                              <Text style={styles.cartTableBadgeText}>Table {tableData.tableNo}</Text>
+                            </View>
+                            <Text style={styles.cartTableTotal}>${total.toFixed(2)}</Text>
+                          </View>
+                          {items.length > 0 ? (
+                            items.map((item: any, idx: number) => (
+                              <View key={idx} style={styles.cartItemRow}>
+                                <Text style={styles.cartItemQty}>{item.qty}x</Text>
+                                <Text style={styles.cartItemName} numberOfLines={1}>
+                                  {item.name || item.dish_name || "Item"}
+                                </Text>
+                                <Text style={styles.cartItemPrice}>
+                                  ${((item.price || 0) * item.qty).toFixed(2)}
+                                </Text>
+                              </View>
+                            ))
+                          ) : (
+                            <Text style={styles.cartNoItems}>No items yet</Text>
+                          )}
+                        </View>
+                      );
+                    })
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+
       </ImageBackground>
     </SafeAreaView>
   );
@@ -804,4 +987,149 @@ const styles = StyleSheet.create({
     borderColor: "rgba(34,197,94,0.3)",
   },
   retryText: { color: "#4ade80", fontFamily: Fonts.bold, fontSize: 14 },
+
+  /* Lock badge */
+  lockBadge: {
+    position: "absolute",
+    top: 5,
+    left: 5,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: "rgba(245,158,11,0.85)",
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    zIndex: 3,
+  },
+  lockBadgeText: {
+    color: "#fff",
+    fontFamily: Fonts.bold,
+    fontSize: 8,
+    letterSpacing: 0.3,
+  },
+
+  /* Cart Header Button */
+  cartHeaderBtn: {
+    borderColor: "rgba(245,158,11,0.25)",
+  },
+  cartBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    backgroundColor: "#f59e0b",
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 3,
+  },
+  cartBadgeText: {
+    color: "#000",
+    fontFamily: Fonts.black,
+    fontSize: 9,
+  },
+
+  /* Cart Modal */
+  cartModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  cartModalContent: {
+    width: "90%",
+    maxWidth: 500,
+    maxHeight: "80%",
+    backgroundColor: "#0f172a",
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  cartModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  cartModalTitle: {
+    color: "#fff",
+    fontFamily: Fonts.black,
+    fontSize: 18,
+  },
+  cartEmpty: {
+    alignItems: "center",
+    paddingVertical: 40,
+    gap: 12,
+  },
+  cartEmptyText: {
+    color: "rgba(255,255,255,0.4)",
+    fontFamily: Fonts.medium,
+    fontSize: 14,
+  },
+  cartTableCard: {
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  cartTableHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.08)",
+  },
+  cartTableBadge: {
+    backgroundColor: "rgba(34,197,94,0.15)",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.3)",
+  },
+  cartTableBadgeText: {
+    color: "#4ade80",
+    fontFamily: Fonts.black,
+    fontSize: 13,
+  },
+  cartTableTotal: {
+    color: "#22c55e",
+    fontFamily: Fonts.black,
+    fontSize: 18,
+  },
+  cartItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 4,
+  },
+  cartItemQty: {
+    color: "#94a3b8",
+    fontFamily: Fonts.bold,
+    fontSize: 12,
+    width: 28,
+  },
+  cartItemName: {
+    flex: 1,
+    color: "#e2e8f0",
+    fontFamily: Fonts.medium,
+    fontSize: 13,
+  },
+  cartItemPrice: {
+    color: "#22c55e",
+    fontFamily: Fonts.extraBold,
+    fontSize: 13,
+  },
+  cartNoItems: {
+    color: "rgba(255,255,255,0.3)",
+    fontFamily: Fonts.medium,
+    fontSize: 12,
+    fontStyle: "italic",
+  },
 });
