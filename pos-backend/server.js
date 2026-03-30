@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 
 /* ================= INITIALIZATION ================= */
 
-// Ensure our custom table exists for detailed reports
+// Ensure our custom table exists for detailed reports and sequence exists for Bill IDs
 const initDB = async () => {
   try {
     const pool = await poolPromise;
@@ -25,7 +25,26 @@ const initDB = async () => {
         OrderDateTime DATETIME DEFAULT GETDATE()
       )
     `);
-    console.log("✅ Database initialized: SettlementItemDetail table ready.");
+
+    // Create a sequence for sequential Bill IDs starting at #1001
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.sequences WHERE name = 'BillIdSeq')
+      BEGIN
+        CREATE SEQUENCE BillIdSeq
+          START WITH 1001
+          INCREMENT BY 1;
+      END
+    `);
+
+    // Ensure SettlementHeader has a BillNo integer column to store it
+    await pool.request().query(`
+      IF NOT EXISTS(SELECT * FROM sys.columns WHERE Name = N'BillNo' AND Object_ID = Object_ID(N'SettlementHeader'))
+      BEGIN
+         ALTER TABLE SettlementHeader ADD BillNo INT;
+      END
+    `);
+
+    console.log("✅ Database initialized: SettlementItemDetail and BillIdSeq ready.");
   } catch (err) {
     console.error("❌ DB Initialization Error:", err);
   }
@@ -54,6 +73,55 @@ app.get("/", (req, res) => {
 /* ================= TEST ================= */
 app.get("/test", (req, res) => {
   res.send("TEST OK");
+});
+
+/* ================= IN-MEMORY TABLE LOCKS ================= */
+// Stores { tableId: { lockedBy: string, lockedAt: number } }
+const tableLocks = new Map();
+
+// Clear old locks every minute (e.g. older than 30 mins)
+setInterval(() => {
+  const now = Date.now();
+  for (const [tableId, lock] of tableLocks.entries()) {
+    if (now - lock.lockedAt > 30 * 60 * 1000) {
+      tableLocks.delete(tableId);
+    }
+  }
+}, 60 * 1000);
+
+// Get a lock on a table
+app.post("/api/tables/lock", (req, res) => {
+  const { tableId, userId } = req.body;
+  if (!tableId || !userId) return res.status(400).json({ error: "Missing parameters" });
+
+  const existingLock = tableLocks.get(tableId);
+  if (existingLock && existingLock.lockedBy !== userId) {
+    return res.status(409).json({ success: false, message: "Table is heavily occupied by another user.", lockedBy: existingLock.lockedBy });
+  }
+
+  tableLocks.set(tableId, { lockedBy: userId, lockedAt: Date.now() });
+  res.json({ success: true });
+});
+
+// Release lock
+app.post("/api/tables/unlock", (req, res) => {
+  const { tableId, userId } = req.body;
+  const existingLock = tableLocks.get(tableId);
+  
+  // Only the person who locked it, or an admin can unlock it (for simplicity, we let the frontend request unlock)
+  if (existingLock && existingLock.lockedBy === userId) {
+    tableLocks.delete(tableId);
+  }
+  res.json({ success: true });
+});
+
+// Get all locks (for dashboard)
+app.get("/api/tables/locks", (req, res) => {
+  const locks = {};
+  for (const [key, value] of tableLocks.entries()) {
+    locks[key] = value.lockedBy;
+  }
+  res.json(locks);
 });
 
 /* ================= TABLES ================= */
@@ -190,6 +258,7 @@ app.get("/api/sales/all", async (req, res) => {
       SELECT 
         sh.SettlementID,
         sh.LastSettlementDate AS SettlementDate,
+        sh.BillNo,
         sts.PayMode,
         sts.SysAmount,
         sts.ManualAmount,
@@ -252,9 +321,12 @@ app.post("/api/sales/save", async (req, res) => {
     await transaction.begin();
 
     try {
-      // 1. Generate Settlement ID
-      const settlementIdResult = await transaction.request().query("SELECT NEWID() AS id");
+      // 1. Generate Settlement ID and Next Bill No
+      const settlementIdResult = await transaction.request().query(`
+        SELECT NEWID() AS id, NEXT VALUE FOR BillIdSeq AS billNo
+      `);
       const settlementId = settlementIdResult.recordset[0].id;
+      const billNo = settlementIdResult.recordset[0].billNo;
 
       // 2. Insert into SettlementHeader
       await transaction.request()
@@ -263,9 +335,10 @@ app.post("/api/sales/save", async (req, res) => {
         .input("SubTotal", subTotal || 0)
         .input("TotalTax", taxAmount || 0)
         .input("DiscountAmount", discountAmount || 0)
+        .input("BillNo", billNo)
         .query(`
-          INSERT INTO SettlementHeader (SettlementID, LastSettlementDate, SubTotal, TotalTax, DiscountAmount)
-          VALUES (@SettlementID, @Date, @SubTotal, @TotalTax, @DiscountAmount)
+          INSERT INTO SettlementHeader (SettlementID, LastSettlementDate, SubTotal, TotalTax, DiscountAmount, BillNo)
+          VALUES (@SettlementID, @Date, @SubTotal, @TotalTax, @DiscountAmount, @BillNo)
         `);
 
       // 3. Insert into SettlementTotalSales
@@ -303,8 +376,15 @@ app.post("/api/sales/save", async (req, res) => {
       }
 
       await transaction.commit();
-      console.log("✅ Sale saved successfully:", settlementId);
-      res.json({ success: true, settlementId });
+      
+      // Auto-unlock the table if it was locked.
+      if (orderId) {
+        // e.g. orderId might be a contextId like 'T3'
+        tableLocks.delete(orderId);
+      }
+
+      console.log("✅ Sale saved successfully:", settlementId, "Bill No:", billNo);
+      res.json({ success: true, settlementId, billNo });
     } catch (err) {
       if (transaction) await transaction.rollback();
       throw err;
