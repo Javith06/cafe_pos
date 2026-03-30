@@ -1,3 +1,4 @@
+
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
@@ -77,7 +78,7 @@ export default function SummaryScreen() {
         updateTableStatus(context.section, context.tableNo, "", "EMPTY");
       }
     }
-    
+
     setShowCancelModal(false);
     setCancelPassword("");
     router.replace("/(tabs)/category");
@@ -197,7 +198,7 @@ export default function SummaryScreen() {
 
             {/* MAIN CONTENT AREA */}
             <View style={[styles.mainContent, isLandscape && styles.mainContentLandscape]}>
-              
+
               {/* LIST */}
               <View style={[styles.listContainer, isLandscape && styles.listContainerLandscape]}>
                 <FlatList
@@ -215,10 +216,10 @@ export default function SummaryScreen() {
                         <View style={styles.subInfoRow}>
                           <Text style={styles.qty}>Qty: {item.qty}</Text>
                           {(item.spicy && item.spicy !== "Medium") ||
-                          (item.oil && item.oil !== "Normal") ||
-                          (item.salt && item.salt !== "Normal") ||
-                          (item.sugar && item.sugar !== "Normal") ||
-                          item.note ? (
+                            (item.oil && item.oil !== "Normal") ||
+                            (item.salt && item.salt !== "Normal") ||
+                            (item.sugar && item.sugar !== "Normal") ||
+                            item.note ? (
                             <Text style={styles.sub}>
                               {[
                                 item.spicy && item.spicy !== "Medium"
