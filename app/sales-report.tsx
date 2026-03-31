@@ -50,7 +50,9 @@ export default function SalesReport() {
 
   const isTablet = SCREEN_W >= 768;
 
-  // Persistence: Load on mount
+  // Persistence: Load on mount — does NOT trigger fetchData
+  const [stateLoaded, setStateLoaded] = useState(false);
+
   useEffect(() => {
     const loadState = async () => {
       try {
@@ -61,6 +63,7 @@ export default function SalesReport() {
         const savedModes = await AsyncStorage.getItem("sales_payment_modes");
         const savedTypes = await AsyncStorage.getItem("sales_order_types");
         const savedSort = await AsyncStorage.getItem("sales_sort_order");
+        const savedRangeMode = await AsyncStorage.getItem("sales_range_mode");
 
         if (savedDate) setSelectedDate(savedDate);
         if (savedStartDate) setStartDate(savedStartDate);
@@ -69,15 +72,19 @@ export default function SalesReport() {
         if (savedModes) setActivePaymentModes(JSON.parse(savedModes));
         if (savedTypes) setActiveOrderTypes(JSON.parse(savedTypes));
         if (savedSort) setSortOrder(savedSort as "NEWEST" | "HIGHEST");
+        if (savedRangeMode) setDateRangeMode(savedRangeMode as DateRangeMode);
       } catch (e) {
         console.error("Load state error:", e);
+      } finally {
+        setStateLoaded(true);
       }
     };
     loadState();
   }, []);
 
-  // Persistence: Save on change
+  // Only fetch after persisted state has been loaded — avoids double-fetch on mount
   useEffect(() => {
+    if (!stateLoaded) return;
     AsyncStorage.setItem("sales_selected_date", selectedDate);
     AsyncStorage.setItem("sales_start_date", startDate);
     AsyncStorage.setItem("sales_end_date", endDate);
@@ -85,8 +92,9 @@ export default function SalesReport() {
     AsyncStorage.setItem("sales_payment_modes", JSON.stringify(activePaymentModes));
     AsyncStorage.setItem("sales_order_types", JSON.stringify(activeOrderTypes));
     AsyncStorage.setItem("sales_sort_order", sortOrder);
+    AsyncStorage.setItem("sales_range_mode", dateRangeMode);
     fetchData();
-  }, [selectedDate, startDate, endDate, selectedFilter, activePaymentModes, activeOrderTypes, sortOrder]);
+  }, [stateLoaded, selectedDate, startDate, endDate, selectedFilter, dateRangeMode, activePaymentModes, activeOrderTypes, sortOrder]);
 
   const fetchData = async () => {
     try {
@@ -100,9 +108,40 @@ export default function SalesReport() {
     }
   };
 
+  // Compute the effective date range based on the active filter/mode
+  const getEffectiveDateRange = (): { start: string; end: string } => {
+    // If user explicitly set a custom range via date picker, respect it
+    if (dateRangeMode === "RANGE") {
+      return { start: startDate, end: endDate };
+    }
+
+    // Otherwise derive from selectedDate + selectedFilter
+    const baseDate = new Date(selectedDate);
+    const s = new Date(selectedDate);
+    const e = new Date(selectedDate);
+
+    if (selectedFilter === "DAILY") {
+      // single day
+    } else if (selectedFilter === "WEEKLY") {
+      s.setDate(baseDate.getDate() - 6);
+    } else if (selectedFilter === "MONTHLY") {
+      s.setDate(1);
+      e.setMonth(e.getMonth() + 1, 0); // last day of month
+    } else if (selectedFilter === "YEARLY") {
+      s.setMonth(0, 1);
+      e.setMonth(11, 31);
+    }
+
+    return {
+      start: s.toISOString().split("T")[0],
+      end: e.toISOString().split("T")[0],
+    };
+  };
+
   const fetchSales = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/sales/all`);
+      const { start, end } = getEffectiveDateRange();
+      const response = await fetch(`${API_URL}/api/sales/transactions?startDate=${start}&endDate=${end}`);
       const data = await response.json();
       if (Array.isArray(data)) {
         setSales(data);
@@ -117,43 +156,27 @@ export default function SalesReport() {
 
   const fetchSummary = async () => {
     try {
-      let url = "";
-      if (selectedFilter === "DAILY") {
-        url = `${API_URL}/api/sales/daily/${selectedDate}`;
+      const { start, end } = getEffectiveDateRange();
+
+      if (selectedFilter === "DAILY" && dateRangeMode !== "RANGE") {
+        // Single day — use the fast daily endpoint
+        const url = `${API_URL}/api/sales/daily/${selectedDate}`;
         const response = await fetch(url);
         const data = await response.json();
         setSummary(data);
       } else {
-        // Calculate range
-        const end = new Date(selectedDate);
-        const start = new Date(selectedDate);
-
-        if (selectedFilter === "WEEKLY") {
-          start.setDate(start.getDate() - 6);
-        } else if (selectedFilter === "MONTHLY") {
-          start.setDate(1);
-          end.setMonth(end.getMonth() + 1);
-          end.setDate(0);
-        } else if (selectedFilter === "YEARLY") {
-          start.setMonth(0, 1);
-          end.setMonth(11, 31);
-        }
-
-        const startStr = start.toISOString().split("T")[0];
-        const endStr = end.toISOString().split("T")[0];
-        url = `${API_URL}/api/sales/range?startDate=${startStr}&endDate=${endStr}`;
-        
+        // Multi-day range
+        const url = `${API_URL}/api/sales/range?startDate=${start}&endDate=${end}`;
         const response = await fetch(url);
         const data = await response.json();
-        
-        // Aggregate range data
+
         if (Array.isArray(data)) {
           const aggregated = data.reduce((acc, curr) => ({
-            TotalTransactions: acc.TotalTransactions + curr.TotalTransactions,
-            TotalSales: acc.TotalSales + curr.TotalSales,
-            CashSales: acc.CashSales + curr.CashSales,
-            NETS_Sales: acc.NETS_Sales + curr.NETS_Sales,
-            PayNow_Sales: acc.PayNow_Sales + curr.PayNow_Sales,
+            TotalTransactions: acc.TotalTransactions + (curr.TotalTransactions || 0),
+            TotalSales: acc.TotalSales + (curr.TotalSales || 0),
+            CashSales: acc.CashSales + (curr.CashSales || 0),
+            NETS_Sales: acc.NETS_Sales + (curr.NETS_Sales || 0),
+            PayNow_Sales: acc.PayNow_Sales + (curr.PayNow_Sales || 0),
             TotalItems: acc.TotalItems + (curr.TotalItems || 0),
           }), { TotalTransactions: 0, TotalSales: 0, CashSales: 0, NETS_Sales: 0, PayNow_Sales: 0, TotalItems: 0 });
           setSummary(aggregated);
@@ -232,59 +255,49 @@ export default function SalesReport() {
   };
 
   // CLIENT-SIDE FILTERING & SORTING
+  // NOTE: sales[] is already date-filtered from the API. This adds payment/type/search/sort on top.
   const filteredSales = useMemo(() => {
     let filtered = sales.filter((s) => {
-       const modeMatch = activePaymentModes.includes(s.PayMode);
-       // Mock for now: assume all are DINE-IN if field missing OR if takeaway badge not applied yet
-       const typeMatch = activeOrderTypes.length === 2 || (s.OrderType ? activeOrderTypes.includes(s.OrderType) : activeOrderTypes.includes("DINE-IN"));
-       return modeMatch && typeMatch;
+      const modeMatch = activePaymentModes.length === 0 || activePaymentModes.includes(s.PayMode);
+      const typeMatch =
+        activeOrderTypes.length === 2 ||
+        (s.OrderType
+          ? activeOrderTypes.includes(s.OrderType)
+          : activeOrderTypes.includes("DINE-IN"));
+      return modeMatch && typeMatch;
     });
 
     if (searchQuery.trim()) {
       const q = searchQuery.toUpperCase();
-      filtered = filtered.filter(s => 
-        (s.BillNo && s.BillNo.toString().toUpperCase().includes(q)) ||
-        (s.SettlementID && s.SettlementID.toString().toUpperCase().includes(q))
+      filtered = filtered.filter(
+        (s) =>
+          (s.BillNo && s.BillNo.toString().toUpperCase().includes(q)) ||
+          (s.SettlementID && s.SettlementID.toString().toUpperCase().includes(q))
       );
     }
 
     if (sortOrder === "NEWEST") {
-      return [...filtered].sort((a, b) => new Date(b.SettlementDate).getTime() - new Date(a.SettlementDate).getTime());
+      return [...filtered].sort(
+        (a, b) => new Date(b.SettlementDate).getTime() - new Date(a.SettlementDate).getTime()
+      );
     } else {
       return [...filtered].sort((a, b) => b.SysAmount - a.SysAmount);
     }
   }, [sales, activePaymentModes, activeOrderTypes, sortOrder, searchQuery]);
 
+  // Metrics derived entirely from the already-filtered & date-correct filteredSales list
   const filteredMetrics = useMemo(() => {
-    if (!summary || selectedFilter === "DAILY") {
-       // If daily, summary is usually correct but we should filter based on activePaymentModes
-       // We can recalculate from the full sales list if it contains all sales for the day
-       const daySales = sales.filter(s => s.SettlementDate && s.SettlementDate.startsWith(selectedDate));
-       const filtered = daySales.filter(s => activePaymentModes.includes(s.PayMode));
-       
-       return {
-         TotalSales: filtered.reduce((acc, s) => acc + s.SysAmount, 0),
-         TotalTransactions: filtered.length,
-         TotalItems: filtered.reduce((acc, s) => acc + (s.ReceiptCount || 0), 0),
-         Cash: filtered.filter(s => s.PayMode === "CASH").reduce((acc, s) => acc + s.SysAmount, 0),
-         Card: filtered.filter(s => s.PayMode === "CARD").reduce((acc, s) => acc + s.SysAmount, 0),
-         Nets: filtered.filter(s => s.PayMode === "NETS").reduce((acc, s) => acc+ s.SysAmount, 0),
-         PayNow: filtered.filter(s=> s.PayMode === "PAYNOW").reduce((acc, s) => acc + s.SysAmount, 0),
-       };
-    }
-    
-    // For Weekly/Monthly we calculate from the sales list directly
     const filtered = filteredSales;
     return {
-       TotalSales: filtered.reduce((acc, s) => acc + s.SysAmount, 0),
-       TotalTransactions: filtered.length,
-       TotalItems: filtered.reduce((acc, s) => acc + (s.ReceiptCount || 0), 0),
-       Cash: filtered.filter(s => s.PayMode === "CASH").reduce((acc, s) => acc + s.SysAmount, 0),
-       Card: filtered.filter(s => s.PayMode === "CARD").reduce((acc, s) => acc + s.SysAmount, 0),
-       Nets: filtered.filter(s => s.PayMode === "NETS").reduce((acc, s) => acc+ s.SysAmount, 0),
-       PayNow: filtered.filter(s=> s.PayMode === "PAYNOW").reduce((acc, s) => acc + s.SysAmount, 0),
+      TotalSales: filtered.reduce((acc, s) => acc + (s.SysAmount || 0), 0),
+      TotalTransactions: filtered.length,
+      TotalItems: filtered.reduce((acc, s) => acc + (s.ReceiptCount || 0), 0),
+      Cash: filtered.filter((s) => s.PayMode === "CASH").reduce((acc, s) => acc + (s.SysAmount || 0), 0),
+      Card: filtered.filter((s) => s.PayMode === "CARD").reduce((acc, s) => acc + (s.SysAmount || 0), 0),
+      Nets: filtered.filter((s) => s.PayMode === "NETS").reduce((acc, s) => acc + (s.SysAmount || 0), 0),
+      PayNow: filtered.filter((s) => s.PayMode === "PAYNOW").reduce((acc, s) => acc + (s.SysAmount || 0), 0),
     };
-  }, [filteredSales, summary, selectedFilter, selectedDate, activePaymentModes]);
+  }, [filteredSales]);
 
   const avgOrder = useMemo(() => {
     if (!filteredMetrics.TotalTransactions) return 0;
@@ -547,7 +560,7 @@ export default function SalesReport() {
                     <Text style={[styles.tableHeaderCell, { flex: 0.8 }]}>ID</Text>
                     <Text style={[styles.tableHeaderCell, { flex: 1 }]}>TIME</Text>
                     <Text style={[styles.tableHeaderCell, { flex: 0.9 }]}>PAYMENT</Text>
-                    <Text style={[styles.tableHeaderCell, { flex: 0.7, textAlign: "right" }]}>STATUS</Text>
+                    <Text style={[styles.tableHeaderCell, { flex: 0.8, textAlign: "right" }]}>STATUS</Text>
                     <Text style={[styles.tableHeaderCell, { flex: 0.8, textAlign: "right" }]}>AMOUNT</Text>
                   </View>
 
@@ -592,11 +605,11 @@ export default function SalesReport() {
                               {item.PayMode || "N/A"}
                             </Text>
                           </View>
-                          <View style={[styles.tableCellFlex, { flex: 0.7, justifyContent: "flex-end" }]}>
+                          <View style={[styles.tableCellFlex, { flex: 0.8, justifyContent: "flex-end" }]}>
                             <View
                               style={[
                                 styles.statusBadge,
-                                { borderColor: getStatusColor(item.Status || "PAID") },
+                                { borderColor: getStatusColor(item.Status || "PAID"), backgroundColor: getStatusColor(item.Status || "PAID") + "20" },
                               ]}
                             >
                               <Text style={[styles.statusText, { color: getStatusColor(item.Status || "PAID") }]}>
@@ -604,7 +617,7 @@ export default function SalesReport() {
                               </Text>
                             </View>
                           </View>
-                          <Text style={[styles.tableCell, styles.amountCell, { flex: 0.8 }]} numberOfLines={1}>
+                          <Text style={[styles.tableCell, styles.amountCell, { flex: 0.8, textAlign: "right" }]} numberOfLines={1}>
                             {formatCurrency(item.SysAmount)}
                           </Text>
                         </TouchableOpacity>
@@ -1576,15 +1589,20 @@ const styles = StyleSheet.create({
   },
   tableContainer: {
     backgroundColor: "rgba(15, 23, 42, 0.85)",
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
     overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 5,
   },
   tableHeader: {
     flexDirection: "row",
     backgroundColor: "rgba(34,197,94,0.08)",
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.1)",
@@ -1596,13 +1614,11 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     textTransform: "uppercase",
   },
-  tableBody: {
-    maxHeight: 600,
-  },
+  tableBody: {},
   tableRow: {
     flexDirection: "row",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.05)",
     alignItems: "center",

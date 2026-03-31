@@ -396,7 +396,43 @@ app.post("/api/sales/save", async (req, res) => {
   }
 });
 
-// API 4: Get sales by date range
+// API 4: Get individual transactions by date range (used by the sales table)
+app.get("/api/sales/transactions", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const { startDate, endDate } = req.query;
+
+    if (!startDate || !endDate) {
+      return res.status(400).json({ error: "startDate and endDate are required" });
+    }
+
+    const result = await pool.request()
+      .input("StartDate", sql.Date, startDate)
+      .input("EndDate", sql.Date, endDate)
+      .query(`
+        SELECT
+          sh.SettlementID,
+          sh.LastSettlementDate AS SettlementDate,
+          sh.BillNo,
+          ISNULL(sts.PayMode, 'CASH') AS PayMode,
+          ISNULL(sts.SysAmount, 0) AS SysAmount,
+          ISNULL(sts.ManualAmount, 0) AS ManualAmount,
+          ISNULL(sts.ReceiptCount, 0) AS ReceiptCount
+        FROM SettlementHeader sh
+        LEFT JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
+        WHERE CAST(sh.LastSettlementDate AS DATE) BETWEEN @StartDate AND @EndDate
+        ORDER BY sh.LastSettlementDate DESC
+      `);
+
+    console.log(`✅ Transactions: ${result.recordset.length} rows for ${startDate} → ${endDate}`);
+    res.json(result.recordset);
+  } catch (err) {
+    console.error("TRANSACTIONS ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API 4b: Get daily/range summary aggregates
 app.get("/api/sales/range", async (req, res) => {
   try {
     const pool = await poolPromise;
