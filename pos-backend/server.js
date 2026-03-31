@@ -124,20 +124,33 @@ app.get("/api/tables/locks", (req, res) => {
   res.json(locks);
 });
 
+/* ================= SECTIONS ================= */
+app.get("/api/sections", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    // Get all distinct DiningSection values. Provide an auto-label if desired
+    const result = await pool.request().query(`
+      SELECT DISTINCT DiningSection AS id,
+      CASE 
+        WHEN DiningSection = 4 THEN 'Takeaway'
+        ELSE CONCAT('Section ', DiningSection)
+      END AS name
+      FROM TableMaster
+      WHERE DiningSection IS NOT NULL
+      ORDER BY DiningSection
+    `);
+    res.json(result.recordset);
+  } catch (err) {
+    console.error("SECTIONS ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* ================= TABLES ================= */
 app.get("/tables", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const { section } = req.query;
-
-    // Map frontend section names to DiningSection values in the DB
-    // Section 1=1, Section 2=2, Section 3=3, Takeaway=4
-    const SECTION_MAP = {
-      SECTION_1: 1,
-      SECTION_2: 2,
-      SECTION_3: 3,
-      TAKEAWAY: 4,
-    };
+    const { section } = req.query; // 'section' is now the numeric ID
 
     let query = `
       SELECT
@@ -149,8 +162,8 @@ app.get("/tables", async (req, res) => {
 
     const request = pool.request();
 
-    if (section && SECTION_MAP[section] !== undefined) {
-      request.input("DiningSection", SECTION_MAP[section]);
+    if (section && !isNaN(Number(section))) {
+      request.input("DiningSection", Number(section));
       query += ` WHERE DiningSection = @DiningSection`;
     }
 
