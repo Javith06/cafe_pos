@@ -124,35 +124,14 @@ app.get("/api/tables/locks", (req, res) => {
   res.json(locks);
 });
 
-/* ================= SECTIONS ================= */
-app.get("/api/sections", async (req, res) => {
-  try {
-    const pool = await poolPromise;
-    // Get all distinct DiningSection values. Provide an auto-label if desired
-    const result = await pool.request().query(`
-      SELECT DISTINCT DiningSection AS id,
-      CASE 
-        WHEN DiningSection = 4 THEN 'Takeaway'
-        ELSE CONCAT('Section ', DiningSection)
-      END AS name
-      FROM TableMaster
-      WHERE DiningSection IS NOT NULL
-      ORDER BY DiningSection
-    `);
-    res.json(result.recordset);
-  } catch (err) {
-    console.error("SECTIONS ERROR:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 /* ================= TABLES ================= */
 app.get("/tables", async (req, res) => {
   try {
     const pool = await poolPromise;
     const { section } = req.query;
 
-    // Map string section keys (sent by frontend) to DiningSection numeric IDs
+    // Map frontend section names to DiningSection values in the DB
+    // Section 1=1, Section 2=2, Section 3=3, Takeaway=4
     const SECTION_MAP = {
       SECTION_1: 1,
       SECTION_2: 2,
@@ -170,19 +149,9 @@ app.get("/tables", async (req, res) => {
 
     const request = pool.request();
 
-    if (section) {
-      let sectionNum = null;
-      if (SECTION_MAP[section] !== undefined) {
-        // String key like "SECTION_1"
-        sectionNum = SECTION_MAP[section];
-      } else if (!isNaN(Number(section))) {
-        // Numeric ID fallback
-        sectionNum = Number(section);
-      }
-      if (sectionNum !== null) {
-        request.input("DiningSection", sectionNum);
-        query += ` WHERE DiningSection = @DiningSection`;
-      }
+    if (section && SECTION_MAP[section] !== undefined) {
+      request.input("DiningSection", SECTION_MAP[section]);
+      query += ` WHERE DiningSection = @DiningSection`;
     }
 
     query += ` ORDER BY SortCode`;
@@ -191,26 +160,6 @@ app.get("/tables", async (req, res) => {
     res.json(result.recordset);
   } catch (err) {
     console.error("TABLES ERROR:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get("/api/testdb", async (req, res) => {
-  try {
-    const pool = await poolPromise;
-    const result = await pool.request().query("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME LIKE '%Section%' OR TABLE_NAME LIKE '%Dining%'");
-    res.json(result.recordset);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get("/api/schema", async (req, res) => {
-  try {
-    const pool = await poolPromise;
-    const result = await pool.request().query("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES");
-    res.json(result.recordset);
-  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

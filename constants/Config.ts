@@ -13,6 +13,6 @@ const LOCAL_URL = "http://localhost:3000";
 
 // 3. FOR LOCAL TESTING (On Mobile/Tab connected to the SAME Wi-Fi):
 // Use your computer's IP address (e.g., "http://192.168.1.10:3000").
-const LOCAL_IP_URL = "http://192.168.0.103:3000";
+const LOCAL_IP_URL = "http://localhost:3000"; // Replace 'localhost' with your IP if needed.
 
-export const API_URL = LOCAL_IP_URL; // <--- CHANGE THIS TO SWITCH MODES
+export const API_URL = LOCAL_URL; // <--- SWITCHED TO LOCAL FOR TESTING
