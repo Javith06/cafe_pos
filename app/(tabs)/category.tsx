@@ -40,7 +40,21 @@ type TableItem = {
   DiningSection: number;
 };
 
-type SectionItem = { id: number; name: string };
+const SECTIONS = ["SECTION_1", "SECTION_2", "SECTION_3", "TAKEAWAY"];
+
+const SECTION_LABELS: Record<string, string> = {
+  SECTION_1: "Section 1",
+  SECTION_2: "Section 2",
+  SECTION_3: "Section 3",
+  TAKEAWAY: "Takeaway",
+};
+
+const SECTION_SHORT: Record<string, string> = {
+  SECTION_1: "S1",
+  SECTION_2: "S2",
+  SECTION_3: "S3",
+  TAKEAWAY: "TW",
+};
 
 // 🔥 FALLBACK DATA - If API fails
 const getFallbackTables = (): TableItem[] => {
@@ -68,13 +82,12 @@ export default function Category() {
   const router = useRouter();
   const { section: urlSection } = useLocalSearchParams<{ section?: string }>();
 
-  const [activeTab, setActiveTab] = useState<number>(1);
-  const [dynamicSections, setDynamicSections] = useState<SectionItem[]>([]);
+  const [activeTab, setActiveTab] = useState<string>("SECTION_1");
   const [allTables, setAllTables] = useState<TableItem[]>([]);
   const [loading, setLoading] = useState(true);
   const sectionScrollRef = useRef<ScrollView>(null);
   // Track which sections have been loaded to avoid re-fetching
-  const loadedSections = useRef<Set<number>>(new Set());
+  const loadedSections = useRef<Set<string>>(new Set());
 
   const tables = useTableStatusStore((s) => s.tables);
   const activeOrders = useActiveOrdersStore((s) => s.activeOrders);
@@ -84,36 +97,6 @@ export default function Category() {
 
   const isTablet = width >= 768;
 
-  // Fetch sections dynamically
-  useEffect(() => {
-    const fetchSections = async () => {
-      try {
-        const res = await fetch(`${API}/api/sections`);
-        if (res.ok) {
-          const data: SectionItem[] = await res.json();
-          setDynamicSections(data);
-          if (data.length > 0) setActiveTab(data[0].id);
-        } else {
-          // Fallback if API fails
-          setDynamicSections([
-            { id: 1, name: "Section 1" },
-            { id: 2, name: "Section 2" },
-            { id: 3, name: "Section 3" },
-            { id: 4, name: "Takeaway" }
-          ]);
-        }
-      } catch (e) {
-        setDynamicSections([
-          { id: 1, name: "Section 1" },
-          { id: 2, name: "Section 2" },
-          { id: 3, name: "Section 3" },
-          { id: 4, name: "Takeaway" }
-        ]);
-      }
-    };
-    fetchSections();
-  }, []);
-
   // Poll server locks every 5 seconds to keep floor plan in sync across users
   useEffect(() => {
     const fetchLocks = async () => {
@@ -121,11 +104,7 @@ export default function Category() {
         const res = await fetch(`${API}/api/tables/locks`);
         if (res.ok) {
           const data = await res.json();
-          setServerLocks(prev => {
-             // Performance Fix: Deep compare to prevent 141+ components re-rendering if locks haven't changed!
-             if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
-             return data;
-          });
+          setServerLocks(data);
         }
       } catch (_) {}
     };
@@ -135,23 +114,27 @@ export default function Category() {
   }, []);
 
   useEffect(() => {
-    if (dynamicSections.length > 0) {
-      fetchTablesForSection(Number(activeTab));
-    }
-  }, [activeTab, dynamicSections]);
+    fetchTablesForSection(activeTab);
+  }, [activeTab]);
 
-  const fetchTablesForSection = async (sectionId: number) => {
-    if (loadedSections.current.has(sectionId)) return;
+  const fetchTablesForSection = async (section: string) => {
+    // Avoid re-fetching if already loaded for this section
+    if (loadedSections.current.has(section)) return;
 
     setLoading(true);
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      const response = await fetch(`${API}/tables?section=${sectionId}`, { signal: controller.signal });
+      const response = await fetch(
+        `${API}/tables?section=${section}`,
+        { signal: controller.signal }
+      );
+
       clearTimeout(timeoutId);
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
       const data = await response.json();
 
       let tablesArray: any[] = [];
@@ -168,25 +151,29 @@ export default function Category() {
           }))
           .filter((item) => item.id && item.label);
 
+        // Merge into allTables, replacing any from this section
         setAllTables((prev) => {
-          const others = prev.filter((t) => t.DiningSection !== sectionId);
+          const sectionNum = { SECTION_1: 1, SECTION_2: 2, SECTION_3: 3, TAKEAWAY: 4 }[section];
+          const others = prev.filter((t) => t.DiningSection !== sectionNum);
           return [...others, ...converted];
         });
-        loadedSections.current.add(sectionId);
+        loadedSections.current.add(section);
       } else {
         setAllTables((prev) => {
-          const fallback = getFallbackTables().filter((t) => t.DiningSection === sectionId);
-          const others = prev.filter((t) => t.DiningSection !== sectionId);
+          // No data from API — use fallback for this section only
+          const sectionNum = { SECTION_1: 1, SECTION_2: 2, SECTION_3: 3, TAKEAWAY: 4 }[section] ?? 0;
+          const fallback = getFallbackTables().filter((t) => t.DiningSection === sectionNum);
+          const others = prev.filter((t) => t.DiningSection !== sectionNum);
           return [...others, ...fallback];
         });
-        loadedSections.current.add(sectionId);
       }
     } catch (error) {
-      console.error("Tables fetch error:", error);
+      console.warn(`fetchTables(${section}) failed, using fallback:`, error);
+      const sectionNum = { SECTION_1: 1, SECTION_2: 2, SECTION_3: 3, TAKEAWAY: 4 }[section] ?? 0;
+      const fallback = getFallbackTables().filter((t) => t.DiningSection === sectionNum);
       setAllTables((prev) => {
-          const fallback = getFallbackTables().filter((t) => t.DiningSection === sectionId);
-          const others = prev.filter((t) => t.DiningSection !== sectionId);
-          return [...others, ...fallback];
+        const others = prev.filter((t) => t.DiningSection !== sectionNum);
+        return [...others, ...fallback];
       });
     } finally {
       setLoading(false);
@@ -194,8 +181,8 @@ export default function Category() {
   };
 
   useEffect(() => {
-    if (urlSection && !isNaN(Number(urlSection))) {
-      setActiveTab(Number(urlSection));
+    if (urlSection && SECTIONS.includes(urlSection)) {
+      setActiveTab(urlSection);
     }
   }, [urlSection]);
 
@@ -214,26 +201,33 @@ export default function Category() {
   const itemSize = (availableGridWidth - GAP * (columns - 1)) / columns;
 
   useEffect(() => {
-    const index = dynamicSections.findIndex(sec => sec.id === activeTab);
+    const index = SECTIONS.indexOf(activeTab);
     if (index !== -1 && sectionScrollRef.current) {
       sectionScrollRef.current.scrollTo({ x: index * 120, animated: true });
     }
-  }, [activeTab, dynamicSections]);
+  }, [activeTab]);
 
   const numberFont = Math.max(12, Math.min(24, itemSize * 0.32));
   const smallFont = Math.max(9, Math.min(14, itemSize * 0.18));
 
-  const currentTables = allTables.filter((table) => table.DiningSection === activeTab);
+  const currentTables = allTables.filter((table) => {
+    // Each section maps to exactly one DiningSection value — no overlap
+    if (activeTab === "SECTION_1") return table.DiningSection === 1;
+    if (activeTab === "SECTION_2") return table.DiningSection === 2;
+    if (activeTab === "SECTION_3") return table.DiningSection === 3;
+    if (activeTab === "TAKEAWAY")  return table.DiningSection === 4;
+    return false;
+  });
 
   // Count occupied tables per section for badge
-  const countOccupied = (sectionId: number) => allTables.filter((t) => {
-    if (t.DiningSection !== sectionId) return false;
-    return !!tables.find((st) => st.section === String(sectionId) && st.tableNo === t.label);
+  const occupiedCount = currentTables.filter((t) => {
+    const td = tables.find((st) => st.section === activeTab && st.tableNo === t.label);
+    return !!td;
   }).length;
 
   const renderItem = ({ item }: { item: TableItem }) => {
     const tableData = tables.find(
-      (t) => t.section === String(activeTab) && t.tableNo === item.label,
+      (t) => t.section === activeTab && t.tableNo === item.label,
     );
 
     // --- SERVER LOCK CHECK ---
@@ -270,8 +264,8 @@ export default function Category() {
       }
 
       const contextId = getContextId({
-        orderType: activeTab === 4 ? "TAKEAWAY" : "DINE_IN",
-        section: String(activeTab),
+        orderType: activeTab === "TAKEAWAY" ? "TAKEAWAY" : "DINE_IN",
+        section: activeTab,
         tableNo: item.label,
         takeawayNo: item.label,
       });
@@ -369,7 +363,7 @@ export default function Category() {
           }
 
           let newContext: any;
-          if (activeTab === 4) {
+          if (activeTab === "TAKEAWAY") {
             newContext = {
               orderType: "TAKEAWAY" as const,
               takeawayNo: item.label,
@@ -377,7 +371,7 @@ export default function Category() {
           } else {
             newContext = {
               orderType: "DINE_IN" as const,
-              section: String(activeTab),
+              section: activeTab,
               tableNo: item.label,
             };
           }
@@ -469,24 +463,33 @@ export default function Category() {
             style={styles.tabsScrollView}
           >
             <View style={[styles.tabsWrapper, { gap: isTablet ? 6 : 4 }]}>
-              {dynamicSections.map((sec) => {
-                const isActive = activeTab === sec.id;
-                const activeColor = isActive ? "#22c55e" : "#e2e8f0";
-                const occupied = countOccupied(sec.id);
+              {SECTIONS.map((section) => {
+                const isActive = activeTab === section;
+                const sectionTables = allTables.filter((t) => {
+                  if (section === "SECTION_1") return t.DiningSection === 1;
+                  if (section === "SECTION_2") return t.DiningSection === 2;
+                  if (section === "SECTION_3") return t.DiningSection === 3;
+                  if (section === "TAKEAWAY")  return t.DiningSection === 4;
+                  return false;
+                });
+                const occupied = sectionTables.filter((t) =>
+                  tables.some((st) => st.section === section && st.tableNo === t.label)
+                ).length;
 
                 return (
                   <TouchableOpacity
-                    key={sec.id}
-                    onPress={() => setActiveTab(sec.id)}
+                    key={section}
+                    onPress={() => setActiveTab(section)}
                     activeOpacity={0.75}
                     style={[
                       styles.tabBtn,
                       isActive && styles.activeTabBtn,
                     ]}
                   >
+                    {/* Short code badge */}
                     <View style={[styles.tabCodeBadge, isActive && styles.activeTabCodeBadge]}>
                       <Text style={[styles.tabCodeText, isActive && styles.activeTabCodeText]}>
-                        {sec.name.slice(0, 2).toUpperCase()}
+                        {SECTION_SHORT[section]}
                       </Text>
                     </View>
                     <Text
@@ -496,7 +499,7 @@ export default function Category() {
                         { fontSize: isTablet ? 13 : 11 },
                       ]}
                     >
-                      {sec.name}
+                      {SECTION_LABELS[section]}
                     </Text>
                     {occupied > 0 && (
                       <View style={[styles.tabBadge, isActive && styles.activeTabBadge]}>
@@ -533,10 +536,10 @@ export default function Category() {
               {isTablet && (
                 <Text style={[styles.headerActionText, { color: "#f59e0b" }]}>Cart</Text>
               )}
-              {tables.filter(t => t.section === String(activeTab)).length > 0 && (
+              {tables.filter(t => t.section === activeTab).length > 0 && (
                 <View style={styles.cartBadge}>
                   <Text style={styles.cartBadgeText}>
-                    {tables.filter(t => t.section === String(activeTab)).length}
+                    {tables.filter(t => t.section === activeTab).length}
                   </Text>
                 </View>
               )}
@@ -571,17 +574,17 @@ export default function Category() {
           <View style={styles.sectionHeaderLeft}>
             <View style={styles.sectionAccentBar} />
             <Text style={styles.sectionHeaderTitle}>
-              {dynamicSections.find(s => s.id === activeTab)?.name || 'Section'}
+              {SECTION_LABELS[activeTab]}
             </Text>
             <View style={styles.sectionCountBadge}>
               <Text style={styles.sectionCountText}>
                 {currentTables.length} tables
               </Text>
             </View>
-            {countOccupied(activeTab) > 0 && (
+            {occupiedCount > 0 && (
               <View style={styles.occupiedBadge}>
                 <View style={styles.occupiedDot} />
-                <Text style={styles.occupiedText}>{countOccupied(activeTab)} occupied</Text>
+                <Text style={styles.occupiedText}>{occupiedCount} occupied</Text>
               </View>
             )}
           </View>
@@ -606,7 +609,7 @@ export default function Category() {
             <View style={styles.emptyContainer}>
               <Ionicons name="grid-outline" size={48} color="rgba(255,255,255,0.15)" />
               <Text style={styles.emptyText}>No tables found</Text>
-              <TouchableOpacity onPress={() => { loadedSections.current.delete(Number(activeTab)); fetchTablesForSection(Number(activeTab)); }} style={styles.retryBtn}>
+              <TouchableOpacity onPress={fetchTables} style={styles.retryBtn}>
                 <Ionicons name="refresh-outline" size={16} color="#fff" />
                 <Text style={styles.retryText}>Refresh</Text>
               </TouchableOpacity>
@@ -630,14 +633,14 @@ export default function Category() {
                 </TouchableOpacity>
               </View>
               <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-                {tables.filter(t => t.section === String(activeTab)).length === 0 ? (
+                {tables.filter(t => t.section === activeTab).length === 0 ? (
                   <View style={styles.cartEmpty}>
                     <Ionicons name="restaurant-outline" size={48} color="rgba(255,255,255,0.15)" />
                     <Text style={styles.cartEmptyText}>No active orders in this section</Text>
                   </View>
                 ) : (
                   tables
-                    .filter(t => t.section === String(activeTab))
+                    .filter(t => t.section === activeTab)
                     .map((tableData) => {
                       // Gather items for this table
                       let items: any[] = [];
@@ -660,8 +663,8 @@ export default function Category() {
 
                       // Also include cart items
                       const contextId = getContextId({
-                        orderType: activeTab === 4 ? "TAKEAWAY" : "DINE_IN",
-                        section: String(activeTab),
+                        orderType: activeTab === "TAKEAWAY" ? "TAKEAWAY" : "DINE_IN",
+                        section: activeTab,
                         tableNo: tableData.tableNo,
                         takeawayNo: tableData.tableNo,
                       });

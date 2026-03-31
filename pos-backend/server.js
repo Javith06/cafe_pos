@@ -150,7 +150,15 @@ app.get("/api/sections", async (req, res) => {
 app.get("/tables", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const { section } = req.query; // 'section' is now the numeric ID
+    const { section } = req.query;
+
+    // Map string section keys (sent by frontend) to DiningSection numeric IDs
+    const SECTION_MAP = {
+      SECTION_1: 1,
+      SECTION_2: 2,
+      SECTION_3: 3,
+      TAKEAWAY: 4,
+    };
 
     let query = `
       SELECT
@@ -162,9 +170,19 @@ app.get("/tables", async (req, res) => {
 
     const request = pool.request();
 
-    if (section && !isNaN(Number(section))) {
-      request.input("DiningSection", Number(section));
-      query += ` WHERE DiningSection = @DiningSection`;
+    if (section) {
+      let sectionNum = null;
+      if (SECTION_MAP[section] !== undefined) {
+        // String key like "SECTION_1"
+        sectionNum = SECTION_MAP[section];
+      } else if (!isNaN(Number(section))) {
+        // Numeric ID fallback
+        sectionNum = Number(section);
+      }
+      if (sectionNum !== null) {
+        request.input("DiningSection", sectionNum);
+        query += ` WHERE DiningSection = @DiningSection`;
+      }
     }
 
     query += ` ORDER BY SortCode`;

@@ -60,7 +60,7 @@ export default function SalesReport() {
   const [sales, setSales] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
-  const [selectedFilter, setSelectedFilter] = useState<FilterType>("MONTHLY");
+  const [selectedFilter, setSelectedFilter] = useState<FilterType>("DAILY");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
@@ -514,22 +514,35 @@ export default function SalesReport() {
               </View>
 
               <View style={styles.tableBodyFixed}>
-                {filteredSales.slice(0, 50).map((item, idx) => (
-                  <TouchableOpacity key={idx} style={styles.trRow} onPress={() => handleOrderPress(item)}>
-                    <Text style={[styles.tdCell, styles.billIdTxt, { flex: 1.2 }]} numberOfLines={1}>{item.BillNo || item.SettlementID?.slice(0, 8) || "N/A"}</Text>
-                    
-                    <View style={[styles.tdCellBox, { flex: 1 }]}>
-                      <View style={[styles.badgePay, { backgroundColor: item.PayMode==="CASH" ? "rgba(34,197,94,0.15)" : item.PayMode==="NETS" ? "rgba(163,230,53,0.15)" : item.PayMode==="CARD" ? "rgba(59,130,246,0.15)" : "rgba(139,92,246,0.15)" }]}>
-                        <Ionicons name={getPaymentMethodIcon(item.PayMode)} size={10} color={item.PayMode==="CASH" ? "#4ade80" : item.PayMode==="NETS" ? "#a3e635" : item.PayMode==="CARD" ? "#60a5fa" : "#c084fc"} style={{ marginRight: 4 }} />
-                        <Text style={[styles.badgePayTxt, { color: item.PayMode==="CASH" ? "#4ade80" : item.PayMode==="NETS" ? "#a3e635" : item.PayMode==="CARD" ? "#60a5fa" : "#c084fc" }]}>{item.PayMode}</Text>
+                {loading ? (
+                  <View style={{ justifyContent: 'center', alignItems: 'center', paddingVertical: 40 }}>
+                    <ActivityIndicator color="#22c55e" size="small" />
+                    <Text style={{ color: '#64748b', marginTop: 8, fontSize: 12 }}>Loading transactions...</Text>
+                  </View>
+                ) : filteredSales.length === 0 ? (
+                  <View style={{ justifyContent: 'center', alignItems: 'center', paddingVertical: 40 }}>
+                    <Ionicons name="receipt-outline" size={36} color="rgba(100,116,139,0.4)" />
+                    <Text style={{ color: '#64748b', marginTop: 12, fontSize: 13, fontFamily: Fonts.semiBold }}>No transactions found</Text>
+                    <Text style={{ color: '#475569', marginTop: 4, fontSize: 11 }}>Try a different date or filter</Text>
+                  </View>
+                ) : (
+                  filteredSales.slice(0, 50).map((item, idx) => (
+                    <TouchableOpacity key={idx} style={styles.trRow} onPress={() => handleOrderPress(item)}>
+                      <Text style={[styles.tdCell, styles.billIdTxt, { flex: 1.2 }]} numberOfLines={1}>{item.BillNo || item.SettlementID?.slice(0, 8) || "N/A"}</Text>
+                      
+                      <View style={[styles.tdCellBox, { flex: 1 }]}>
+                        <View style={[styles.badgePay, { backgroundColor: item.PayMode==="CASH" ? "rgba(34,197,94,0.15)" : item.PayMode==="NETS" ? "rgba(163,230,53,0.15)" : item.PayMode==="CARD" ? "rgba(59,130,246,0.15)" : "rgba(139,92,246,0.15)" }]}>
+                          <Ionicons name={getPaymentMethodIcon(item.PayMode)} size={10} color={item.PayMode==="CASH" ? "#4ade80" : item.PayMode==="NETS" ? "#a3e635" : item.PayMode==="CARD" ? "#60a5fa" : "#c084fc"} style={{ marginRight: 4 }} />
+                          <Text style={[styles.badgePayTxt, { color: item.PayMode==="CASH" ? "#4ade80" : item.PayMode==="NETS" ? "#a3e635" : item.PayMode==="CARD" ? "#60a5fa" : "#c084fc" }]}>{item.PayMode}</Text>
+                        </View>
                       </View>
-                    </View>
 
-                    <Text style={[styles.tdCell, { flex: 0.8, color: getStatusColor(item.Status || "PAID"), fontFamily: Fonts.semiBold, fontSize: 12 }]}>{(item.Status || "Completed")}</Text>
-                    
-                    <Text style={[styles.tdCell, { flex: 1.5, textAlign: 'right', color: '#cbd5e1' }]}>{formatDateTime(item.SettlementDate)}</Text>
-                  </TouchableOpacity>
-                ))}
+                      <Text style={[styles.tdCell, { flex: 0.8, color: getStatusColor(item.Status || "PAID"), fontFamily: Fonts.semiBold, fontSize: 12 }]}>{(item.Status || "Completed")}</Text>
+                      
+                      <Text style={[styles.tdCell, { flex: 1.5, textAlign: 'right', color: '#cbd5e1' }]}>{formatDateTime(item.SettlementDate)}</Text>
+                    </TouchableOpacity>
+                  ))
+                )}
               </View>
             </View>
 
