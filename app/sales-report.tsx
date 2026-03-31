@@ -21,6 +21,7 @@ import { Fonts } from "../constants/Fonts";
 import { API_URL } from "../constants/Config";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
+// const API_URL = "https://cafepos-production-3428.up.railway.app";
 
 type FilterType = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
 
@@ -88,25 +89,7 @@ export default function SalesReport() {
 
   const fetchSales = async () => {
     try {
-      // Build the same date range used for summary so they stay in sync
-      const end = new Date(selectedDate);
-      const start = new Date(selectedDate);
-
-      if (selectedFilter === "WEEKLY") {
-        start.setDate(start.getDate() - 6);
-      } else if (selectedFilter === "MONTHLY") {
-        start.setDate(1);
-        end.setMonth(end.getMonth() + 1);
-        end.setDate(0);
-      } else if (selectedFilter === "YEARLY") {
-        start.setMonth(0, 1);
-        end.setMonth(11, 31);
-      }
-
-      const startStr = start.toISOString().split("T")[0];
-      const endStr   = end.toISOString().split("T")[0];
-
-      const response = await fetch(`${API_URL}/api/sales/transactions?startDate=${startStr}&endDate=${endStr}`);
+      const response = await fetch(`${API_URL}/api/sales/all`);
       const data = await response.json();
       if (Array.isArray(data)) {
         setSales(data);
