@@ -164,6 +164,26 @@ app.get("/tables", async (req, res) => {
   }
 });
 
+app.get("/api/testdb", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME LIKE '%Section%' OR TABLE_NAME LIKE '%Dining%'");
+    res.json(result.recordset);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/schema", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES");
+    res.json(result.recordset);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* ================= KITCHENS ================= */
 app.get("/kitchens", async (req, res) => {
   try {
