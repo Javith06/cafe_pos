@@ -134,7 +134,6 @@ app.get("/tables", async (req, res) => {
         TableNumber AS label,
         DiningSection
       FROM TableMaster
-      WHERE IsActive = 1
       ORDER BY SortCode
     `);
     res.json(result.recordset);
