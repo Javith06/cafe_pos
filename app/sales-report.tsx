@@ -27,12 +27,40 @@ const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 type FilterType = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
 type DateRangeMode = "SINGLE" | "RANGE";
 
+// Pure function outside the component — no stale closure risk
+function computeEffectiveDateRange(
+  dateRangeMode: DateRangeMode,
+  startDate: string,
+  endDate: string,
+  selectedDate: string,
+  selectedFilter: FilterType
+): { start: string; end: string } {
+  if (dateRangeMode === "RANGE") {
+    return { start: startDate, end: endDate };
+  }
+  const s = new Date(selectedDate);
+  const e = new Date(selectedDate);
+  if (selectedFilter === "WEEKLY") {
+    s.setDate(s.getDate() - 6);
+  } else if (selectedFilter === "MONTHLY") {
+    s.setDate(1);
+    e.setMonth(e.getMonth() + 1, 0);
+  } else if (selectedFilter === "YEARLY") {
+    s.setMonth(0, 1);
+    e.setMonth(11, 31);
+  }
+  return {
+    start: s.toISOString().split("T")[0],
+    end: e.toISOString().split("T")[0],
+  };
+}
+
 export default function SalesReport() {
   const router = useRouter();
   const [sales, setSales] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
-  const [selectedFilter, setSelectedFilter] = useState<FilterType>("DAILY");
+  const [selectedFilter, setSelectedFilter] = useState<FilterType>("MONTHLY");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
@@ -99,7 +127,15 @@ export default function SalesReport() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      await Promise.all([fetchSales(), fetchSummary()]);
+      // Compute range once here and pass it down — prevents stale closure bugs
+      const range = computeEffectiveDateRange(
+        dateRangeMode,
+        startDate,
+        endDate,
+        selectedDate,
+        selectedFilter
+      );
+      await Promise.all([fetchSales(range), fetchSummary(range)]);
     } catch (error) {
       console.error("Error:", error);
     } finally {
@@ -108,39 +144,11 @@ export default function SalesReport() {
     }
   };
 
-  // Compute the effective date range based on the active filter/mode
-  const getEffectiveDateRange = (): { start: string; end: string } => {
-    // If user explicitly set a custom range via date picker, respect it
-    if (dateRangeMode === "RANGE") {
-      return { start: startDate, end: endDate };
-    }
 
-    // Otherwise derive from selectedDate + selectedFilter
-    const baseDate = new Date(selectedDate);
-    const s = new Date(selectedDate);
-    const e = new Date(selectedDate);
-
-    if (selectedFilter === "DAILY") {
-      // single day
-    } else if (selectedFilter === "WEEKLY") {
-      s.setDate(baseDate.getDate() - 6);
-    } else if (selectedFilter === "MONTHLY") {
-      s.setDate(1);
-      e.setMonth(e.getMonth() + 1, 0); // last day of month
-    } else if (selectedFilter === "YEARLY") {
-      s.setMonth(0, 1);
-      e.setMonth(11, 31);
-    }
-
-    return {
-      start: s.toISOString().split("T")[0],
-      end: e.toISOString().split("T")[0],
-    };
-  };
-
-  const fetchSales = async () => {
+  const fetchSales = async (range: { start: string; end: string }) => {
     try {
-      const { start, end } = getEffectiveDateRange();
+      const { start, end } = range;
+      console.log(`Fetching transactions: ${start} → ${end}`);
       const response = await fetch(`${API_URL}/api/sales/transactions?startDate=${start}&endDate=${end}`);
       const data = await response.json();
       if (Array.isArray(data)) {
@@ -154,13 +162,13 @@ export default function SalesReport() {
     }
   };
 
-  const fetchSummary = async () => {
+  const fetchSummary = async (range: { start: string; end: string }) => {
     try {
-      const { start, end } = getEffectiveDateRange();
+      const { start, end } = range;
 
       if (selectedFilter === "DAILY" && dateRangeMode !== "RANGE") {
         // Single day — use the fast daily endpoint
-        const url = `${API_URL}/api/sales/daily/${selectedDate}`;
+        const url = `${API_URL}/api/sales/daily/${start}`;
         const response = await fetch(url);
         const data = await response.json();
         setSummary(data);
@@ -200,10 +208,14 @@ export default function SalesReport() {
     return `$${amount?.toFixed(2) || "0.00"}`;
   };
 
-  const formatTime = (dateString: string) => {
+  // Returns "Mar 31, 10:30 AM" format — date + time together
+  const formatDateTime = (dateString: string) => {
     try {
       const date = new Date(dateString);
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+      if (isNaN(date.getTime())) return "N/A";
+      const datePart = date.toLocaleDateString([], { month: "short", day: "numeric" });
+      const timePart = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: true });
+      return `${datePart}  ${timePart}`;
     } catch {
       return "N/A";
     }
@@ -558,7 +570,7 @@ export default function SalesReport() {
                 <View style={styles.tableContainer}>
                   <View style={styles.tableHeader}>
                     <Text style={[styles.tableHeaderCell, { flex: 0.8 }]}>ID</Text>
-                    <Text style={[styles.tableHeaderCell, { flex: 1 }]}>TIME</Text>
+                    <Text style={[styles.tableHeaderCell, { flex: 1.5 }]}>DATE & TIME</Text>
                     <Text style={[styles.tableHeaderCell, { flex: 0.9 }]}>PAYMENT</Text>
                     <Text style={[styles.tableHeaderCell, { flex: 0.8, textAlign: "right" }]}>STATUS</Text>
                     <Text style={[styles.tableHeaderCell, { flex: 0.8, textAlign: "right" }]}>AMOUNT</Text>
@@ -578,7 +590,7 @@ export default function SalesReport() {
                     </View>
                   ) : (
                     <View style={styles.tableBody}>
-                      {filteredSales.slice(0, 50).map((item, idx) => (
+                      {filteredSales.map((item, idx) => (
                         <TouchableOpacity
                           activeOpacity={0.7}
                           key={idx}
@@ -591,8 +603,8 @@ export default function SalesReport() {
                           <Text style={[styles.tableCell, { flex: 0.8 }]} numberOfLines={1}>
                             {item.BillNo || item.SettlementID?.slice(0, 8) || "N/A"}
                           </Text>
-                          <Text style={[styles.tableCell, { flex: 1 }]} numberOfLines={1}>
-                            {formatTime(item.SettlementDate)}
+                          <Text style={[styles.tableCell, { flex: 1.5 }]} numberOfLines={2}>
+                            {formatDateTime(item.SettlementDate)}
                           </Text>
                           <View style={[styles.tableCellFlex, { flex: 0.9 }]}>
                             <Ionicons

@@ -14,7 +14,7 @@ const PORT = process.env.PORT || 3000;
 const initDB = async () => {
   try {
     const pool = await poolPromise;
-    
+
     // Ensure our custom table exists for detailed reports
     await pool.request().query(`
       IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='SettlementItemDetail' AND xtype='U')
@@ -107,7 +107,7 @@ app.post("/api/tables/lock", (req, res) => {
 app.post("/api/tables/unlock", (req, res) => {
   const { tableId, userId } = req.body;
   const existingLock = tableLocks.get(tableId);
-  
+
   // Only the person who locked it, or an admin can unlock it (for simplicity, we let the frontend request unlock)
   if (existingLock && existingLock.lockedBy === userId) {
     tableLocks.delete(tableId);
@@ -128,14 +128,35 @@ app.get("/api/tables/locks", (req, res) => {
 app.get("/tables", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const result = await pool.request().query(`
-      SELECT 
+    const { section } = req.query;
+
+    // Map frontend section names to DiningSection values in the DB
+    // Section 1=1, Section 2=2, Section 3=3, Takeaway=4
+    const SECTION_MAP = {
+      SECTION_1: 1,
+      SECTION_2: 2,
+      SECTION_3: 3,
+      TAKEAWAY: 4,
+    };
+
+    let query = `
+      SELECT
         TableId AS id,
         TableNumber AS label,
         DiningSection
       FROM TableMaster
-      ORDER BY SortCode
-    `);
+    `;
+
+    const request = pool.request();
+
+    if (section && SECTION_MAP[section] !== undefined) {
+      request.input("DiningSection", SECTION_MAP[section]);
+      query += ` WHERE DiningSection = @DiningSection`;
+    }
+
+    query += ` ORDER BY SortCode`;
+
+    const result = await request.query(query);
     res.json(result.recordset);
   } catch (err) {
     console.error("TABLES ERROR:", err);
@@ -268,7 +289,7 @@ app.get("/api/sales/all", async (req, res) => {
       LEFT JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
       ORDER BY sh.LastSettlementDate DESC
     `);
-    
+
     console.log(`✅ Found ${result.recordset.length} sales records.`);
     res.json(result.recordset);
   } catch (err) {
@@ -282,7 +303,7 @@ app.get("/api/sales/daily/:date", async (req, res) => {
   try {
     const pool = await poolPromise;
     const { date } = req.params;
-    
+
     const result = await pool.request()
       .input("Date", sql.Date, date)
       .query(`
@@ -308,14 +329,14 @@ app.get("/api/sales/daily/:date", async (req, res) => {
 app.post("/api/sales/save", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const { 
-      totalAmount, 
-      paymentMethod, 
-      items, 
+    const {
+      totalAmount,
+      paymentMethod,
+      items,
       subTotal,
       taxAmount,
       discountAmount,
-      orderId 
+      orderId
     } = req.body;
 
     console.log("Saving sale for Order:", orderId);
@@ -378,7 +399,7 @@ app.post("/api/sales/save", async (req, res) => {
       }
 
       await transaction.commit();
-      
+
       // Auto-unlock the table if it was locked.
       if (orderId) {
         tableLocks.delete(orderId);
@@ -437,7 +458,7 @@ app.get("/api/sales/range", async (req, res) => {
   try {
     const pool = await poolPromise;
     const { startDate, endDate } = req.query;
-    
+
     const result = await pool.request()
       .input("StartDate", sql.Date, startDate)
       .input("EndDate", sql.Date, endDate)
@@ -467,7 +488,7 @@ app.get("/api/sales/detail/:id", async (req, res) => {
   try {
     const pool = await poolPromise;
     const { id } = req.params;
-    
+
     const result = await pool.request()
       .input("Id", id)
       .query(`

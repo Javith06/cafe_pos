@@ -86,6 +86,8 @@ export default function Category() {
   const [allTables, setAllTables] = useState<TableItem[]>([]);
   const [loading, setLoading] = useState(true);
   const sectionScrollRef = useRef<ScrollView>(null);
+  // Track which sections have been loaded to avoid re-fetching
+  const loadedSections = useRef<Set<string>>(new Set());
 
   const tables = useTableStatusStore((s) => s.tables);
   const activeOrders = useActiveOrdersStore((s) => s.activeOrders);
@@ -112,17 +114,21 @@ export default function Category() {
   }, []);
 
   useEffect(() => {
-    fetchTables();
-  }, []);
+    fetchTablesForSection(activeTab);
+  }, [activeTab]);
 
-  const fetchTables = async () => {
+  const fetchTablesForSection = async (section: string) => {
+    // Avoid re-fetching if already loaded for this section
+    if (loadedSections.current.has(section)) return;
+
+    setLoading(true);
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       const response = await fetch(
-        "https://cafepos-production-3428.up.railway.app/tables",
-        { signal: controller.signal },
+        `${API}/tables?section=${section}`,
+        { signal: controller.signal }
       );
 
       clearTimeout(timeoutId);
@@ -137,7 +143,7 @@ export default function Category() {
       else if (data?.recordset && Array.isArray(data.recordset)) tablesArray = data.recordset;
 
       if (tablesArray.length > 0) {
-        const convertedData = tablesArray
+        const converted = tablesArray
           .map((item: any) => ({
             id: item.id || item.TableId,
             label: item.label || item.TableNumber,
@@ -145,13 +151,30 @@ export default function Category() {
           }))
           .filter((item) => item.id && item.label);
 
-        setAllTables(convertedData);
+        // Merge into allTables, replacing any from this section
+        setAllTables((prev) => {
+          const sectionNum = { SECTION_1: 1, SECTION_2: 2, SECTION_3: 3, TAKEAWAY: 4 }[section];
+          const others = prev.filter((t) => t.DiningSection !== sectionNum);
+          return [...others, ...converted];
+        });
+        loadedSections.current.add(section);
       } else {
-        throw new Error("No data from API");
+        setAllTables((prev) => {
+          // No data from API — use fallback for this section only
+          const sectionNum = { SECTION_1: 1, SECTION_2: 2, SECTION_3: 3, TAKEAWAY: 4 }[section] ?? 0;
+          const fallback = getFallbackTables().filter((t) => t.DiningSection === sectionNum);
+          const others = prev.filter((t) => t.DiningSection !== sectionNum);
+          return [...others, ...fallback];
+        });
       }
     } catch (error) {
-      const fallbackData = getFallbackTables();
-      setAllTables(fallbackData);
+      console.warn(`fetchTables(${section}) failed, using fallback:`, error);
+      const sectionNum = { SECTION_1: 1, SECTION_2: 2, SECTION_3: 3, TAKEAWAY: 4 }[section] ?? 0;
+      const fallback = getFallbackTables().filter((t) => t.DiningSection === sectionNum);
+      setAllTables((prev) => {
+        const others = prev.filter((t) => t.DiningSection !== sectionNum);
+        return [...others, ...fallback];
+      });
     } finally {
       setLoading(false);
     }
@@ -188,10 +211,11 @@ export default function Category() {
   const smallFont = Math.max(9, Math.min(14, itemSize * 0.18));
 
   const currentTables = allTables.filter((table) => {
-    if (activeTab === "TAKEAWAY") return table.DiningSection === 3 || table.DiningSection === 4;
-    else if (activeTab === "SECTION_1") return table.DiningSection === 1;
-    else if (activeTab === "SECTION_2") return table.DiningSection === 2;
-    else if (activeTab === "SECTION_3") return table.DiningSection === 3;
+    // Each section maps to exactly one DiningSection value — no overlap
+    if (activeTab === "SECTION_1") return table.DiningSection === 1;
+    if (activeTab === "SECTION_2") return table.DiningSection === 2;
+    if (activeTab === "SECTION_3") return table.DiningSection === 3;
+    if (activeTab === "TAKEAWAY")  return table.DiningSection === 4;
     return false;
   });
 
@@ -442,10 +466,10 @@ export default function Category() {
               {SECTIONS.map((section) => {
                 const isActive = activeTab === section;
                 const sectionTables = allTables.filter((t) => {
-                  if (section === "TAKEAWAY") return t.DiningSection === 3 || t.DiningSection === 4;
                   if (section === "SECTION_1") return t.DiningSection === 1;
                   if (section === "SECTION_2") return t.DiningSection === 2;
                   if (section === "SECTION_3") return t.DiningSection === 3;
+                  if (section === "TAKEAWAY")  return t.DiningSection === 4;
                   return false;
                 });
                 const occupied = sectionTables.filter((t) =>
@@ -585,7 +609,7 @@ export default function Category() {
             <View style={styles.emptyContainer}>
               <Ionicons name="grid-outline" size={48} color="rgba(255,255,255,0.15)" />
               <Text style={styles.emptyText}>No tables found</Text>
-              <TouchableOpacity onPress={fetchTables} style={styles.retryBtn}>
+              <TouchableOpacity onPress={() => { loadedSections.current.delete(activeTab); fetchTablesForSection(activeTab); }} style={styles.retryBtn}>
                 <Ionicons name="refresh-outline" size={16} color="#fff" />
                 <Text style={styles.retryText}>Refresh</Text>
               </TouchableOpacity>
