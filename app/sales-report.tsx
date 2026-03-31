@@ -97,8 +97,14 @@ export default function SalesReport() {
         if (savedStartDate) setStartDate(savedStartDate);
         if (savedEndDate) setEndDate(savedEndDate);
         if (savedFilter) setSelectedFilter(savedFilter as FilterType);
-        if (savedModes) setActivePaymentModes(JSON.parse(savedModes));
-        if (savedTypes) setActiveOrderTypes(JSON.parse(savedTypes));
+        if (savedModes) {
+          const parsed = JSON.parse(savedModes);
+          if (parsed.length > 0) setActivePaymentModes(parsed);
+        }
+        if (savedTypes) {
+          const parsedTypes = JSON.parse(savedTypes);
+          if (parsedTypes.length > 0) setActiveOrderTypes(parsedTypes);
+        }
         if (savedSort) setSortOrder(savedSort as "NEWEST" | "HIGHEST");
         if (savedRangeMode) setDateRangeMode(savedRangeMode as DateRangeMode);
       } catch (e) {
@@ -389,7 +395,10 @@ export default function SalesReport() {
               return (
                 <TouchableOpacity 
                   key={tab} 
-                  onPress={() => setSelectedFilter(tab === "Overview" ? "DAILY" : tab.toUpperCase() as any)}
+                  onPress={() => {
+                    setSelectedFilter(tab === "Overview" ? "DAILY" : tab.toUpperCase() as any);
+                    setDateRangeMode("SINGLE"); 
+                  }}
                   style={[styles.filterTab, isActive && styles.activeFilterTab]}
                 >
                   <Text style={[styles.filterTabText, isActive && styles.activeFilterTabText]}>{tab}</Text>
