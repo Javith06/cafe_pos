@@ -11,6 +11,7 @@ import {
   Dimensions,
   Modal,
   TextInput,
+  FlatList,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -24,6 +25,7 @@ import { API_URL } from "../constants/Config";
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
 type FilterType = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
+type DateRangeMode = "SINGLE" | "RANGE";
 
 export default function SalesReport() {
   const router = useRouter();
@@ -37,6 +39,10 @@ export default function SalesReport() {
   const [orderDetails, setOrderDetails] = useState<any[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [dateRangeMode, setDateRangeMode] = useState<DateRangeMode>("SINGLE");
+  const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
+  const [endDate, setEndDate] = useState(new Date().toISOString().split("T")[0]);
   const [activePaymentModes, setActivePaymentModes] = useState<string[]>(["CASH", "CARD", "NETS", "PAYNOW"]);
   const [activeOrderTypes, setActiveOrderTypes] = useState<string[]>(["DINE-IN", "TAKEAWAY"]);
   const [sortOrder, setSortOrder] = useState<"NEWEST" | "HIGHEST">("NEWEST");
@@ -49,12 +55,16 @@ export default function SalesReport() {
     const loadState = async () => {
       try {
         const savedDate = await AsyncStorage.getItem("sales_selected_date");
+        const savedStartDate = await AsyncStorage.getItem("sales_start_date");
+        const savedEndDate = await AsyncStorage.getItem("sales_end_date");
         const savedFilter = await AsyncStorage.getItem("sales_selected_filter");
         const savedModes = await AsyncStorage.getItem("sales_payment_modes");
         const savedTypes = await AsyncStorage.getItem("sales_order_types");
         const savedSort = await AsyncStorage.getItem("sales_sort_order");
 
         if (savedDate) setSelectedDate(savedDate);
+        if (savedStartDate) setStartDate(savedStartDate);
+        if (savedEndDate) setEndDate(savedEndDate);
         if (savedFilter) setSelectedFilter(savedFilter as FilterType);
         if (savedModes) setActivePaymentModes(JSON.parse(savedModes));
         if (savedTypes) setActiveOrderTypes(JSON.parse(savedTypes));
@@ -69,12 +79,14 @@ export default function SalesReport() {
   // Persistence: Save on change
   useEffect(() => {
     AsyncStorage.setItem("sales_selected_date", selectedDate);
+    AsyncStorage.setItem("sales_start_date", startDate);
+    AsyncStorage.setItem("sales_end_date", endDate);
     AsyncStorage.setItem("sales_selected_filter", selectedFilter);
     AsyncStorage.setItem("sales_payment_modes", JSON.stringify(activePaymentModes));
     AsyncStorage.setItem("sales_order_types", JSON.stringify(activeOrderTypes));
     AsyncStorage.setItem("sales_sort_order", sortOrder);
     fetchData();
-  }, [selectedDate, selectedFilter, activePaymentModes, activeOrderTypes, sortOrder]);
+  }, [selectedDate, startDate, endDate, selectedFilter, activePaymentModes, activeOrderTypes, sortOrder]);
 
   const fetchData = async () => {
     try {
@@ -163,6 +175,54 @@ export default function SalesReport() {
 
   const formatCurrency = (amount: number) => {
     return `$${amount?.toFixed(2) || "0.00"}`;
+  };
+
+  const formatTime = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+    } catch {
+      return "N/A";
+    }
+  };
+
+  const formatTimeDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+      const dateStr = date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      return `${time}`;
+    } catch {
+      return "N/A";
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch(status.toUpperCase()) {
+      case "PAID":
+        return "#22c55e";
+      case "PENDING":
+        return "#f59e0b";
+      case "FAILED":
+        return "#ef4444";
+      default:
+        return "#22c55e";
+    }
+  };
+
+  const getPaymentMethodIcon = (method: string) => {
+    switch(method?.toUpperCase()) {
+      case "CASH":
+        return "cash-outline";
+      case "CARD":
+      case "NETS":
+        return "card-outline";
+      case "PAYNOW":
+      case "UPI":
+        return "qr-code-outline";
+      default:
+        return "wallet-outline";
+    }
   };
 
   const changeDate = (days: number) => {
@@ -378,17 +438,31 @@ export default function SalesReport() {
                 )}
               </View>
 
-              {/* Date Navigation */}
-              <View style={styles.dateControl}>
-                <TouchableOpacity onPress={() => changeDate(-1)} style={styles.navBtn}>
-                  <Ionicons name="chevron-back" size={20} color="#fff" />
-                </TouchableOpacity>
-                <View style={styles.dateDisplay}>
-                  <Text style={styles.dateText}>{selectedDate}</Text>
+              {/* Date Filter Controls */}
+              <View style={styles.dateFilterSection}>
+                <View style={styles.dateFilterHeader}>
+                  <View>
+                    <Text style={styles.dateFilterLabel}>SELECT DATE RANGE</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setShowDatePicker(true)}
+                    style={styles.editDateBtn}
+                  >
+                    <Ionicons name="calendar-outline" size={18} color="#22c55e" />
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity onPress={() => changeDate(1)} style={styles.navBtn}>
-                  <Ionicons name="chevron-forward" size={20} color="#fff" />
-                </TouchableOpacity>
+
+                <View style={styles.dateRangeDisplay}>
+                  <View style={styles.dateRangeItem}>
+                    <Text style={styles.dateRangeLabel}>From</Text>
+                    <Text style={styles.dateRangeValue}>{startDate}</Text>
+                  </View>
+                  <Ionicons name="arrow-forward" size={16} color="#64748b" style={styles.dateArrow} />
+                  <View style={styles.dateRangeItem}>
+                    <Text style={styles.dateRangeLabel}>To</Text>
+                    <Text style={styles.dateRangeValue}>{endDate}</Text>
+                  </View>
+                </View>
               </View>
 
               <View style={styles.metricsGrid}>
@@ -447,71 +521,98 @@ export default function SalesReport() {
                 </View>
               </View>
 
-              {/* Recent Activity */}
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionHeaderText}>RECENT ACTIVITY</Text>
-                <TouchableOpacity onPress={() => { setSearchQuery(""); fetchData(); }}>
-                  <Text style={styles.seeAllText}>REFRESH</Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* SEARCH BAR */}
-              <View style={styles.searchContainer}>
-                <Ionicons name="search" size={18} color="#94a3b8" style={styles.searchIcon} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Search Bill ID (e.g. A996E780)"
-                  placeholderTextColor="#475569"
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  autoCapitalize="characters"
-                  clearButtonMode="while-editing"
-                />
-                {searchQuery.length > 0 && (
-                  <TouchableOpacity onPress={() => setSearchQuery("")}>
-                    <Ionicons name="close-circle" size={18} color="#94a3b8" />
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              {filteredSales.length === 0 && searchQuery.length > 0 ? (
-                <View style={styles.noResultsContainer}>
-                  <Ionicons name="search-outline" size={48} color="#475569" />
-                  <Text style={styles.noResultsTitle}>No matching bills found</Text>
-                  <Text style={styles.noResultsDesc}>Try searching for a different ID or Refresh</Text>
+              {/* Sales Table */}
+              <View style={styles.tableSection}>
+                {/* SEARCH BAR */}
+                <View style={styles.searchContainer}>
+                  <Ionicons name="search" size={18} color="#94a3b8" style={styles.searchIcon} />
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search Bill ID"
+                    placeholderTextColor="#475569"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    autoCapitalize="characters"
+                    clearButtonMode="while-editing"
+                  />
+                  {searchQuery.length > 0 && (
+                    <TouchableOpacity onPress={() => setSearchQuery("")}>
+                      <Ionicons name="close-circle" size={18} color="#94a3b8" />
+                    </TouchableOpacity>
+                  )}
                 </View>
-              ) : (
-                filteredSales.slice(0, 30).map((item, idx) => (
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    key={idx}
-                    onPress={() => handleOrderPress(item)}
-                    style={styles.transactionCard}
-                  >
-                    <View style={styles.txLeft}>
-                      <View style={styles.txIconWrap}>
-                         <Ionicons 
-                          name={item.PayMode === "CASH" ? "cash-outline" : item.PayMode === "NETS" ? "card-outline" : "qr-code-outline"} 
-                          size={18} 
-                          color="#94a3b8" 
-                         />
-                      </View>
-                      <View>
-                        <Text style={styles.txTitle}># {item.BillNo || item.SettlementID?.slice(0, 8)}</Text>
-                        <Text style={styles.txSub}>
-                          {new Date(item.SettlementDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {item.PayMode}
-                        </Text>
-                      </View>
+
+                <View style={styles.tableContainer}>
+                  <View style={styles.tableHeader}>
+                    <Text style={[styles.tableHeaderCell, { flex: 0.8 }]}>ID</Text>
+                    <Text style={[styles.tableHeaderCell, { flex: 1 }]}>TIME</Text>
+                    <Text style={[styles.tableHeaderCell, { flex: 0.9 }]}>PAYMENT</Text>
+                    <Text style={[styles.tableHeaderCell, { flex: 0.7, textAlign: "right" }]}>STATUS</Text>
+                    <Text style={[styles.tableHeaderCell, { flex: 0.8, textAlign: "right" }]}>AMOUNT</Text>
+                  </View>
+
+                  {filteredSales.length === 0 && searchQuery.length > 0 ? (
+                    <View style={styles.noResultsContainer}>
+                      <Ionicons name="search-outline" size={48} color="#475569" />
+                      <Text style={styles.noResultsTitle}>No matching transactions found</Text>
+                      <Text style={styles.noResultsDesc}>Try searching for a different ID or adjust filters</Text>
                     </View>
-                    <View style={styles.txRight}>
-                      <Text style={styles.txAmount}>{formatCurrency(item.SysAmount)}</Text>
-                      <View style={styles.paidBadge}>
-                        <Text style={styles.paidText}>PAID</Text>
-                      </View>
+                  ) : filteredSales.length === 0 ? (
+                    <View style={styles.noResultsContainer}>
+                      <Ionicons name="cash-outline" size={48} color="#475569" />
+                      <Text style={styles.noResultsTitle}>No sales data available</Text>
+                      <Text style={styles.noResultsDesc}>Select a different date range or refresh</Text>
                     </View>
-                  </TouchableOpacity>
-                ))
-              )}
+                  ) : (
+                    <View style={styles.tableBody}>
+                      {filteredSales.slice(0, 50).map((item, idx) => (
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          key={idx}
+                          onPress={() => handleOrderPress(item)}
+                          style={[
+                            styles.tableRow,
+                            idx % 2 === 0 && styles.tableRowAlternate,
+                          ]}
+                        >
+                          <Text style={[styles.tableCell, { flex: 0.8 }]} numberOfLines={1}>
+                            {item.BillNo || item.SettlementID?.slice(0, 8) || "N/A"}
+                          </Text>
+                          <Text style={[styles.tableCell, { flex: 1 }]} numberOfLines={1}>
+                            {formatTime(item.SettlementDate)}
+                          </Text>
+                          <View style={[styles.tableCellFlex, { flex: 0.9 }]}>
+                            <Ionicons
+                              name={getPaymentMethodIcon(item.PayMode)}
+                              size={14}
+                              color="#94a3b8"
+                              style={{ marginRight: 4 }}
+                            />
+                            <Text style={styles.tableCell} numberOfLines={1}>
+                              {item.PayMode || "N/A"}
+                            </Text>
+                          </View>
+                          <View style={[styles.tableCellFlex, { flex: 0.7, justifyContent: "flex-end" }]}>
+                            <View
+                              style={[
+                                styles.statusBadge,
+                                { borderColor: getStatusColor(item.Status || "PAID") },
+                              ]}
+                            >
+                              <Text style={[styles.statusText, { color: getStatusColor(item.Status || "PAID") }]}>
+                                {(item.Status || "PAID").toUpperCase()}
+                              </Text>
+                            </View>
+                          </View>
+                          <Text style={[styles.tableCell, styles.amountCell, { flex: 0.8 }]} numberOfLines={1}>
+                            {formatCurrency(item.SysAmount)}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </View>
             </ScrollView>
 
             {/* ORDER DETAIL MODAL */}
@@ -690,6 +791,194 @@ export default function SalesReport() {
                   </View>
                 </View>
               </View>
+            </Modal>
+
+            {/* DATE PICKER MODAL */}
+            <Modal
+              visible={showDatePicker}
+              transparent
+              animationType="slide"
+              onRequestClose={() => setShowDatePicker(false)}
+            >
+              <BlurView intensity={15} tint="dark" style={styles.modalOverlay}>
+                <TouchableOpacity
+                  activeOpacity={1}
+                  style={styles.modalDismiss}
+                  onPress={() => setShowDatePicker(false)}
+                />
+                <View style={styles.datePickerModal}>
+                  <View style={styles.datePickerHeader}>
+                    <Text style={styles.datePickerTitle}>SELECT DATE RANGE</Text>
+                    <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                      <Ionicons name="close" size={24} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.datePickerDivider} />
+
+                  <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+                    {/* Mode Selection */}
+                    <View style={styles.datePickerSection}>
+                      <Text style={styles.datePickerLabel}>RANGE TYPE</Text>
+                      <View style={styles.dateModeRow}>
+                        <TouchableOpacity
+                          onPress={() => setDateRangeMode("SINGLE")}
+                          style={[
+                            styles.dateModeBtn,
+                            dateRangeMode === "SINGLE" && styles.dateModeBtnActive,
+                          ]}
+                        >
+                          <Ionicons
+                            name={dateRangeMode === "SINGLE" ? "radio-button-on" : "radio-button-off"}
+                            size={18}
+                            color={dateRangeMode === "SINGLE" ? "#22c55e" : "#64748b"}
+                          />
+                          <Text
+                            style={[
+                              styles.dateModeBtnText,
+                              dateRangeMode === "SINGLE" && styles.dateModeBtnTextActive,
+                            ]}
+                          >
+                            Single Date
+                          </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={() => setDateRangeMode("RANGE")}
+                          style={[
+                            styles.dateModeBtn,
+                            dateRangeMode === "RANGE" && styles.dateModeBtnActive,
+                          ]}
+                        >
+                          <Ionicons
+                            name={dateRangeMode === "RANGE" ? "radio-button-on" : "radio-button-off"}
+                            size={18}
+                            color={dateRangeMode === "RANGE" ? "#22c55e" : "#64748b"}
+                          />
+                          <Text
+                            style={[
+                              styles.dateModeBtnText,
+                              dateRangeMode === "RANGE" && styles.dateModeBtnTextActive,
+                            ]}
+                          >
+                            Date Range
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {/* Date Input Fields */}
+                    <View style={styles.datePickerSection}>
+                      <Text style={styles.datePickerLabel}>START DATE</Text>
+                      <View style={styles.dateInputContainer}>
+                        <Ionicons name="calendar-outline" size={16} color="#22c55e" />
+                        <TextInput
+                          style={styles.dateInput}
+                          placeholder="YYYY-MM-DD"
+                          placeholderTextColor="#475569"
+                          value={startDate}
+                          onChangeText={setStartDate}
+                        />
+                      </View>
+                    </View>
+
+                    {dateRangeMode === "RANGE" && (
+                      <View style={styles.datePickerSection}>
+                        <Text style={styles.datePickerLabel}>END DATE</Text>
+                        <View style={styles.dateInputContainer}>
+                          <Ionicons name="calendar-outline" size={16} color="#22c55e" />
+                          <TextInput
+                            style={styles.dateInput}
+                            placeholder="YYYY-MM-DD"
+                            placeholderTextColor="#475569"
+                            value={endDate}
+                            onChangeText={setEndDate}
+                          />
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Quick Select Buttons */}
+                    <View style={styles.datePickerSection}>
+                      <Text style={styles.datePickerLabel}>QUICK SELECT</Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          const today = new Date().toISOString().split("T")[0];
+                          setStartDate(today);
+                          setEndDate(today);
+                          setDateRangeMode("SINGLE");
+                        }}
+                        style={styles.quickSelectBtn}
+                      >
+                        <Ionicons name="today-outline" size={16} color="#22c55e" />
+                        <Text style={styles.quickSelectText}>Today</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => {
+                          const today = new Date();
+                          const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+                          setStartDate(yesterday.toISOString().split("T")[0]);
+                          setEndDate(today.toISOString().split("T")[0]);
+                          setDateRangeMode("RANGE");
+                        }}
+                        style={styles.quickSelectBtn}
+                      >
+                        <Ionicons name="time-outline" size={16} color="#22c55e" />
+                        <Text style={styles.quickSelectText}>Last 2 Days</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => {
+                          const today = new Date();
+                          const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+                          setStartDate(weekAgo.toISOString().split("T")[0]);
+                          setEndDate(today.toISOString().split("T")[0]);
+                          setDateRangeMode("RANGE");
+                        }}
+                        style={styles.quickSelectBtn}
+                      >
+                        <Ionicons name="calendar-outline" size={16} color="#22c55e" />
+                        <Text style={styles.quickSelectText}>Last 7 Days</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => {
+                          const today = new Date();
+                          const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+                          setStartDate(monthAgo.toISOString().split("T")[0]);
+                          setEndDate(today.toISOString().split("T")[0]);
+                          setDateRangeMode("RANGE");
+                        }}
+                        style={styles.quickSelectBtn}
+                      >
+                        <Ionicons name="calendar-outline" size={16} color="#22c55e" />
+                        <Text style={styles.quickSelectText}>Last 30 Days</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </ScrollView>
+
+                  <View style={styles.datePickerDivider} />
+
+                  <View style={styles.datePickerFooter}>
+                    <TouchableOpacity
+                      onPress={() => setShowDatePicker(false)}
+                      style={styles.datePickerCancelBtn}
+                    >
+                      <Text style={styles.datePickerCancelText}>CANCEL</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        setShowDatePicker(false);
+                      }}
+                      style={styles.datePickerApplyBtn}
+                    >
+                      <Text style={styles.datePickerApplyText}>APPLY</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </BlurView>
             </Modal>
           </View>
         </SafeAreaView>
@@ -1222,4 +1511,261 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.1)",
   },
   badgeText: { color: "#22c55e", fontFamily: Fonts.black, fontSize: 9, letterSpacing: 0.5 },
+
+  /* DATE FILTER SECTION */
+  dateFilterSection: {
+    backgroundColor: "rgba(15, 23, 42, 0.85)",
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.2)",
+  },
+  dateFilterHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  dateFilterLabel: {
+    color: "#94a3b8",
+    fontFamily: Fonts.black,
+    fontSize: 11,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  editDateBtn: {
+    padding: 8,
+    backgroundColor: "rgba(34,197,94,0.1)",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.2)",
+  },
+  dateRangeDisplay: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  dateRangeItem: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  dateRangeLabel: {
+    color: "#64748b",
+    fontFamily: Fonts.semiBold,
+    fontSize: 10,
+    marginBottom: 4,
+  },
+  dateRangeValue: {
+    color: "#fff",
+    fontFamily: Fonts.bold,
+    fontSize: 12,
+  },
+  dateArrow: {
+    marginHorizontal: 4,
+  },
+
+  /* TABLE STYLES */
+  tableSection: {
+    marginBottom: 20,
+  },
+  tableContainer: {
+    backgroundColor: "rgba(15, 23, 42, 0.85)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    overflow: "hidden",
+  },
+  tableHeader: {
+    flexDirection: "row",
+    backgroundColor: "rgba(34,197,94,0.08)",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.1)",
+  },
+  tableHeaderCell: {
+    color: "#22c55e",
+    fontFamily: Fonts.black,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+  },
+  tableBody: {
+    maxHeight: 600,
+  },
+  tableRow: {
+    flexDirection: "row",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.05)",
+    alignItems: "center",
+  },
+  tableRowAlternate: {
+    backgroundColor: "rgba(255,255,255,0.02)",
+  },
+  tableCell: {
+    color: "#e2e8f0",
+    fontFamily: Fonts.medium,
+    fontSize: 12,
+  },
+  tableCellFlex: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  amountCell: {
+    color: "#22c55e",
+    fontFamily: Fonts.bold,
+    fontSize: 12,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    backgroundColor: "rgba(255,255,255,0.02)",
+  },
+  statusText: {
+    fontFamily: Fonts.black,
+    fontSize: 9,
+    letterSpacing: 0.5,
+  },
+
+  /* DATE PICKER MODAL */
+  datePickerModal: {
+    height: "75%",
+    backgroundColor: "#0f172a",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.1)",
+  },
+  datePickerHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  datePickerTitle: {
+    color: "#fff",
+    fontFamily: Fonts.black,
+    fontSize: 18,
+    letterSpacing: 1,
+  },
+  datePickerDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    marginVertical: 16,
+  },
+  datePickerSection: {
+    marginBottom: 24,
+  },
+  datePickerLabel: {
+    color: "#475569",
+    fontFamily: Fonts.black,
+    fontSize: 11,
+    letterSpacing: 1,
+    marginBottom: 12,
+    textTransform: "uppercase",
+  },
+  dateModeRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  dateModeBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  dateModeBtnActive: {
+    backgroundColor: "rgba(34,197,94,0.1)",
+    borderColor: "rgba(34,197,94,0.3)",
+  },
+  dateModeBtnText: {
+    color: "#64748b",
+    fontFamily: Fonts.bold,
+    fontSize: 13,
+  },
+  dateModeBtnTextActive: {
+    color: "#22c55e",
+  },
+  dateInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    gap: 10,
+  },
+  dateInput: {
+    flex: 1,
+    color: "#fff",
+    fontFamily: Fonts.medium,
+    fontSize: 14,
+  },
+  quickSelectBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: "rgba(34,197,94,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.2)",
+    marginBottom: 10,
+  },
+  quickSelectText: {
+    color: "#22c55e",
+    fontFamily: Fonts.bold,
+    fontSize: 13,
+  },
+  datePickerFooter: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  datePickerCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    alignItems: "center",
+  },
+  datePickerCancelText: {
+    color: "#64748b",
+    fontFamily: Fonts.bold,
+    fontSize: 13,
+  },
+  datePickerApplyBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 10,
+    backgroundColor: "#22c55e",
+    alignItems: "center",
+  },
+  datePickerApplyText: {
+    color: "#052b12",
+    fontFamily: Fonts.black,
+    fontSize: 13,
+    letterSpacing: 0.5,
+  },
 });
