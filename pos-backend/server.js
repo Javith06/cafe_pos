@@ -39,7 +39,27 @@ const initDB = async () => {
       END
     `);
 
-    console.log("✅ Database initialized: SettlementItemDetail and BillNo column ready.");
+    // Ensure MemberMaster table exists
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MemberMaster' AND xtype='U')
+      CREATE TABLE MemberMaster (
+        MemberId INT IDENTITY(1,1) PRIMARY KEY,
+        Name NVARCHAR(255) NOT NULL,
+        Phone NVARCHAR(50),
+        Balance DECIMAL(18,2) DEFAULT 0
+      )
+    `);
+
+    // Ensure TableMaster has Status column (0=Available, 1=Locked/Reserved)
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.columns WHERE Name = N'Status' AND Object_ID = Object_ID(N'TableMaster'))
+      BEGIN
+        ALTER TABLE TableMaster ADD Status INT DEFAULT 0;
+        EXEC('UPDATE TableMaster SET Status = 0');
+      END
+    `);
+
+    console.log("✅ Database initialized: SettlementItemDetail, MemberMaster and TableMaster Status ready.");
   } catch (err) {
     console.error("❌ DB Initialization Error:", err);
   }
@@ -143,7 +163,8 @@ app.get("/tables", async (req, res) => {
       SELECT
         TableId AS id,
         TableNumber AS label,
-        DiningSection
+        DiningSection,
+        ISNULL(Status, 0) AS Status
       FROM TableMaster
     `;
 
@@ -160,6 +181,83 @@ app.get("/tables", async (req, res) => {
     res.json(result.recordset);
   } catch (err) {
     console.error("TABLES ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ================= RESERVATIONS ================= */
+
+// Get all reserved/locked tables
+app.get("/api/tables/locked", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+      SELECT 
+        TableId AS tableId, 
+        TableNumber AS tableNumber,
+        DiningSection,
+        Status
+      FROM TableMaster 
+      WHERE Status = 1
+    `);
+    res.json(result.recordset);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Lock (Reserve) a table
+app.post("/api/tables/reserve", async (req, res) => {
+  try {
+    const { tableId } = req.body;
+    const pool = await poolPromise;
+    await pool.request()
+      .input("TableId", tableId)
+      .query(`UPDATE TableMaster SET Status = 1 WHERE TableId = @TableId`);
+    res.json({ success: true, message: "Table Reserved" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Unlock (Unreserve) a table
+app.post("/api/tables/unreserve", async (req, res) => {
+  try {
+    const { tableId } = req.body;
+    const pool = await poolPromise;
+    await pool.request()
+      .input("TableId", tableId)
+      .query(`UPDATE TableMaster SET Status = 0 WHERE TableId = @TableId`);
+    res.json({ success: true, message: "Table Unlocked" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ================= MEMBERS ================= */
+
+// Get all members
+app.get("/api/members", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`SELECT * FROM MemberMaster ORDER BY Name`);
+    res.json(result.recordset);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Add a new member
+app.post("/api/members/add", async (req, res) => {
+  try {
+    const { name, phone } = req.body;
+    const pool = await poolPromise;
+    await pool.request()
+      .input("Name", name)
+      .input("Phone", phone)
+      .query(`INSERT INTO MemberMaster (Name, Phone, Balance) VALUES (@Name, @Phone, 0)`);
+    res.json({ success: true });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -396,6 +494,18 @@ app.post("/api/sales/save", async (req, res) => {
               VALUES (@SettlementID, @DishName, @Qty, @Price)
             `);
         }
+      }
+
+      // 5. Update Member Balance (if payment method is MEMBER)
+      if (paymentMethod && paymentMethod.toUpperCase() === 'MEMBER' && req.body.memberId) {
+        await transaction.request()
+          .input("MemberId", req.body.memberId)
+          .input("Amount", totalAmount || 0)
+          .query(`
+            UPDATE MemberMaster 
+            SET Balance = Balance + @Amount 
+            WHERE MemberId = @MemberId
+          `);
       }
 
       await transaction.commit();
