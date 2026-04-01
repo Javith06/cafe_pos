@@ -367,6 +367,34 @@ export default function Category() {
 
           router.push("/menu/thai_kitchen");
         }}
+        onLongPress={() => {
+          if (isLockedByOther) return;
+          
+          Alert.alert(
+            "🔒 Table Management",
+            `Choose an action for Table ${item.label}`,
+            [
+              { text: "Cancel", style: "cancel" },
+              { 
+                text: "Lock / Reserve Table", 
+                onPress: async () => {
+                  try {
+                    const res = await fetch(`${API}/api/tables/lock-persistent`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ tableId: item.id }),
+                    });
+                    if (res.ok) {
+                      Alert.alert("Success", `Table ${item.label} is now locked.`);
+                    }
+                  } catch (e) {
+                    Alert.alert("Error", "Failed to lock table");
+                  }
+                }
+              }
+            ]
+          );
+        }}
       >
         {/* Locked overlay badge */}
         {isLockedByOther && (
@@ -517,6 +545,28 @@ export default function Category() {
                     {tables.filter(t => t.section === activeTab).length}
                   </Text>
                 </View>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.headerActionBtn, styles.lockBtn]}
+              onPress={() => router.push("/locked-tables")}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="lock-closed-outline" size={16} color="#8bc34a" />
+              {isTablet && (
+                <Text style={[styles.headerActionText, { color: "#8bc34a" }]}>Locked</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.headerActionBtn, styles.membersBtn]}
+              onPress={() => router.push("/members")}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="people-outline" size={16} color="#3b82f6" />
+              {isTablet && (
+                <Text style={[styles.headerActionText, { color: "#3b82f6" }]}>Members</Text>
               )}
             </TouchableOpacity>
 
@@ -831,6 +881,14 @@ const styles = StyleSheet.create({
   salesBtn: {
     backgroundColor: "rgba(34,197,94,0.1)",
     borderColor: "rgba(34,197,94,0.2)",
+  },
+  lockBtn: {
+    backgroundColor: "rgba(139,195,74,0.1)",
+    borderColor: "rgba(139,195,74,0.2)",
+  },
+  membersBtn: {
+    backgroundColor: "rgba(59,130,246,0.1)",
+    borderColor: "rgba(59,130,246,0.2)",
   },
   logoutBtn: {
     backgroundColor: "rgba(239,68,68,0.1)",

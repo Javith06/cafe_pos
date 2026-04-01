@@ -39,6 +39,28 @@ const initDB = async () => {
       END
     `);
 
+    // Ensure MemberMaster table exists
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MemberMaster' AND xtype='U')
+      CREATE TABLE MemberMaster (
+        MemberId UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+        Name NVARCHAR(255),
+        Phone NVARCHAR(20) UNIQUE,
+        Email NVARCHAR(255),
+        CreditLimit DECIMAL(18,2) DEFAULT 1000,
+        CurrentBalance DECIMAL(18,2) DEFAULT 0,
+        CreatedAt DATETIME DEFAULT GETDATE()
+      )
+    `);
+
+    // Add MemberId to SettlementHeader if not exists
+    await pool.request().query(`
+      IF NOT EXISTS(SELECT * FROM sys.columns WHERE Name = N'MemberId' AND Object_ID = Object_ID(N'SettlementHeader'))
+      BEGIN
+         ALTER TABLE SettlementHeader ADD MemberId UNIQUEIDENTIFIER;
+      END
+    `);
+
     console.log("✅ Database initialized: SettlementItemDetail and BillNo column ready.");
   } catch (err) {
     console.error("❌ DB Initialization Error:", err);
@@ -160,6 +182,79 @@ app.get("/tables", async (req, res) => {
     res.json(result.recordset);
   } catch (err) {
     console.error("TABLES ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET Locked Tables (Status = 1)
+app.get("/api/tables/locked", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+      SELECT TableId as tableId, TableNumber as tableNumber 
+      FROM TableMaster 
+      WHERE Status = 1
+    `);
+    res.json(result.recordset);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Lock Table (Persistent)
+app.post("/api/tables/lock-persistent", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const { tableId } = req.body;
+    await pool.request()
+      .input("tableId", tableId)
+      .query(`UPDATE TableMaster SET Status = 1 WHERE TableId = @tableId`);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Unlock Table (Persistent)
+app.post("/api/tables/unlock-persistent", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const { tableId } = req.body;
+    await pool.request()
+      .input("tableId", tableId)
+      .query(`UPDATE TableMaster SET Status = 0 WHERE TableId = @tableId`);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ================= MEMBERS ================= */
+app.get("/api/members", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query("SELECT * FROM MemberMaster ORDER BY Name");
+    res.json(result.recordset);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/members/add", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const { name, phone, email, creditLimit } = req.body;
+    await pool.request()
+      .input("Name", name)
+      .input("Phone", phone)
+      .input("Email", email)
+      .input("CreditLimit", creditLimit || 1000)
+      .query(`
+        INSERT INTO MemberMaster (Name, Phone, Email, CreditLimit)
+        VALUES (@Name, @Phone, @Email, @CreditLimit)
+      `);
+    res.json({ success: true });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -303,20 +398,25 @@ app.get("/api/sales/daily/:date", async (req, res) => {
   try {
     const pool = await poolPromise;
     const { date } = req.params;
+    const startOfDay = `${date} 00:00:00`;
+    const endOfDay = `${date} 23:59:59`;
 
     const result = await pool.request()
-      .input("Date", sql.Date, date)
+      .input("StartOfDay", sql.DateTime, startOfDay)
+      .input("EndOfDay", sql.DateTime, endOfDay)
       .query(`
         SELECT 
           COUNT(DISTINCT sh.SettlementID) as TotalTransactions,
-          SUM(sts.SysAmount) as TotalSales,
-          SUM(CASE WHEN sts.PayMode = 'CASH' THEN sts.SysAmount ELSE 0 END) as CashSales,
-          SUM(CASE WHEN sts.PayMode = 'NETS' THEN sts.SysAmount ELSE 0 END) as NETS_Sales,
-          SUM(CASE WHEN sts.PayMode = 'PAYNOW' THEN sts.SysAmount ELSE 0 END) as PayNow_Sales,
-          SUM(sts.ReceiptCount) as TotalItems
+          ISNULL(SUM(sts.SysAmount), 0) as TotalSales,
+          ISNULL(SUM(CASE WHEN sts.PayMode = 'CASH' THEN sts.SysAmount ELSE 0 END), 0) as CashSales,
+          ISNULL(SUM(CASE WHEN sts.PayMode = 'NETS' THEN sts.SysAmount ELSE 0 END), 0) as NETS_Sales,
+          ISNULL(SUM(CASE WHEN sts.PayMode = 'PAYNOW' THEN sts.SysAmount ELSE 0 END), 0) as PayNow_Sales,
+          ISNULL(SUM(CASE WHEN sts.PayMode = 'CARD' THEN sts.SysAmount ELSE 0 END), 0) as CardSales,
+          ISNULL(SUM(CASE WHEN sts.PayMode = 'CREDIT' THEN sts.SysAmount ELSE 0 END), 0) as MemberSales,
+          ISNULL(SUM(sts.ReceiptCount), 0) as TotalItems
         FROM SettlementHeader sh
         INNER JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
-        WHERE CAST(sh.LastSettlementDate AS DATE) = @Date
+        WHERE sh.LastSettlementDate BETWEEN @StartOfDay AND @EndOfDay
       `);
     res.json(result.recordset[0] || {});
   } catch (err) {
@@ -336,7 +436,8 @@ app.post("/api/sales/save", async (req, res) => {
       subTotal,
       taxAmount,
       discountAmount,
-      orderId
+      orderId,
+      memberId
     } = req.body;
 
     console.log("Saving sale for Order:", orderId);
@@ -360,9 +461,10 @@ app.post("/api/sales/save", async (req, res) => {
         .input("TotalTax", taxAmount || 0)
         .input("DiscountAmount", discountAmount || 0)
         .input("BillNo", billNo)
+        .input("MemberId", memberId || null)
         .query(`
-          INSERT INTO SettlementHeader (SettlementID, LastSettlementDate, SubTotal, TotalTax, DiscountAmount, BillNo)
-          VALUES (@SettlementID, @Date, @SubTotal, @TotalTax, @DiscountAmount, @BillNo)
+          INSERT INTO SettlementHeader (SettlementID, LastSettlementDate, SubTotal, TotalTax, DiscountAmount, BillNo, MemberId)
+          VALUES (@SettlementID, @Date, @SubTotal, @TotalTax, @DiscountAmount, @BillNo, @MemberId)
         `);
 
       // 3. Insert into SettlementTotalSales
@@ -398,6 +500,18 @@ app.post("/api/sales/save", async (req, res) => {
         }
       }
 
+      // 5. Update Member Balance if it was a Credit sale
+      if (memberId && (paymentMethod || '').toUpperCase() === 'CREDIT') {
+        await transaction.request()
+          .input("MemberId", memberId)
+          .input("Amount", totalAmount || 0)
+          .query(`
+            UPDATE MemberMaster 
+            SET CurrentBalance = CurrentBalance + @Amount 
+            WHERE MemberId = @MemberId
+          `);
+      }
+
       await transaction.commit();
 
       // Auto-unlock the table if it was locked.
@@ -428,8 +542,8 @@ app.get("/api/sales/transactions", async (req, res) => {
     }
 
     const result = await pool.request()
-      .input("StartDate", sql.Date, startDate)
-      .input("EndDate", sql.Date, endDate)
+      .input("StartDate", sql.DateTime, `${startDate} 00:00:00`)
+      .input("EndDate", sql.DateTime, `${endDate} 23:59:59`)
       .query(`
         SELECT
           sh.SettlementID,
@@ -438,10 +552,12 @@ app.get("/api/sales/transactions", async (req, res) => {
           ISNULL(sts.PayMode, 'CASH') AS PayMode,
           ISNULL(sts.SysAmount, 0) AS SysAmount,
           ISNULL(sts.ManualAmount, 0) AS ManualAmount,
-          ISNULL(sts.ReceiptCount, 0) AS ReceiptCount
+          ISNULL(sts.ReceiptCount, 0) AS ReceiptCount,
+          m.Name as MemberName
         FROM SettlementHeader sh
         LEFT JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
-        WHERE CAST(sh.LastSettlementDate AS DATE) BETWEEN @StartDate AND @EndDate
+        LEFT JOIN MemberMaster m ON sh.MemberId = m.MemberId
+        WHERE sh.LastSettlementDate BETWEEN @StartDate AND @EndDate
         ORDER BY sh.LastSettlementDate DESC
       `);
 
@@ -460,8 +576,8 @@ app.get("/api/sales/range", async (req, res) => {
     const { startDate, endDate } = req.query;
 
     const result = await pool.request()
-      .input("StartDate", sql.Date, startDate)
-      .input("EndDate", sql.Date, endDate)
+      .input("StartDate", sql.DateTime, `${startDate} 00:00:00`)
+      .input("EndDate", sql.DateTime, `${endDate} 23:59:59`)
       .query(`
         SELECT 
           CAST(sh.LastSettlementDate AS DATE) as SaleDate,
@@ -469,10 +585,12 @@ app.get("/api/sales/range", async (req, res) => {
           SUM(sts.SysAmount) as TotalSales,
           SUM(CASE WHEN sts.PayMode = 'CASH' THEN sts.SysAmount ELSE 0 END) as CashSales,
           SUM(CASE WHEN sts.PayMode = 'NETS' THEN sts.SysAmount ELSE 0 END) as NETS_Sales,
-          SUM(CASE WHEN sts.PayMode = 'PAYNOW' THEN sts.SysAmount ELSE 0 END) as PayNow_Sales
+          SUM(CASE WHEN sts.PayMode = 'PAYNOW' THEN sts.SysAmount ELSE 0 END) as PayNow_Sales,
+          SUM(CASE WHEN sts.PayMode = 'CARD' THEN sts.SysAmount ELSE 0 END) as CardSales,
+          SUM(CASE WHEN sts.PayMode = 'CREDIT' THEN sts.SysAmount ELSE 0 END) as MemberSales
         FROM SettlementHeader sh
         INNER JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
-        WHERE CAST(sh.LastSettlementDate AS DATE) BETWEEN @StartDate AND @EndDate
+        WHERE sh.LastSettlementDate BETWEEN @StartDate AND @EndDate
         GROUP BY CAST(sh.LastSettlementDate AS DATE)
         ORDER BY SaleDate DESC
       `);
