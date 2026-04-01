@@ -38,7 +38,6 @@ type TableItem = {
   id: string;
   label: string;
   DiningSection: number;
-  Status?: number;
 };
 
 const SECTIONS = ["SECTION_1", "SECTION_2", "SECTION_3", "TAKEAWAY"];
@@ -131,7 +130,6 @@ export default function Category() {
             id: item.id || item.TableId,
             label: item.label || item.TableNumber,
             DiningSection: Number(item.DiningSection),
-            Status: item.Status || 0,
           }))
           .filter((item) => item.id && item.label);
 
@@ -201,54 +199,6 @@ export default function Category() {
     const td = tables.find((st) => st.section === activeTab && st.tableNo === t.label);
     return !!td;
   }).length;
-
-  const handleTableLongPress = (item: TableItem) => {
-    const isReserved = item.Status === 1;
-    if (isReserved) {
-      Alert.alert("Unlock Table", `Do you want to unlock Table ${item.label}?`, [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Unlock",
-          onPress: async () => {
-            try {
-              const res = await fetch(`${API_URL}/api/tables/unreserve`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ tableId: item.id }),
-              });
-              if (res.ok) {
-                // Refresh tables
-                fetchTablesForSection(activeTab);
-              }
-            } catch (err) {
-              console.log(err);
-            }
-          },
-        },
-      ]);
-    } else {
-      Alert.alert("Lock Table", `Do you want to reserve Table ${item.label}?`, [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Lock (Reserve)",
-          onPress: async () => {
-            try {
-              const res = await fetch(`${API_URL}/api/tables/reserve`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ tableId: item.id }),
-              });
-              if (res.ok) {
-                fetchTablesForSection(activeTab);
-              }
-            } catch (err) {
-              console.log(err);
-            }
-          },
-        },
-      ]);
-    }
-  };
 
   const renderItem = ({ item }: { item: TableItem }) => {
     const tableData = tables.find(
@@ -355,7 +305,6 @@ export default function Category() {
             backgroundColor: bgColor,
             opacity: isLockedByOther ? 0.75 : 1,
           },
-          item.Status === 1 && styles.lockedTable,
         ]}
         onPress={async () => {
           if (isLockedByOther) {
@@ -418,17 +367,8 @@ export default function Category() {
 
           router.push("/menu/thai_kitchen");
         }}
-        onLongPress={() => handleTableLongPress(item)}
       >
-        {/* Persistent Reservation Badge */}
-        {item.Status === 1 && (
-          <View style={[styles.lockBadge, { backgroundColor: "#f59e0b" }]}>
-            <Ionicons name="calendar" size={10} color="#fff" />
-            <Text style={styles.lockBadgeText}>RESERVED</Text>
-          </View>
-        )}
-
-        {/* Temporary Session Lock Badge */}
+        {/* Locked overlay badge */}
         {isLockedByOther && (
           <View style={styles.lockBadge}>
             <Ionicons name="lock-closed" size={10} color="#fff" />
@@ -551,28 +491,6 @@ export default function Category() {
 
           {/* RIGHT — Action Buttons */}
           <View style={[styles.navRightGroup, { gap: isTablet ? 8 : 6 }]}>
-            <TouchableOpacity
-              style={[styles.headerActionBtn, styles.lockBtn]}
-              onPress={() => router.push("/lockedTablesScreen")}
-              activeOpacity={0.75}
-            >
-              <Ionicons name="lock-closed-outline" size={16} color="#facc15" />
-              {isTablet && (
-                <Text style={[styles.headerActionText, { color: "#facc15" }]}>Lock</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.headerActionBtn, styles.membersBtn]}
-              onPress={() => router.push("/membersScreen")}
-              activeOpacity={0.75}
-            >
-              <Ionicons name="people-outline" size={16} color="#60a5fa" />
-              {isTablet && (
-                <Text style={[styles.headerActionText, { color: "#60a5fa" }]}>Members</Text>
-              )}
-            </TouchableOpacity>
-
             <TouchableOpacity
               style={styles.headerActionBtn}
               onPress={() => router.push("/TimeEntry")}
@@ -890,10 +808,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   activeTabBadge: { backgroundColor: "rgba(34,197,94,0.25)" },
-  lockedTable: {
-    backgroundColor: "rgba(245,158,11,0.05)",
-    borderColor: "rgba(245,158,11,0.3)",
-  },
   tabBadgeText: {
     color: "#94a3b8",
     fontFamily: Fonts.bold,
@@ -906,21 +820,13 @@ const styles = StyleSheet.create({
   headerActionBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    gap: 6,
+    gap: 5,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.08)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
-  },
-  lockBtn: {
-    backgroundColor: "rgba(250, 204, 21, 0.1)",
-    borderColor: "rgba(250, 204, 21, 0.3)",
-  },
-  membersBtn: {
-    backgroundColor: "rgba(96, 165, 250, 0.1)",
-    borderColor: "rgba(96, 165, 250, 0.3)",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
   },
   salesBtn: {
     backgroundColor: "rgba(34,197,94,0.1)",

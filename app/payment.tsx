@@ -13,7 +13,6 @@ import {
   useWindowDimensions,
   View,
   Platform,
-  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Fonts } from "../constants/Fonts";
@@ -24,7 +23,6 @@ import {
   useActiveOrdersStore,
 } from "../stores/activeOrdersStore";
 import { clearCart } from "../stores/cartStore";
-import { useMemberStore } from "../stores/memberStore";
 import {
   clearOrderContext,
   getOrderContext,
@@ -57,22 +55,6 @@ export default function PaymentScreen() {
   const [cashInput, setCashInput] = useState("");
   const [processing, setProcessing] = useState(false);
   const [time, setTime] = useState(new Date());
-
-  const { members, fetchMembers } = useMemberStore();
-  const [showMemberModal, setShowMemberModal] = useState(false);
-  const [selectedMember, setSelectedMember] = useState<any>(null);
-  const [memberSearch, setMemberSearch] = useState("");
-
-  useEffect(() => {
-    fetchMembers();
-  }, []);
-
-  const filteredMembers = useMemo(() => {
-    return members.filter(m => 
-      m.Name.toLowerCase().includes(memberSearch.toLowerCase()) || 
-      m.Phone.includes(memberSearch)
-    );
-  }, [members, memberSearch]);
 
   /* ================= CALCULATIONS ================= */
 
@@ -172,7 +154,6 @@ export default function PaymentScreen() {
         discountAmount: discountAmount,
         totalAmount: total,
         paymentMethod: method,
-        memberId: selectedMember?.MemberId,
         cashierId: "FFA46DDA-2871-42BB-BE6D-A547AE9C1B88"
       };
       
@@ -213,12 +194,6 @@ export default function PaymentScreen() {
   /* ================= PAYMENT ================= */
 
   const confirmPayment = async () => {
-    if (method === "MEMBER" && !selectedMember) {
-      showToast({ type: "warning", message: "Select Member", subtitle: "Please select a member for credit payment" });
-      setShowMemberModal(true);
-      return;
-    }
-
     if (method === "CASH" && paidNum < total) {
       showToast({ type: "warning", message: "Insufficient Payment", subtitle: `Please enter at least $${total.toFixed(2)}` });
       return;
@@ -495,7 +470,6 @@ export default function PaymentScreen() {
                   { id: "CASH", icon: "money-bill-wave" },
                   { id: "CARD", icon: "credit-card" },
                   { id: "NETS", icon: "exchange-alt" },
-                  { id: "MEMBER", icon: "user-tag" },
                   { id: "PAYNOW", icon: "qrcode" },
                 ].map((m) => (
                   <TouchableOpacity
@@ -504,10 +478,7 @@ export default function PaymentScreen() {
                       styles.methodCard,
                       method === m.id && styles.activeMethod,
                     ]}
-                    onPress={() => {
-                      setMethod(m.id);
-                      if (m.id === "MEMBER") setShowMemberModal(true);
-                    }}
+                    onPress={() => setMethod(m.id)}
                   >
                     <FontAwesome5
                       name={m.icon}
@@ -559,21 +530,6 @@ export default function PaymentScreen() {
                 </>
               )}
 
-              {method === "MEMBER" && selectedMember && (
-                <View style={styles.selectedMemberBox}>
-                  <View style={styles.memberInfoSmall}>
-                    <Ionicons name="person-circle" size={24} color="#60a5fa" />
-                    <View>
-                      <Text style={styles.selectedMemberName}>{selectedMember.Name}</Text>
-                      <Text style={styles.selectedMemberPhone}>{selectedMember.Phone}</Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity onPress={() => setShowMemberModal(true)}>
-                    <Text style={styles.changeMemberBtn}>Change</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-
               <TouchableOpacity
                 style={[
                   styles.confirmBtn,
@@ -619,67 +575,12 @@ export default function PaymentScreen() {
             )}
           </View>
         </View>
-
-        {/* MEMBER PICKER MODAL */}
-        <Modal
-          visible={showMemberModal}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowMemberModal(false)}
-        >
-          <View style={styles.memberModalOverlay}>
-            <View style={styles.memberModalContent}>
-              <View style={styles.memberModalHeader}>
-                <Text style={styles.memberModalTitle}>Select Member</Text>
-                <TouchableOpacity onPress={() => setShowMemberModal(false)}>
-                  <Ionicons name="close-circle" size={28} color="#94a3b8" />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.memberSearchBox}>
-                <Ionicons name="search" size={20} color="#64748b" />
-                <TextInput
-                  style={styles.memberSearchInput}
-                  placeholder="Search member..."
-                  placeholderTextColor="#64748b"
-                  value={memberSearch}
-                  onChangeText={setMemberSearch}
-                />
-              </View>
-
-              <FlatList
-                data={filteredMembers}
-                keyExtractor={(item) => item.MemberId.toString()}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={[
-                      styles.memberItem,
-                      selectedMember?.MemberId === item.MemberId && styles.activeMemberItem
-                    ]}
-                    onPress={() => {
-                      setSelectedMember(item);
-                      setShowMemberModal(false);
-                      setMethod("MEMBER");
-                    }}
-                  >
-                    <View>
-                      <Text style={styles.memberNameItem}>{item.Name}</Text>
-                      <Text style={styles.memberPhoneItem}>{item.Phone}</Text>
-                    </View>
-                    <Text style={styles.memberBalanceItem}>Bal: ${item.Balance.toFixed(2)}</Text>
-                  </TouchableOpacity>
-                )}
-                ListEmptyComponent={
-                  <Text style={styles.noMembersFound}>No members found</Text>
-                }
-              />
-            </View>
-          </View>
-        </Modal>
       </ImageBackground>
     </SafeAreaView>
   );
 }
+
+/* ================= STYLES ================= */
 
 const styles = StyleSheet.create({
   overlay: {
@@ -810,118 +711,4 @@ const styles = StyleSheet.create({
   },
   receiptTotalLabel: { color: "#fff", fontFamily: Fonts.extraBold },
   receiptTotalValue: { color: "#22c55e", fontFamily: Fonts.black, fontSize: 18 },
-
-  /* Member Selection */
-  selectedMemberBox: {
-    backgroundColor: "rgba(96, 165, 250, 0.1)",
-    borderRadius: 12,
-    padding: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "rgba(96, 165, 250, 0.2)",
-  },
-  memberInfoSmall: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  selectedMemberName: {
-    color: "#fff",
-    fontFamily: Fonts.bold,
-    fontSize: 14,
-  },
-  selectedMemberPhone: {
-    color: "#94a3b8",
-    fontSize: 12,
-    fontFamily: Fonts.regular,
-  },
-  changeMemberBtn: {
-    color: "#60a5fa",
-    fontFamily: Fonts.bold,
-    fontSize: 13,
-  },
-
-  /* Member Modal */
-  memberModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  memberModalContent: {
-    width: "90%",
-    maxWidth: 500,
-    maxHeight: "70%",
-    backgroundColor: "#0f172a",
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-  },
-  memberModalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 15,
-  },
-  memberModalTitle: {
-    color: "#fff",
-    fontFamily: Fonts.black,
-    fontSize: 18,
-  },
-  memberSearchBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-  },
-  memberSearchInput: {
-    flex: 1,
-    marginLeft: 10,
-    color: "#fff",
-    fontFamily: Fonts.medium,
-  },
-  memberItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 15,
-    borderRadius: 12,
-    marginBottom: 8,
-    backgroundColor: "rgba(255,255,255,0.03)",
-  },
-  activeMemberItem: {
-    backgroundColor: "rgba(96, 165, 250, 0.15)",
-    borderColor: "rgba(96, 165, 250, 0.3)",
-    borderWidth: 1,
-  },
-  memberNameItem: {
-    color: "#fff",
-    fontFamily: Fonts.bold,
-    fontSize: 15,
-  },
-  memberPhoneItem: {
-    color: "#64748b",
-    fontSize: 13,
-    fontFamily: Fonts.regular,
-  },
-  memberBalanceItem: {
-    color: "#4ade80",
-    fontFamily: Fonts.extraBold,
-    fontSize: 14,
-  },
-  noMembersFound: {
-    color: "#64748b",
-    textAlign: "center",
-    padding: 20,
-    fontFamily: Fonts.medium,
-  },
 });
