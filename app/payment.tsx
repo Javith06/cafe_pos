@@ -28,7 +28,8 @@ import {
   getOrderContext,
 } from "../stores/orderContextStore";
 import { useTableStatusStore } from "../stores/tableStatusStore";
-import { API_URL } from "../constants/Config";
+
+const API_URL = "https://cafepos-production-3428.up.railway.app";
 
 export default function PaymentScreen() {
   const closeActiveOrder = useActiveOrdersStore((s) => s.closeActiveOrder);
@@ -177,7 +178,7 @@ export default function PaymentScreen() {
       
       if (result.success) {
         console.log("✅ Sale saved successfully:", result.settlementId);
-        return { success: true, billNo: result.billNo };
+        return true;
       } else {
         console.log("⚠️ Sale save failed:", result);
         return false;
@@ -210,18 +211,6 @@ export default function PaymentScreen() {
     console.log("💾 Calling saveSaleToDatabase...");
     const saved = await saveSaleToDatabase();
     console.log("✅ saveSaleToDatabase completed, success:", saved);
-
-    if (!saved) {
-      setProcessing(false);
-      showToast({ 
-        type: "error", 
-        message: "Save Failed", 
-        subtitle: "Could not record the sale in the database. Please try again." 
-      });
-      return;
-    }
-
-    const billNo = (saved && saved.billNo) ? saved.billNo : "";
 
       const printBill = () => {
         const dateStr = new Date().toLocaleString();
@@ -274,7 +263,7 @@ export default function PaymentScreen() {
               
               <div>
                 <div>Date: ${dateStr}</div>
-                <div>Bill #: ${billNo ? billNo : 'N/A'}</div>
+                <div>Order #: ${activeOrder?.orderId || 'N/A'}</div>
                 <div>Method: ${method}</div>
               </div>
               
@@ -327,7 +316,6 @@ export default function PaymentScreen() {
           change: change.toFixed(2),
           method,
           orderId: activeOrder?.orderId ?? "",
-          billNo: billNo,
           tableNo: context?.tableNo ?? "",
           section: context?.section ?? "",
           orderType: context?.orderType ?? "",
@@ -346,18 +334,7 @@ export default function PaymentScreen() {
           context.tableNo
         ) {
           clearTable(context.section, context.tableNo);
-          console.log("✅ Cleared table locally:", context.section, context.tableNo);
-
-          // 🔥 Unlock table on server
-          const lockKey = `${context.section}::${context.tableNo}`;
-          fetch(`${API_URL}/api/tables/unlock`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              tableId: lockKey,
-              userId: "SYSTEM_RECOVERY", // or use original SESSION_USER_ID if available
-            }),
-          }).catch(err => console.log("Unlock failed:", err));
+          console.log("✅ Cleared table:", context.section, context.tableNo);
         }
 
         if (context.orderType === "TAKEAWAY" && context.takeawayNo) {

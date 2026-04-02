@@ -26,9 +26,8 @@ import {
   useCartStore,
 } from "../../stores/cartStore";
 import { useOrderContextStore } from "../../stores/orderContextStore";
-import { API_URL } from "../../constants/Config";
 
-const API = API_URL;
+const API = "https://cafepos-production-3428.up.railway.app";
 
 const kitchenIcons: Record<string, string> = {
   "THAI KITCHEN": "🍜",
@@ -714,15 +713,12 @@ export default function MenuScreen() {
                           {item.Name}
                         </Text>
                         <TouchableOpacity
-                          style={styles.addToCartBtn}
-                          activeOpacity={0.75}
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            openModifiers(item);
-                          }}
+                          style={styles.addToCartBtnSmall}
+                          onPress={() => openModifiers(item)}
+                          activeOpacity={0.7}
                         >
-                          <Ionicons name="add-circle" size={14} color="#052b12" />
-                          <Text style={styles.addToCartText}>Add to Cart</Text>
+                          <Ionicons name="add-circle" size={20} color="#4ade80" />
+                          <Text style={styles.addToCartBtnTextSmall}>Add to Cart</Text>
                         </TouchableOpacity>
                       </View>
                     </TouchableOpacity>
@@ -1163,21 +1159,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     minHeight: 38,
   },
-  addToCartBtn: {
+  addToCartBtnSmall: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
-    backgroundColor: "#22c55e",
+    gap: 6,
+    backgroundColor: "rgba(34,197,94,0.12)",
+    paddingVertical: 8,
     borderRadius: 8,
-    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.25)",
     marginTop: 6,
   },
-  addToCartText: {
-    color: "#052b12",
+  addToCartBtnTextSmall: {
+    color: "#4ade80",
     fontFamily: Fonts.black,
-    fontSize: 12,
-    letterSpacing: 0.3,
+    fontSize: 11,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
   price: {
     color: "#22c55e",

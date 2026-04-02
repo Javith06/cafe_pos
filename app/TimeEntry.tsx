@@ -1,5 +1,4 @@
 import { BlurView } from "expo-blur";
-import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -11,16 +10,19 @@ import {
   TouchableOpacity,
   View,
   useWindowDimensions,
+  Platform,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { Fonts } from "../constants/Fonts";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type ActiveField = "user" | "pass" | "staff";
 
 export default function TimeEntry() {
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const isMobile = width < 700;
+
+  const isMobile = width < 768;
 
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
@@ -29,6 +31,7 @@ export default function TimeEntry() {
 
   const [shiftStarted, setShiftStarted] = useState(false);
   const [onBreak, setOnBreak] = useState(false);
+
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -36,23 +39,23 @@ export default function TimeEntry() {
     return () => clearInterval(timer);
   }, []);
 
-  const date = time.toLocaleDateString("en-GB", {
-    weekday: "long",
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
+  const dateStr = time.toLocaleDateString("en-GB", { 
+    weekday: 'short', 
+    day: 'numeric', 
+    month: 'short', 
+    year: 'numeric' 
   });
-  const clock = time.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
+  const clockStr = time.toLocaleTimeString("en-GB", { 
+    hour: '2-digit', 
+    minute: '2-digit', 
+    second: '2-digit' 
   });
 
   const keypad = [
-    "1","2","3","⌫",
-    "4","5","6","Spc",
-    "7","8","9","Clr",
-    ".","0","00","↵",
+    "1", "2", "3", "Bksp",
+    "4", "5", "6", "Space",
+    "7", "8", "9", "Clear",
+    "0", "00", ".", "Ent",
   ];
 
   const getValue = () => {
@@ -69,535 +72,410 @@ export default function TimeEntry() {
 
   const handleKeyPress = (key: string) => {
     let value = getValue();
-    if (key === "⌫") { setValue(value.slice(0, -1)); return; }
-    if (key === "Clr") { setValue(""); return; }
-    if (key === "Spc") { setValue(value + " "); return; }
-    if (key === "↵") { console.log({ userId, password, staffName }); return; }
+
+    if (key === "Bksp") {
+      setValue(value.slice(0, -1));
+      return;
+    }
+
+    if (key === "Clear") {
+      setValue("");
+      return;
+    }
+
+    if (key === "Space") {
+      setValue(value + " ");
+      return;
+    }
+
+    if (key === "Ent") {
+      console.log({ userId, password, staffName });
+      return;
+    }
+
     setValue(value + key);
   };
 
-  const isSpecialKey = (k: string) => ["⌫","Clr","Spc","↵"].includes(k);
+  const renderKey = (k: string) => {
+    const isSpecial = ["Bksp", "Clear", "Space", "Ent"].includes(k);
+    const isEnt = k === "Ent";
+    
+    return (
+      <TouchableOpacity
+        key={k}
+        activeOpacity={0.7}
+        style={[
+          styles.key,
+          isSpecial && styles.specialKey,
+          isEnt && styles.entKey,
+          { width: k === "Space" || k === "Bksp" || k === "Clear" || k === "Ent" ? "23%" : "23%" }
+        ]}
+        onPress={() => handleKeyPress(k)}
+      >
+        {k === "Bksp" ? (
+          <Ionicons name="backspace-outline" size={24} color="#fff" />
+        ) : (
+          <Text style={[styles.keyText, isEnt && styles.entKeyText]}>{k}</Text>
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <ImageBackground
       source={require("../assets/images/mesh_bg.png")}
-      style={styles.bg}
+      style={styles.background}
       resizeMode="cover"
     >
-      <View style={styles.darkOverlay} />
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.overlay}>
+          {/* HEADER */}
+          <BlurView intensity={30} tint="dark" style={styles.header}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={24} color="#fff" />
+            </TouchableOpacity>
 
-      <SafeAreaView style={styles.safe}>
-        {/* ═══ HEADER ═══ */}
-        <BlurView intensity={50} tint="dark" style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={20} color="#fff" />
-            <Text style={styles.backText}>Back</Text>
-          </TouchableOpacity>
-
-          <View style={styles.brandBlock}>
-            <Text style={styles.brandName}>SMART</Text>
-            <Text style={styles.brandAccent}>CAFÉ</Text>
-          </View>
-
-          <View style={styles.clockBlock}>
-            <Text style={styles.clockTime}>{clock}</Text>
-            <Text style={styles.clockDate}>{date}</Text>
-          </View>
-        </BlurView>
-
-        {/* ═══ BODY ═══ */}
-        <ScrollView
-          contentContainerStyle={[
-            styles.body,
-            { flexDirection: isMobile ? "column" : "row" },
-          ]}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* ── LOGIN FORM ── */}
-          <BlurView intensity={45} tint="dark" style={styles.formCard}>
-            <View style={styles.formHeader}>
-              <View style={styles.formIconWrap}>
-                <Ionicons name="person-circle-outline" size={32} color="#22c55e" />
-              </View>
-              <Text style={styles.formTitle}>Staff Time Entry</Text>
-              <Text style={styles.formSub}>Tap a field, then use the keypad</Text>
+            <View style={styles.brandContainer}>
+              <Text style={styles.title}>
+                SMART <Text style={{ color: "#4ade80" }}>TIME</Text>
+              </Text>
+              <Text style={styles.subtitle}>Staff Attendance Portal</Text>
             </View>
 
-            {/* User ID */}
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => setActive("user")}
-              style={[styles.fieldWrap, active === "user" && styles.fieldWrapActive]}
-            >
-              <View style={styles.fieldLabelRow}>
-                <Ionicons name="id-card-outline" size={14} color={active === "user" ? "#22c55e" : "#64748b"} />
-                <Text style={[styles.fieldLabel, active === "user" && styles.fieldLabelActive]}>User ID</Text>
-              </View>
-              <TextInput
-                style={styles.fieldInput}
-                value={userId}
-                onChangeText={setUserId}
-                onFocus={() => setActive("user")}
-                placeholder="Enter user ID"
-                placeholderTextColor="#334155"
-                editable
-              />
-              {active === "user" && <View style={styles.activeCaret} />}
-            </TouchableOpacity>
-
-            {/* Password */}
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => setActive("pass")}
-              style={[styles.fieldWrap, active === "pass" && styles.fieldWrapActive]}
-            >
-              <View style={styles.fieldLabelRow}>
-                <Ionicons name="lock-closed-outline" size={14} color={active === "pass" ? "#22c55e" : "#64748b"} />
-                <Text style={[styles.fieldLabel, active === "pass" && styles.fieldLabelActive]}>Password</Text>
-              </View>
-              <TextInput
-                style={styles.fieldInput}
-                value={password.replace(/./g, "●")}
-                onFocus={() => setActive("pass")}
-                placeholder="••••••"
-                placeholderTextColor="#334155"
-                editable={false}
-                pointerEvents="none"
-              />
-              {active === "pass" && <View style={styles.activeCaret} />}
-            </TouchableOpacity>
-
-            {/* Staff Name */}
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => setActive("staff")}
-              style={[styles.fieldWrap, active === "staff" && styles.fieldWrapActive]}
-            >
-              <View style={styles.fieldLabelRow}>
-                <Ionicons name="person-outline" size={14} color={active === "staff" ? "#22c55e" : "#64748b"} />
-                <Text style={[styles.fieldLabel, active === "staff" && styles.fieldLabelActive]}>Staff Name</Text>
-              </View>
-              <TextInput
-                style={styles.fieldInput}
-                value={staffName}
-                onChangeText={setStaffName}
-                onFocus={() => setActive("staff")}
-                placeholder="Enter staff name"
-                placeholderTextColor="#334155"
-                editable
-              />
-              {active === "staff" && <View style={styles.activeCaret} />}
-            </TouchableOpacity>
-
-            {/* Status Pill */}
-            <View style={styles.statusRow}>
-              <View style={[styles.statusPill, { backgroundColor: shiftStarted ? "rgba(34,197,94,0.15)" : "rgba(100,116,139,0.15)" }]}>
-                <View style={[styles.statusDot, { backgroundColor: shiftStarted ? "#22c55e" : "#64748b" }]} />
-                <Text style={[styles.statusText, { color: shiftStarted ? "#22c55e" : "#64748b" }]}>
-                  {shiftStarted ? (onBreak ? "On Break" : "Shift Active") : "Not Clocked In"}
-                </Text>
-              </View>
+            <View style={styles.timeContainer}>
+              <Text style={styles.dateText}>{dateStr}</Text>
+              <Text style={styles.clockText}>{clockStr}</Text>
             </View>
+          </BlurView>
 
-            {/* ACTION BUTTONS */}
-            <View style={styles.actionRow}>
-              {!shiftStarted ? (
-                <TouchableOpacity
-                  style={styles.inBtn}
-                  onPress={() => setShiftStarted(true)}
-                >
-                  <Ionicons name="log-in-outline" size={20} color="#052b12" />
-                  <Text style={styles.actionBtnText}>CLOCK IN</Text>
-                </TouchableOpacity>
-              ) : (
-                <>
-                  <TouchableOpacity
-                    style={styles.outBtn}
-                    onPress={() => { setShiftStarted(false); setOnBreak(false); }}
-                  >
-                    <Ionicons name="log-out-outline" size={18} color="#fff" />
-                    <Text style={[styles.actionBtnText, { color: "#fff" }]}>OUT</Text>
-                  </TouchableOpacity>
+          <ScrollView
+            contentContainerStyle={[
+              styles.content,
+              { flexDirection: isMobile ? "column" : "row" },
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* LOGIN FORM */}
+            <View style={styles.formContainer}>
+              <BlurView intensity={60} tint="dark" style={styles.form}>
+                <Text style={styles.sectionTitle}>STAFF CREDENTIALS</Text>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>User ID</Text>
+                  <View style={[styles.inputWrapper, active === "user" && styles.activeInput]}>
+                    <Ionicons name="person-outline" size={18} color={active === "user" ? "#4ade80" : "#94a3b8"} />
+                    <TextInput
+                      style={styles.input}
+                      value={userId}
+                      onChangeText={setUserId}
+                      onFocus={() => setActive("user")}
+                      placeholderTextColor="rgba(255,255,255,0.3)"
+                      placeholder="Enter ID"
+                    />
+                  </View>
+                </View>
 
-                  {!onBreak ? (
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Access PIN</Text>
+                  <View style={[styles.inputWrapper, active === "pass" && styles.activeInput]}>
+                    <Ionicons name="lock-closed-outline" size={18} color={active === "pass" ? "#4ade80" : "#94a3b8"} />
+                    <TextInput
+                      style={styles.input}
+                      secureTextEntry
+                      value={password}
+                      onChangeText={setPassword}
+                      onFocus={() => setActive("pass")}
+                      placeholderTextColor="rgba(255,255,255,0.3)"
+                      placeholder="••••"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Staff Name</Text>
+                  <View style={[styles.inputWrapper, active === "staff" && styles.activeInput]}>
+                    <Ionicons name="id-card-outline" size={18} color={active === "staff" ? "#4ade80" : "#94a3b8"} />
+                    <TextInput
+                      style={styles.input}
+                      value={staffName}
+                      onChangeText={setStaffName}
+                      onFocus={() => setActive("staff")}
+                      placeholderTextColor="rgba(255,255,255,0.3)"
+                      placeholder="Display Name"
+                    />
+                  </View>
+                </View>
+
+                {/* ACTION BUTTONS */}
+                <View style={styles.actionRow}>
+                  {!shiftStarted ? (
                     <TouchableOpacity
-                      style={styles.breakInBtn}
-                      onPress={() => setOnBreak(true)}
+                      style={[styles.mainActionBtn, styles.clockInBtn]}
+                      onPress={() => setShiftStarted(true)}
                     >
-                      <Ionicons name="pause-circle-outline" size={18} color="#052b12" />
-                      <Text style={styles.actionBtnText}>BREAK</Text>
+                      <Ionicons name="log-in" size={32} color="#fff" />
+                      <Text style={styles.actionBtnText}>CLOCK IN</Text>
                     </TouchableOpacity>
                   ) : (
-                    <TouchableOpacity
-                      style={styles.breakOutBtn}
-                      onPress={() => setOnBreak(false)}
-                    >
-                      <Ionicons name="play-circle-outline" size={18} color="#fff" />
-                      <Text style={[styles.actionBtnText, { color: "#fff" }]}>RESUME</Text>
-                    </TouchableOpacity>
+                    <View style={styles.shiftActions}>
+                      <TouchableOpacity
+                        style={[styles.mainActionBtn, styles.clockOutBtn]}
+                        onPress={() => {
+                          setShiftStarted(false);
+                          setOnBreak(false);
+                        }}
+                      >
+                        <Ionicons name="log-out" size={32} color="#fff" />
+                        <Text style={styles.actionBtnText}>CLOCK OUT</Text>
+                      </TouchableOpacity>
+
+                      {!onBreak ? (
+                        <TouchableOpacity
+                          style={[styles.subActionBtn, styles.breakInBtn]}
+                          onPress={() => setOnBreak(true)}
+                        >
+                          <Ionicons name="cafe-outline" size={24} color="#fff" />
+                          <Text style={styles.subActionBtnText}>START BREAK</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={[styles.subActionBtn, styles.breakOutBtn]}
+                          onPress={() => setOnBreak(false)}
+                        >
+                          <Ionicons name="play-outline" size={24} color="#fff" />
+                          <Text style={styles.subActionBtnText}>RESUME WORK</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   )}
-                </>
-              )}
-            </View>
-          </BlurView>
-
-          {/* ── KEYPAD ── */}
-          <BlurView intensity={45} tint="dark" style={styles.keypadCard}>
-            <View style={styles.keypadHeader}>
-              <Text style={styles.keypadTitle}>
-                {active === "user" ? "User ID" : active === "pass" ? "Password" : "Staff Name"}
-              </Text>
-              <Text style={styles.keypadValue} numberOfLines={1}>
-                {active === "pass" ? getValue().replace(/./g, "●") || "—" : getValue() || "—"}
-              </Text>
+                </View>
+              </BlurView>
             </View>
 
-            <View style={styles.keypadGrid}>
-              {keypad.map((k) => (
-                <TouchableOpacity
-                  key={k}
-                  style={[
-                    styles.keyBtn,
-                    isSpecialKey(k) && styles.keyBtnSpecial,
-                    k === "↵" && styles.keyBtnEnter,
-                    k === "⌫" && styles.keyBtnDelete,
-                  ]}
-                  onPress={() => handleKeyPress(k)}
-                  activeOpacity={0.7}
-                >
-                  <Text
-                    style={[
-                      styles.keyText,
-                      isSpecialKey(k) && styles.keyTextSpecial,
-                      k === "↵" && styles.keyTextEnter,
-                    ]}
-                  >
-                    {k}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            {/* KEYPAD */}
+            <View style={styles.keypadContainer}>
+              <BlurView intensity={40} tint="dark" style={styles.keypad}>
+                {keypad.map((k) => renderKey(k))}
+              </BlurView>
             </View>
-          </BlurView>
-        </ScrollView>
+          </ScrollView>
+        </View>
       </SafeAreaView>
     </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  bg: { flex: 1 },
-  darkOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.4)",
+  background: {
+    flex: 1,
   },
-  safe: { flex: 1 },
-
-  /* Header */
+  safeArea: {
+    flex: 1,
+  },
+  overlay: {
+    flex: 1,
+    padding: 20,
+    backgroundColor: "rgba(10, 15, 30, 0.4)",
+  },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
-    backgroundColor: "rgba(5,8,20,0.7)",
+    padding: 20,
+    borderRadius: 24,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
   backBtn: {
-    flexDirection: "row",
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    justifyContent: "center",
     alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
   },
-  backText: {
+  brandContainer: {
+    alignItems: "center",
+  },
+  title: {
+    fontSize: 22,
+    fontFamily: Fonts.black,
     color: "#fff",
-    fontFamily: Fonts.semiBold,
-    fontSize: 14,
-  },
-  brandBlock: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  brandName: {
-    color: "#f1f5f9",
-    fontFamily: Fonts.black,
-    fontSize: 20,
     letterSpacing: 1,
   },
-  brandAccent: {
-    color: "#22c55e",
-    fontFamily: Fonts.black,
-    fontSize: 20,
+  subtitle: {
+    fontSize: 10,
+    fontFamily: Fonts.bold,
+    color: "#94a3b8",
+    textTransform: "uppercase",
     letterSpacing: 1,
   },
-  clockBlock: {
+  timeContainer: {
     alignItems: "flex-end",
   },
-  clockTime: {
+  dateText: {
+    color: "#94a3b8",
+    fontFamily: Fonts.semiBold,
+    fontSize: 12,
+  },
+  clockText: {
     color: "#fff",
     fontFamily: Fonts.black,
     fontSize: 18,
-    letterSpacing: 1,
   },
-  clockDate: {
-    color: "#64748b",
-    fontFamily: Fonts.medium,
-    fontSize: 11,
-    marginTop: 1,
-  },
-
-  /* Body */
-  body: {
+  content: {
     flexGrow: 1,
     justifyContent: "center",
-    alignItems: "stretch",
-    padding: 20,
+    alignItems: "center",
     gap: 20,
+    width: "100%",
   },
-
-  /* Form Card */
-  formCard: {
+  formContainer: {
     flex: 1,
-    maxWidth: 420,
-    borderRadius: 24,
-    padding: 24,
+    width: "100%",
+    maxWidth: 450,
+  },
+  form: {
+    padding: 30,
+    borderRadius: 30,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
-  formHeader: {
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  formIconWrap: {
-    width: 60,
-    height: 60,
-    borderRadius: 18,
-    backgroundColor: "rgba(34,197,94,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(34,197,94,0.25)",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  formTitle: {
-    color: "#fff",
+  sectionTitle: {
+    color: "#4ade80",
     fontFamily: Fonts.black,
-    fontSize: 18,
-    letterSpacing: 0.5,
+    fontSize: 14,
+    letterSpacing: 2,
+    marginBottom: 25,
+    textAlign: "center",
   },
-  formSub: {
-    color: "#475569",
-    fontFamily: Fonts.medium,
-    fontSize: 12,
-    marginTop: 4,
+  inputGroup: {
+    marginBottom: 18,
   },
-
-  /* Fields */
-  fieldWrap: {
-    backgroundColor: "rgba(15,23,42,0.8)",
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.06)",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginBottom: 12,
-    position: "relative",
-  },
-  fieldWrapActive: {
-    borderColor: "#22c55e",
-    backgroundColor: "rgba(34,197,94,0.05)",
-  },
-  fieldLabelRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginBottom: 4,
-  },
-  fieldLabel: {
+  label: {
     color: "#64748b",
-    fontFamily: Fonts.semiBold,
-    fontSize: 11,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  fieldLabelActive: {
-    color: "#22c55e",
-  },
-  fieldInput: {
-    color: "#fff",
-    fontFamily: Fonts.extraBold,
-    fontSize: 18,
-    paddingVertical: 0,
-  },
-  activeCaret: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 2,
-    backgroundColor: "#22c55e",
-    borderBottomLeftRadius: 14,
-    borderBottomRightRadius: 14,
-  },
-
-  /* Status */
-  statusRow: {
-    alignItems: "center",
-    marginVertical: 12,
-  },
-  statusPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 7,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusText: {
     fontFamily: Fonts.bold,
+    marginBottom: 8,
     fontSize: 12,
-    letterSpacing: 0.3,
+    textTransform: "uppercase",
+    marginLeft: 4,
   },
-
-  /* Action buttons */
+  inputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+    height: 56,
+  },
+  activeInput: {
+    borderColor: "rgba(74, 222, 128, 0.3)",
+    backgroundColor: "rgba(74, 222, 128, 0.05)",
+  },
+  input: {
+    flex: 1,
+    color: "#fff",
+    fontSize: 16,
+    fontFamily: Fonts.semiBold,
+    marginLeft: 12,
+  },
   actionRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 4,
-  },
-  inBtn: {
-    flex: 1,
-    flexDirection: "row",
+    marginTop: 30,
     alignItems: "center",
+  },
+  mainActionBtn: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     justifyContent: "center",
-    gap: 8,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
+    elevation: 10,
+  },
+  clockInBtn: {
     backgroundColor: "#22c55e",
-    borderRadius: 14,
-    paddingVertical: 16,
   },
-  outBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: "rgba(239,68,68,0.8)",
-    borderRadius: 14,
-    paddingVertical: 16,
-  },
-  breakInBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: "#f59e0b",
-    borderRadius: 14,
-    paddingVertical: 16,
-  },
-  breakOutBtn: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: "#8b5cf6",
-    borderRadius: 14,
-    paddingVertical: 16,
+  clockOutBtn: {
+    backgroundColor: "#ef4444",
   },
   actionBtnText: {
-    color: "#052b12",
-    fontFamily: Fonts.black,
-    fontSize: 14,
-    letterSpacing: 0.5,
-  },
-
-  /* Keypad card */
-  keypadCard: {
-    flex: 1,
-    maxWidth: 420,
-    borderRadius: 24,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-  },
-  keypadHeader: {
-    backgroundColor: "rgba(15,23,42,0.8)",
-    borderRadius: 14,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-    minHeight: 72,
-    justifyContent: "center",
-  },
-  keypadTitle: {
-    color: "#64748b",
-    fontFamily: Fonts.semiBold,
-    fontSize: 10,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-    marginBottom: 4,
-  },
-  keypadValue: {
     color: "#fff",
     fontFamily: Fonts.black,
-    fontSize: 24,
-    letterSpacing: 2,
+    fontSize: 14,
+    marginTop: 8,
   },
-  keypadGrid: {
+  shiftActions: {
+    alignItems: "center",
+    gap: 20,
+  },
+  subActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 20,
+    gap: 10,
+    borderWidth: 1,
+  },
+  breakInBtn: {
+    backgroundColor: "rgba(59, 130, 246, 0.15)",
+    borderColor: "rgba(59, 130, 246, 0.3)",
+  },
+  breakOutBtn: {
+    backgroundColor: "rgba(168, 85, 247, 0.15)",
+    borderColor: "rgba(168, 85, 247, 0.3)",
+  },
+  subActionBtnText: {
+    color: "#fff",
+    fontFamily: Fonts.black,
+    fontSize: 13,
+  },
+  keypadContainer: {
+    flex: 1,
+    width: "100%",
+    maxWidth: 450,
+  },
+  keypad: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
+    padding: 20,
+    borderRadius: 30,
     justifyContent: "space-between",
-  },
-  keyBtn: {
-    width: "22%",
-    aspectRatio: 1.2,
-    backgroundColor: "rgba(30,41,59,0.9)",
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
+    borderColor: "rgba(255,255,255,0.05)",
   },
-  keyBtnSpecial: {
-    backgroundColor: "rgba(51,65,85,0.9)",
-    borderColor: "rgba(255,255,255,0.1)",
+  key: {
+    height: 70,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.03)",
   },
-  keyBtnDelete: {
-    borderColor: "rgba(239,68,68,0.3)",
-    backgroundColor: "rgba(239,68,68,0.12)",
+  specialKey: {
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
-  keyBtnEnter: {
-    backgroundColor: "rgba(34,197,94,0.2)",
-    borderColor: "rgba(34,197,94,0.35)",
+  entKey: {
+    backgroundColor: "rgba(74, 222, 128, 0.15)",
+    borderColor: "rgba(74, 222, 128, 0.3)",
   },
   keyText: {
-    color: "#f1f5f9",
+    color: "#fff",
+    fontFamily: Fonts.extraBold,
+    fontSize: 22,
+  },
+  entKeyText: {
+    color: "#4ade80",
+    fontSize: 16,
     fontFamily: Fonts.black,
-    fontSize: 20,
-  },
-  keyTextSpecial: {
-    color: "#94a3b8",
-    fontFamily: Fonts.bold,
-    fontSize: 14,
-  },
-  keyTextEnter: {
-    color: "#22c55e",
-    fontSize: 18,
   },
 });
+;

@@ -4,7 +4,6 @@ import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   ImageBackground,
   Modal,
@@ -27,12 +26,8 @@ import {
 import { getHeldOrders, removeHeldOrder } from "../../stores/heldOrdersStore";
 import { setOrderContext } from "../../stores/orderContextStore";
 import { useTableStatusStore } from "../../stores/tableStatusStore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { API_URL } from "../../constants/Config";
-
-const API = API_URL;
-// Unique ID for this session/user (persists in memory)
-const SESSION_USER_ID = `user_${Date.now()}_${Math.floor(Math.random() * 9999)}`;
-
 
 type TableItem = {
   id: string;
@@ -85,50 +80,29 @@ export default function Category() {
   const [activeTab, setActiveTab] = useState<string>("SECTION_1");
   const [allTables, setAllTables] = useState<TableItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedTableOrder, setSelectedTableOrder] = useState<any>(null);
+  const [lockedTables, setLockedTables] = useState<string[]>([]);
+  const [sessionId, setSessionId] = useState<string>("");
   const sectionScrollRef = useRef<ScrollView>(null);
-  // Track which sections have been loaded to avoid re-fetching
-  const loadedSections = useRef<Set<string>>(new Set());
 
   const tables = useTableStatusStore((s) => s.tables);
   const activeOrders = useActiveOrdersStore((s) => s.activeOrders);
   const carts = useCartStore((s) => s.carts);
-  const [serverLocks, setServerLocks] = useState<Record<string, string>>({});
-  const [showCartModal, setShowCartModal] = useState(false);
 
   const isTablet = width >= 768;
 
-  // Poll server locks every 5 seconds to keep floor plan in sync across users
   useEffect(() => {
-    const fetchLocks = async () => {
-      try {
-        const res = await fetch(`${API}/api/tables/locks`);
-        if (res.ok) {
-          const data = await res.json();
-          setServerLocks(data);
-        }
-      } catch (_) {}
-    };
-    fetchLocks();
-    const interval = setInterval(fetchLocks, 5000);
-    return () => clearInterval(interval);
+    fetchTables();
   }, []);
 
-  useEffect(() => {
-    fetchTablesForSection(activeTab);
-  }, [activeTab]);
-
-  const fetchTablesForSection = async (section: string) => {
-    // Avoid re-fetching if already loaded for this section
-    if (loadedSections.current.has(section)) return;
-
-    setLoading(true);
+  const fetchTables = async () => {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       const response = await fetch(
-        `${API}/tables?section=${section}`,
-        { signal: controller.signal }
+        "https://cafepos-production-3428.up.railway.app/tables",
+        { signal: controller.signal },
       );
 
       clearTimeout(timeoutId);
@@ -143,7 +117,7 @@ export default function Category() {
       else if (data?.recordset && Array.isArray(data.recordset)) tablesArray = data.recordset;
 
       if (tablesArray.length > 0) {
-        const converted = tablesArray
+        const convertedData = tablesArray
           .map((item: any) => ({
             id: item.id || item.TableId,
             label: item.label || item.TableNumber,
@@ -151,34 +125,42 @@ export default function Category() {
           }))
           .filter((item) => item.id && item.label);
 
-        // Merge into allTables, replacing any from this section
-        setAllTables((prev) => {
-          const sectionNum = { SECTION_1: 1, SECTION_2: 2, SECTION_3: 3, TAKEAWAY: 4 }[section];
-          const others = prev.filter((t) => t.DiningSection !== sectionNum);
-          return [...others, ...converted];
-        });
-        loadedSections.current.add(section);
+        setAllTables(convertedData);
       } else {
-        setAllTables((prev) => {
-          // No data from API — use fallback for this section only
-          const sectionNum = { SECTION_1: 1, SECTION_2: 2, SECTION_3: 3, TAKEAWAY: 4 }[section] ?? 0;
-          const fallback = getFallbackTables().filter((t) => t.DiningSection === sectionNum);
-          const others = prev.filter((t) => t.DiningSection !== sectionNum);
-          return [...others, ...fallback];
-        });
+        throw new Error("No data from API");
       }
     } catch (error) {
-      console.warn(`fetchTables(${section}) failed, using fallback:`, error);
-      const sectionNum = { SECTION_1: 1, SECTION_2: 2, SECTION_3: 3, TAKEAWAY: 4 }[section] ?? 0;
-      const fallback = getFallbackTables().filter((t) => t.DiningSection === sectionNum);
-      setAllTables((prev) => {
-        const others = prev.filter((t) => t.DiningSection !== sectionNum);
-        return [...others, ...fallback];
-      });
+      const fallbackData = getFallbackTables();
+      setAllTables(fallbackData);
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const initSession = async () => {
+      let id = await AsyncStorage.getItem("pos_session_id");
+      if (!id) {
+        id = Math.random().toString(36).substring(7);
+        await AsyncStorage.getItem("pos_session_id");
+        await AsyncStorage.setItem("pos_session_id", id);
+      }
+      setSessionId(id);
+    };
+    initSession();
+
+    const fetchLocked = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/tables/locked`);
+        const data = await res.json();
+        setLockedTables(data.map((l: any) => l.TableId));
+      } catch (e) {}
+    };
+
+    fetchLocked();
+    const interval = setInterval(fetchLocked, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (urlSection && SECTIONS.includes(urlSection)) {
@@ -211,11 +193,10 @@ export default function Category() {
   const smallFont = Math.max(9, Math.min(14, itemSize * 0.18));
 
   const currentTables = allTables.filter((table) => {
-    // Each section maps to exactly one DiningSection value — no overlap
-    if (activeTab === "SECTION_1") return table.DiningSection === 1;
-    if (activeTab === "SECTION_2") return table.DiningSection === 2;
-    if (activeTab === "SECTION_3") return table.DiningSection === 3;
-    if (activeTab === "TAKEAWAY")  return table.DiningSection === 4;
+    if (activeTab === "TAKEAWAY") return table.DiningSection === 3 || table.DiningSection === 4;
+    else if (activeTab === "SECTION_1") return table.DiningSection === 1;
+    else if (activeTab === "SECTION_2") return table.DiningSection === 2;
+    else if (activeTab === "SECTION_3") return table.DiningSection === 3;
     return false;
   });
 
@@ -226,14 +207,10 @@ export default function Category() {
   }).length;
 
   const renderItem = ({ item }: { item: TableItem }) => {
+    const isLockedByOther = lockedTables.includes(item.id);
     const tableData = tables.find(
       (t) => t.section === activeTab && t.tableNo === item.label,
     );
-
-    // --- SERVER LOCK CHECK ---
-    const lockKey = `${activeTab}::${item.label}`;
-    const lockedByUser = serverLocks[lockKey];
-    const isLockedByOther = lockedByUser && lockedByUser !== SESSION_USER_ID;
 
     let borderColor = "rgba(255,255,255,0.12)";
     let bgColor = "rgba(15, 23, 42, 0.6)";
@@ -312,55 +289,29 @@ export default function Category() {
       orderText = `#${tableData.orderId}`;
     }
 
-    // Locked by another user override
-    if (isLockedByOther) {
-      bgColor = "rgba(100, 50, 0, 0.7)";
-      borderColor = "#f59e0b";
-    }
-
     return (
       <TouchableOpacity
-        activeOpacity={isLockedByOther ? 1 : 0.8}
+        activeOpacity={0.8}
+        disabled={isLockedByOther}
         style={[
           styles.tableBox,
           {
             width: itemSize,
             height: itemSize,
             borderColor,
-            backgroundColor: bgColor,
-            opacity: isLockedByOther ? 0.75 : 1,
+            backgroundColor: isLockedByOther ? "rgba(100, 116, 139, 0.4)" : bgColor,
+            opacity: isLockedByOther ? 0.6 : 1,
           },
         ]}
         onPress={async () => {
-          if (isLockedByOther) {
-            Alert.alert(
-              "🔒 Table Occupied",
-              `This table is currently being used by another staff member.`,
-              [{ text: "OK" }]
-            );
-            return;
-          }
-
-          // Attempt server lock
+          // Lock table
           try {
-            const lockRes = await fetch(`${API}/api/tables/lock`, {
+            await fetch(`${API_URL}/api/tables/lock`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                tableId: lockKey,
-                userId: SESSION_USER_ID,
-              }),
+              body: JSON.stringify({ tableId: item.id, userId: sessionId }),
             });
-            const lockData = await lockRes.json();
-            if (!lockData.success) {
-              Alert.alert("🔒 Table Locked", lockData.message || "Table is in use by another staff.");
-              setServerLocks(prev => ({ ...prev, [lockKey]: lockData.lockedBy || "someone" }));
-              return;
-            }
-            setServerLocks(prev => ({ ...prev, [lockKey]: SESSION_USER_ID }));
-          } catch (_) {
-            // If lock API fails (offline), allow navigation anyway
-          }
+          } catch (e) {}
 
           let newContext: any;
           if (activeTab === "TAKEAWAY") {
@@ -393,14 +344,6 @@ export default function Category() {
           router.push("/menu/thai_kitchen");
         }}
       >
-        {/* Locked overlay badge */}
-        {isLockedByOther && (
-          <View style={styles.lockBadge}>
-            <Ionicons name="lock-closed" size={10} color="#fff" />
-            <Text style={styles.lockBadgeText}>In Use</Text>
-          </View>
-        )}
-
         <View style={styles.tableContent}>
           <Text style={[styles.tableNumber, { fontSize: numberFont }]}>
             {item.label}
@@ -416,6 +359,26 @@ export default function Category() {
               <Text style={[styles.billText, { fontSize: smallFont + 1 }]}>
                 ${billAmount.toFixed(2)}
               </Text>
+              {!isLockedByOther && (
+                <TouchableOpacity
+                  style={styles.viewOrderBtn}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    const activeOrder = activeOrders.find(
+                      (o: any) => o.orderId === tableData.orderId,
+                    );
+                    setSelectedTableOrder(activeOrder || { items: [], orderId: tableData.orderId, tableNo: item.label });
+                  }}
+                >
+                  <Ionicons name="eye-outline" size={14} color="#fff" />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+          {isLockedByOther && (
+            <View style={styles.lockOverlay}>
+              <Ionicons name="lock-closed" size={20} color="#cbd5e1" />
+              <Text style={styles.lockLabel}>IN USE</Text>
             </View>
           )}
         </View>
@@ -466,10 +429,10 @@ export default function Category() {
               {SECTIONS.map((section) => {
                 const isActive = activeTab === section;
                 const sectionTables = allTables.filter((t) => {
+                  if (section === "TAKEAWAY") return t.DiningSection === 3 || t.DiningSection === 4;
                   if (section === "SECTION_1") return t.DiningSection === 1;
                   if (section === "SECTION_2") return t.DiningSection === 2;
                   if (section === "SECTION_3") return t.DiningSection === 3;
-                  if (section === "TAKEAWAY")  return t.DiningSection === 4;
                   return false;
                 });
                 const occupied = sectionTables.filter((t) =>
@@ -524,24 +487,6 @@ export default function Category() {
               <Ionicons name="time-outline" size={16} color="#94a3b8" />
               {isTablet && (
                 <Text style={styles.headerActionText}>Time</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.headerActionBtn, styles.cartHeaderBtn]}
-              onPress={() => setShowCartModal(true)}
-              activeOpacity={0.75}
-            >
-              <Ionicons name="cart-outline" size={16} color="#f59e0b" />
-              {isTablet && (
-                <Text style={[styles.headerActionText, { color: "#f59e0b" }]}>Cart</Text>
-              )}
-              {tables.filter(t => t.section === activeTab).length > 0 && (
-                <View style={styles.cartBadge}>
-                  <Text style={styles.cartBadgeText}>
-                    {tables.filter(t => t.section === activeTab).length}
-                  </Text>
-                </View>
               )}
             </TouchableOpacity>
 
@@ -609,7 +554,7 @@ export default function Category() {
             <View style={styles.emptyContainer}>
               <Ionicons name="grid-outline" size={48} color="rgba(255,255,255,0.15)" />
               <Text style={styles.emptyText}>No tables found</Text>
-              <TouchableOpacity onPress={() => { loadedSections.current.delete(activeTab); fetchTablesForSection(activeTab); }} style={styles.retryBtn}>
+              <TouchableOpacity onPress={fetchTables} style={styles.retryBtn}>
                 <Ionicons name="refresh-outline" size={16} color="#fff" />
                 <Text style={styles.retryText}>Refresh</Text>
               </TouchableOpacity>
@@ -617,95 +562,48 @@ export default function Category() {
           }
         />
 
-        {/* ═══════════ CART MODAL ═══════════ */}
+        {/* ═══════════ TABLE ORDER PREVIEW MODAL ═══════════ */}
         <Modal
-          visible={showCartModal}
+          visible={!!selectedTableOrder}
           transparent
-          animationType="slide"
-          onRequestClose={() => setShowCartModal(false)}
+          animationType="fade"
+          onRequestClose={() => setSelectedTableOrder(null)}
         >
-          <View style={styles.cartModalOverlay}>
-            <View style={styles.cartModalContent}>
-              <View style={styles.cartModalHeader}>
-                <Text style={styles.cartModalTitle}>🛒 Active Table Orders</Text>
-                <TouchableOpacity onPress={() => setShowCartModal(false)}>
-                  <Ionicons name="close-circle" size={28} color="#94a3b8" />
+          <BlurView intensity={20} tint="dark" style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <View>
+                  <Text style={styles.modalTitle}>Table {selectedTableOrder?.tableNo || selectedTableOrder?.context?.tableNo} Order</Text>
+                  <Text style={styles.modalSub}>Order #{selectedTableOrder?.orderId}</Text>
+                </View>
+                <TouchableOpacity onPress={() => setSelectedTableOrder(null)} style={styles.closeBtn}>
+                  <Ionicons name="close" size={24} color="#fff" />
                 </TouchableOpacity>
               </View>
-              <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
-                {tables.filter(t => t.section === activeTab).length === 0 ? (
-                  <View style={styles.cartEmpty}>
-                    <Ionicons name="restaurant-outline" size={48} color="rgba(255,255,255,0.15)" />
-                    <Text style={styles.cartEmptyText}>No active orders in this section</Text>
-                  </View>
+
+              <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                {selectedTableOrder?.items && selectedTableOrder.items.length > 0 ? (
+                  selectedTableOrder.items.map((it: any, idx: number) => (
+                    <View key={idx} style={styles.orderRow}>
+                      <Text style={styles.orderQty}>{it.qty}x</Text>
+                      <Text style={styles.orderName}>{it.name}</Text>
+                      <Text style={styles.orderPrice}>${((it.price || 0) * it.qty).toFixed(2)}</Text>
+                    </View>
+                  ))
                 ) : (
-                  tables
-                    .filter(t => t.section === activeTab)
-                    .map((tableData) => {
-                      // Gather items for this table
-                      let items: any[] = [];
-                      let total = 0;
-
-                      if (tableData.status === "HOLD") {
-                        const helds = getHeldOrders();
-                        const held = helds.find((h) => h.orderId === tableData.orderId);
-                        if (held) {
-                          items = held.cart;
-                          total = items.reduce((s: number, i: any) => s + (i.price || 0) * i.qty, 0);
-                        }
-                      } else {
-                        const ao = activeOrders.find((o: any) => o.orderId === tableData.orderId);
-                        if (ao) {
-                          items = ao.items;
-                          total = items.reduce((s: number, i: any) => s + (i.price || 0) * i.qty, 0);
-                        }
-                      }
-
-                      // Also include cart items
-                      const contextId = getContextId({
-                        orderType: activeTab === "TAKEAWAY" ? "TAKEAWAY" : "DINE_IN",
-                        section: activeTab,
-                        tableNo: tableData.tableNo,
-                        takeawayNo: tableData.tableNo,
-                      });
-                      if (contextId) {
-                        const cartItems = carts[contextId] || [];
-                        if (items.length === 0) items = cartItems;
-                        total += cartItems.reduce((s: number, i: any) => s + (i.price || 0) * i.qty, 0);
-                      }
-
-                      return (
-                        <View key={tableData.orderId} style={styles.cartTableCard}>
-                          <View style={styles.cartTableHeader}>
-                            <View style={styles.cartTableBadge}>
-                              <Text style={styles.cartTableBadgeText}>Table {tableData.tableNo}</Text>
-                            </View>
-                            <Text style={styles.cartTableTotal}>${total.toFixed(2)}</Text>
-                          </View>
-                          {items.length > 0 ? (
-                            items.map((item: any, idx: number) => (
-                              <View key={idx} style={styles.cartItemRow}>
-                                <Text style={styles.cartItemQty}>{item.qty}x</Text>
-                                <Text style={styles.cartItemName} numberOfLines={1}>
-                                  {item.name || item.dish_name || "Item"}
-                                </Text>
-                                <Text style={styles.cartItemPrice}>
-                                  ${((item.price || 0) * item.qty).toFixed(2)}
-                                </Text>
-                              </View>
-                            ))
-                          ) : (
-                            <Text style={styles.cartNoItems}>No items yet</Text>
-                          )}
-                        </View>
-                      );
-                    })
+                  <Text style={styles.emptyOrderText}>No items sent to kitchen yet.</Text>
                 )}
               </ScrollView>
-            </View>
-          </View>
-        </Modal>
 
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => setSelectedTableOrder(null)}
+              >
+                <Text style={styles.modalCloseBtnText}>CLOSE</Text>
+              </TouchableOpacity>
+            </View>
+          </BlurView>
+        </Modal>
       </ImageBackground>
     </SafeAreaView>
   );
@@ -1013,148 +911,117 @@ const styles = StyleSheet.create({
   },
   retryText: { color: "#4ade80", fontFamily: Fonts.bold, fontSize: 14 },
 
-  /* Lock badge */
-  lockBadge: {
-    position: "absolute",
-    top: 5,
-    left: 5,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    backgroundColor: "rgba(245,158,11,0.85)",
-    borderRadius: 6,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    zIndex: 3,
-  },
-  lockBadgeText: {
-    color: "#fff",
-    fontFamily: Fonts.bold,
-    fontSize: 8,
-    letterSpacing: 0.3,
-  },
-
-  /* Cart Header Button */
-  cartHeaderBtn: {
-    borderColor: "rgba(245,158,11,0.25)",
-  },
-  cartBadge: {
-    position: "absolute",
-    top: -4,
-    right: -4,
-    backgroundColor: "#f59e0b",
+  /* ── View Order Button ── */
+  viewOrderBtn: {
+    marginTop: 6,
+    padding: 6,
+    backgroundColor: "rgba(255,255,255,0.15)",
     borderRadius: 8,
-    minWidth: 16,
-    height: 16,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 3,
-  },
-  cartBadgeText: {
-    color: "#000",
-    fontFamily: Fonts.black,
-    fontSize: 9,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
   },
 
-  /* Cart Modal */
-  cartModalOverlay: {
+  /* ── Modal ── */
+  modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
+    backgroundColor: "rgba(0,0,0,0.6)",
     justifyContent: "center",
     alignItems: "center",
+    padding: 20,
   },
-  cartModalContent: {
-    width: "90%",
-    maxWidth: 500,
-    maxHeight: "80%",
-    backgroundColor: "#0f172a",
+  modalContent: {
+    backgroundColor: "#1e293b",
+    width: "100%",
+    maxWidth: 400,
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.1)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
   },
-  cartModalHeader: {
+  modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 20,
   },
-  cartModalTitle: {
+  modalTitle: {
     color: "#fff",
-    fontFamily: Fonts.black,
     fontSize: 18,
+    fontFamily: Fonts.black,
   },
-  cartEmpty: {
-    alignItems: "center",
-    paddingVertical: 40,
-    gap: 12,
+  modalSub: {
+    color: "#4ade80",
+    fontSize: 11,
+    fontFamily: Fonts.bold,
+    textTransform: "uppercase",
   },
-  cartEmptyText: {
-    color: "rgba(255,255,255,0.4)",
-    fontFamily: Fonts.medium,
-    fontSize: 14,
+  closeBtn: {
+    padding: 4,
   },
-  cartTableCard: {
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+  modalBody: {
+    maxHeight: 400,
+    marginBottom: 20,
   },
-  cartTableHeader: {
+  orderRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 10,
-    paddingBottom: 8,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.08)",
+    borderBottomColor: "rgba(255,255,255,0.05)",
   },
-  cartTableBadge: {
-    backgroundColor: "rgba(34,197,94,0.15)",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: "rgba(34,197,94,0.3)",
-  },
-  cartTableBadgeText: {
+  orderQty: {
+    width: 30,
     color: "#4ade80",
     fontFamily: Fonts.black,
-    fontSize: 13,
+    fontSize: 14,
   },
-  cartTableTotal: {
-    color: "#22c55e",
-    fontFamily: Fonts.black,
-    fontSize: 18,
-  },
-  cartItemRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 4,
-  },
-  cartItemQty: {
-    color: "#94a3b8",
-    fontFamily: Fonts.bold,
-    fontSize: 12,
-    width: 28,
-  },
-  cartItemName: {
+  orderName: {
     flex: 1,
-    color: "#e2e8f0",
-    fontFamily: Fonts.medium,
-    fontSize: 13,
+    color: "#f1f5f9",
+    fontFamily: Fonts.semiBold,
+    fontSize: 14,
   },
-  cartItemPrice: {
-    color: "#22c55e",
-    fontFamily: Fonts.extraBold,
-    fontSize: 13,
+  orderPrice: {
+    color: "#f1f5f9",
+    fontFamily: Fonts.bold,
+    fontSize: 14,
   },
-  cartNoItems: {
-    color: "rgba(255,255,255,0.3)",
+  emptyOrderText: {
+    color: "#64748b",
+    textAlign: "center",
+    marginVertical: 30,
+    fontSize: 15,
     fontFamily: Fonts.medium,
-    fontSize: 12,
-    fontStyle: "italic",
+  },
+  modalCloseBtn: {
+    backgroundColor: "rgba(255,255,255,0.08)",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  modalCloseBtnText: {
+    color: "#fff",
+    fontFamily: Fonts.black,
+    fontSize: 14,
+  },
+
+  /* ── Lock Overlay ── */
+  lockOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(15, 23, 42, 0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 14,
+    gap: 4,
+  },
+  lockLabel: {
+    color: "#cbd5e1",
+    fontSize: 10,
+    fontFamily: Fonts.black,
+    letterSpacing: 0.5,
   },
 });
