@@ -612,7 +612,7 @@ app.get("/api/sales/detail/:id", async (req, res) => {
     const { id } = req.params;
 
     const result = await pool.request()
-      .input("Id", id)
+      .input("Id", sql.UniqueIdentifier, id)
       .query(`
         SELECT 
           DishName,
