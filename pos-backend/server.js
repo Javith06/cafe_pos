@@ -338,6 +338,29 @@ app.get("/dishes/:DishGroupId", async (req, res) => {
   }
 });
 
+// GET all dishes (metadata only) for global searching across all kitchens
+app.get("/api/dishes/all", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+      SELECT
+        d.DishId,
+        d.Name,
+        d.DishGroupId,
+        g.CategoryId,
+        ISNULL(p.Amount, 1.0) AS Price
+      FROM DishMaster d
+      INNER JOIN DishPriceList p ON d.DishId = p.DishId
+      LEFT JOIN DishGroupMaster g ON d.DishGroupId = g.DishGroupId
+      WHERE d.IsActive = 1
+    `);
+    res.json(result.recordset);
+  } catch (err) {
+    console.error("ALL DISHES ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* ================= MODIFIERS ================= */
 app.get("/modifiers/:dishId", async (req, res) => {
   try {

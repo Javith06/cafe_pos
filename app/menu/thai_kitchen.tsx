@@ -180,6 +180,9 @@ export default function MenuScreen() {
   const [selectedKitchenId, setSelectedKitchenId] = useState("");
   const [selectedKitchenName, setSelectedKitchenName] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("");
+  const [searchText, setSearchText] = useState("");
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
+  const [allDishes, setAllDishes] = useState<Dish[]>([]);
 
   const [modifiers, setModifiers] = useState<Modifier[]>([]);
   const [showModifier, setShowModifier] = useState(false);
@@ -262,6 +265,18 @@ export default function MenuScreen() {
       });
   }, [orderContext]);
 
+  // ISOLATED ON-MOUNT FETCH (Global search catalog)
+  useEffect(() => {
+    fetch(`${API_URL}/api/dishes/all`)
+      .then((res) => res.json())
+      .then((data) => {
+        const safe = Array.isArray(data) ? data : [];
+        setAllDishes(safe);
+        console.log("Global search catalog loaded:", safe.length, "items");
+      })
+      .catch((err) => console.log("ALL DISHES FETCH ERROR:", err));
+  }, []);
+
   const loadGroups = async (kitchenId: string, kitchenName: string) => {
     setSelectedKitchenId(kitchenId);
     setSelectedKitchenName(kitchenName);
@@ -304,10 +319,17 @@ export default function MenuScreen() {
       const safe = Array.isArray(data) ? data : [];
 
       const uniqueData = Array.from(
-        new Map(safe.map((item) => [item.DishId, item])).values(),
-      );
+        new Map(safe.map((item: any) => [item.DishId, item])).values(),
+      ) as Dish[];
 
       setItems(uniqueData);
+      
+      // CACHE these dishes into allDishes for global searching (as a backup)
+      setAllDishes((prev) => {
+        const existingIds = new Set(prev.map(d => d.DishId));
+        const newDishes = uniqueData.filter(d => !existingIds.has(d.DishId));
+        return [...prev, ...newDishes];
+      });
     } catch (err) {
       console.log("DISH ERROR:", err);
     } finally {
@@ -318,6 +340,27 @@ export default function MenuScreen() {
       listRef.current?.scrollToOffset({ offset: 0, animated: true });
     });
   };
+  
+  // Global Search & Local Category Filter logic
+  const filteredItems = useMemo(() => {
+    const search = searchText.trim().toLowerCase();
+    
+    if (search) {
+      // Global Search: Entire Restaurant
+      const results = allDishes.filter((item) => 
+        (item.Name || "").toLowerCase().includes(search)
+      );
+      if (results.length > 0) return results;
+      
+      // Fallback: Check standard category items if allDishes is still empty/missing results
+      return items.filter((item) => 
+        (item.Name || "").toLowerCase().includes(search)
+      );
+    } else {
+      // Browse Mode: Current category only (stable, pre-loaded with images)
+      return items;
+    }
+  }, [allDishes, searchText, items]);
 
   const totalItems = useMemo(
     () => cart.reduce((s, i) => s + (i.qty || 0), 0),
@@ -656,21 +699,65 @@ export default function MenuScreen() {
               <View style={styles.accentLabelRow}>
                 <View style={styles.accentBar} />
                 <Text style={styles.sectionLabel}>DISHES</Text>
-                {items.length > 0 && !isLoadingDishes && (
-                  <Text style={styles.dishCount}>{items.length} items</Text>
+                {filteredItems.length > 0 && !isLoadingDishes && (
+                  <Text style={styles.dishCount}>
+                    {searchText ? `${filteredItems.length} found` : `${filteredItems.length} items`}
+                  </Text>
                 )}
+                
+                <View style={{ flex: 1 }} />
+
+                <TouchableOpacity
+                  style={[
+                    styles.searchToggle,
+                    isSearchVisible && styles.searchToggleActive,
+                  ]}
+                  onPress={() => {
+                    setIsSearchVisible(!isSearchVisible);
+                    if (isSearchVisible) setSearchText("");
+                  }}
+                >
+                  <Ionicons
+                    name={isSearchVisible ? "close" : "search"}
+                    size={20}
+                    color={isSearchVisible ? "#fff" : "#4ade80"}
+                  />
+                </TouchableOpacity>
               </View>
+
+              {/* SEARCH BAR */}
+              {isSearchVisible && (
+                <View style={styles.searchBarWrapper}>
+                  <BlurView intensity={20} tint="dark" style={styles.searchBlur}>
+                    <Ionicons name="search-outline" size={18} color="#94a3b8" />
+                    <TextInput
+                      style={styles.searchInput}
+                      placeholder="Search across all kitchens..."
+                      placeholderTextColor="#64748b"
+                      value={searchText}
+                      onChangeText={setSearchText}
+                      autoFocus
+                    />
+                    {searchText.length > 0 && (
+                      <TouchableOpacity onPress={() => setSearchText("")}>
+                        <Ionicons name="close-circle" size={18} color="#64748b" />
+                      </TouchableOpacity>
+                    )}
+                  </BlurView>
+                </View>
+              )}
+
               <FlatList
                 ref={listRef}
                 data={
-                  (isLoadingDishes ? [1, 2, 3, 4, 5, 6, 7, 8] : items) as any[]
+                  (isLoadingDishes && !searchText.trim() ? [1, 2, 3, 4, 5, 6, 7, 8] : filteredItems) as any[]
                 }
                 numColumns={columns}
                 key={`grid-${columns}`}
                 keyExtractor={(item, index) =>
-                  isLoadingDishes
+                  isLoadingDishes && !searchText.trim()
                     ? `skeleton-${index}`
-                    : item.DishId + "_" + index
+                    : (item.DishId ? item.DishId + "_" + index : `res-${index}`)
                 }
                 columnWrapperStyle={
                   columns > 1
@@ -684,14 +771,16 @@ export default function MenuScreen() {
                 contentContainerStyle={styles.gridContent}
                 showsVerticalScrollIndicator={false}
                 ListEmptyComponent={
-                  !isLoadingDishes ? (
+                  !isLoadingDishes || searchText.trim() ? (
                     <View style={styles.emptyWrap}>
-                      <Text style={styles.emptyText}>No items available</Text>
+                      <Text style={styles.emptyText}>
+                        {searchText ? `No dishes matching "${searchText}"` : "No items available"}
+                      </Text>
                     </View>
                   ) : null
                 }
                 renderItem={({ item }) =>
-                  isLoadingDishes ? (
+                  isLoadingDishes && !searchText.trim() ? (
                     <DishSkeleton width={cardWidth} />
                   ) : (
                     <TouchableOpacity
@@ -972,6 +1061,38 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.semiBold,
     fontSize: 11,
     marginLeft: 4,
+  },
+  searchToggle: {
+    padding: 8,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+  },
+  searchToggleActive: {
+    backgroundColor: "#22c55e",
+    borderColor: "#4ade80",
+  },
+  searchBarWrapper: {
+    marginBottom: 12,
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  searchBlur: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
+  },
+  searchInput: {
+    flex: 1,
+    color: "#fff",
+    fontFamily: Fonts.medium,
+    fontSize: 14,
+    padding: 0,
   },
   header: {
     minHeight: 60,
