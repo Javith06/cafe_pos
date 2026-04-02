@@ -555,10 +555,14 @@ app.get("/api/sales/transactions", async (req, res) => {
           ISNULL(sts.ReceiptCount, 0) AS ReceiptCount,
           m.Name as MemberName
         FROM SettlementHeader sh
-        LEFT JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
-        LEFT JOIN MemberMaster m ON sh.MemberId = m.MemberId
-        WHERE sh.LastSettlementDate BETWEEN @StartDate AND @EndDate
-        ORDER BY sh.LastSettlementDate DESC
+        INNER JOIN SettlementTotalSales sts 
+          ON sh.SettlementID = sts.SettlementID
+        LEFT JOIN MemberMaster m 
+          ON sh.MemberId = m.MemberId
+        WHERE 
+          sh.LastSettlementDate IS NOT NULL
+          AND sh.LastSettlementDate BETWEEN @StartDate AND @EndDate        
+          ORDER BY sh.LastSettlementDate DESC
       `);
 
     console.log(`✅ Transactions: ${result.recordset.length} rows for ${startDate} → ${endDate}`);

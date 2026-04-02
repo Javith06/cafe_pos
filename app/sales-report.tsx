@@ -151,6 +151,7 @@ export default function SalesReport() {
       console.log(`Fetching transactions: ${start} → ${end}`);
       const response = await fetch(`${API_URL}/api/sales/transactions?startDate=${start}&endDate=${end}`);
       const data = await response.json();
+      console.log("API DATA:", data);
       if (Array.isArray(data)) {
         setSales(data);
       } else {
