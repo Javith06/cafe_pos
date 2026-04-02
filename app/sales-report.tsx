@@ -151,7 +151,6 @@ export default function SalesReport() {
       console.log(`Fetching transactions: ${start} → ${end}`);
       const response = await fetch(`${API_URL}/api/sales/transactions?startDate=${start}&endDate=${end}`);
       const data = await response.json();
-      console.log("API DATA:", data);
       if (Array.isArray(data)) {
         setSales(data);
       } else {
@@ -186,10 +185,8 @@ export default function SalesReport() {
             CashSales: acc.CashSales + (curr.CashSales || 0),
             NETS_Sales: acc.NETS_Sales + (curr.NETS_Sales || 0),
             PayNow_Sales: acc.PayNow_Sales + (curr.PayNow_Sales || 0),
-            CardSales: acc.CardSales + (curr.CardSales || 0),
-            MemberSales: acc.MemberSales + (curr.MemberSales || 0),
             TotalItems: acc.TotalItems + (curr.TotalItems || 0),
-          }), { TotalTransactions: 0, TotalSales: 0, CashSales: 0, NETS_Sales: 0, PayNow_Sales: 0, CardSales: 0, MemberSales: 0, TotalItems: 0 });
+          }), { TotalTransactions: 0, TotalSales: 0, CashSales: 0, NETS_Sales: 0, PayNow_Sales: 0, TotalItems: 0 });
           setSummary(aggregated);
         } else {
           setSummary(null);
@@ -258,8 +255,6 @@ export default function SalesReport() {
       case "PAYNOW":
       case "UPI":
         return "qr-code-outline";
-      case "CREDIT":
-        return "people-outline";
       default:
         return "wallet-outline";
     }
@@ -313,7 +308,6 @@ export default function SalesReport() {
       Card: filtered.filter((s) => s.PayMode === "CARD").reduce((acc, s) => acc + (s.SysAmount || 0), 0),
       Nets: filtered.filter((s) => s.PayMode === "NETS").reduce((acc, s) => acc + (s.SysAmount || 0), 0),
       PayNow: filtered.filter((s) => s.PayMode === "PAYNOW").reduce((acc, s) => acc + (s.SysAmount || 0), 0),
-      Credit: filtered.filter((s) => s.PayMode === "CREDIT").reduce((acc, s) => acc + (s.SysAmount || 0), 0),
     };
   }, [filteredSales]);
 
@@ -329,7 +323,6 @@ export default function SalesReport() {
       card: (filteredMetrics.Card / filteredMetrics.TotalSales) * 100,
       nets: (filteredMetrics.Nets / filteredMetrics.TotalSales) * 100,
       paynow: (filteredMetrics.PayNow / filteredMetrics.TotalSales) * 100,
-      credit: (filteredMetrics.Credit / filteredMetrics.TotalSales) * 100,
     };
   }, [filteredMetrics]);
 
@@ -375,6 +368,20 @@ export default function SalesReport() {
     fetchOrderDetails(order.SettlementID);
   };
 
+  const renderMetricTile = (
+    label: string,
+    value: string | number,
+    icon: any,
+    color: string
+  ) => (
+    <View style={[styles.metricTile, { borderLeftColor: color }]}>
+      <View style={styles.tileHeader}>
+        <Ionicons name={icon} size={14} color="#94a3b8" />
+        <Text style={styles.tileLabel}>{label}</Text>
+      </View>
+      <Text style={[styles.tileValue, { color }]}>{value}</Text>
+    </View>
+  );
 
 
   return (
@@ -479,7 +486,6 @@ export default function SalesReport() {
                 <View style={styles.legendCol}>
                   <View style={styles.legendItem}><View style={[styles.legendDot, {backgroundColor: '#22c55e'}]} /><Text style={styles.legendText}>CASH</Text></View>
                   <View style={styles.legendItem}><View style={[styles.legendDot, {backgroundColor: '#8b5cf6'}]} /><Text style={styles.legendText}>PAYNOW</Text></View>
-                  <View style={styles.legendItem}><View style={[styles.legendDot, {backgroundColor: '#f59e0b'}]} /><Text style={styles.legendText}>CREDIT</Text></View>
                 </View>
                 <View style={styles.legendCol}>
                   <View style={styles.legendItem}><View style={[styles.legendDot, {backgroundColor: '#4ade80'}]} /><Text style={styles.legendText}>NETS</Text></View>
@@ -517,18 +523,15 @@ export default function SalesReport() {
                     <Text style={[styles.tdCell, styles.billIdTxt, { flex: 1.2 }]} numberOfLines={1}>{item.BillNo || item.SettlementID?.slice(0, 8) || "N/A"}</Text>
                     
                     <View style={[styles.tdCellBox, { flex: 1 }]}>
-                      <View style={[styles.badgePay, { backgroundColor: item.PayMode==="CASH" ? "rgba(34,197,94,0.15)" : item.PayMode==="NETS" ? "rgba(163,230,53,0.15)" : item.PayMode==="CARD" ? "rgba(59,130,246,0.15)" : item.PayMode==="CREDIT" ? "rgba(245,158,11,0.15)" : "rgba(139,92,246,0.15)" }]}>
-                        <Ionicons name={getPaymentMethodIcon(item.PayMode)} size={10} color={item.PayMode==="CASH" ? "#4ade80" : item.PayMode==="NETS" ? "#a3e635" : item.PayMode==="CARD" ? "#60a5fa" : item.PayMode==="CREDIT" ? "#f59e0b" : "#c084fc"} style={{ marginRight: 4 }} />
-                        <Text style={[styles.badgePayTxt, { color: item.PayMode==="CASH" ? "#4ade80" : item.PayMode==="NETS" ? "#a3e635" : item.PayMode==="CARD" ? "#60a5fa" : item.PayMode==="CREDIT" ? "#f59e0b" : "#c084fc" }]}>{item.PayMode}</Text>
+                      <View style={[styles.badgePay, { backgroundColor: item.PayMode==="CASH" ? "rgba(34,197,94,0.15)" : item.PayMode==="NETS" ? "rgba(163,230,53,0.15)" : item.PayMode==="CARD" ? "rgba(59,130,246,0.15)" : "rgba(139,92,246,0.15)" }]}>
+                        <Ionicons name={getPaymentMethodIcon(item.PayMode)} size={10} color={item.PayMode==="CASH" ? "#4ade80" : item.PayMode==="NETS" ? "#a3e635" : item.PayMode==="CARD" ? "#60a5fa" : "#c084fc"} style={{ marginRight: 4 }} />
+                        <Text style={[styles.badgePayTxt, { color: item.PayMode==="CASH" ? "#4ade80" : item.PayMode==="NETS" ? "#a3e635" : item.PayMode==="CARD" ? "#60a5fa" : "#c084fc" }]}>{item.PayMode}</Text>
                       </View>
                     </View>
 
                     <Text style={[styles.tdCell, { flex: 0.8, color: getStatusColor(item.Status || "PAID"), fontFamily: Fonts.semiBold, fontSize: 12 }]}>{(item.Status || "Completed")}</Text>
                     
-                    <View style={{ flex: 1.5 }}>
-                        <Text style={[styles.tdCell, { textAlign: 'right', color: '#cbd5e1' }]}>{formatDateTime(item.SettlementDate)}</Text>
-                        {item.MemberName && <Text style={{ fontSize: 9, color: '#f59e0b', textAlign: 'right', fontFamily: Fonts.bold }}>👤 {item.MemberName}</Text>}
-                    </View>
+                    <Text style={[styles.tdCell, { flex: 1.5, textAlign: 'right', color: '#cbd5e1' }]}>{formatDateTime(item.SettlementDate)}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -656,5 +659,4 @@ const styles = StyleSheet.create({
   orderItemQty: { color: "#22c55e", fontSize: 14, fontFamily: Fonts.black, width: 30 },
   orderItemName: { flex: 1, color: "#e2e8f0", fontSize: 14, fontFamily: Fonts.bold },
   orderItemPrice: { color: "#fff", fontSize: 14, fontFamily: Fonts.black },
-  modalBody: { paddingHorizontal: 4 },
 });

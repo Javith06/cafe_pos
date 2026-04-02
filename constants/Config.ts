@@ -15,4 +15,4 @@ const LOCAL_URL = "http://localhost:3000";
 // Use your computer's IP address (e.g., "http://192.168.1.10:3000").
 const LOCAL_IP_URL = "http://localhost:3000"; // Replace 'localhost' with your IP if needed.
 
-export const API_URL = LOCAL_URL; // <--- SWITCHED TO LOCAL FOR TESTING
+export const API_URL = PRODUCTION_URL; // <--- CHANGE THIS TO SWITCH MODES

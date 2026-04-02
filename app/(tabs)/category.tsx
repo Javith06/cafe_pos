@@ -56,8 +56,26 @@ const SECTION_SHORT: Record<string, string> = {
   TAKEAWAY: "TW",
 };
 
-// No longer using fallback data to avoid showing incorrect table lists when API fails.
-const getFallbackTables = (): TableItem[] => [];
+// 🔥 FALLBACK DATA - If API fails
+const getFallbackTables = (): TableItem[] => {
+  const tables: TableItem[] = [];
+  for (let i = 1; i <= 15; i++) {
+    tables.push({ id: `fb-${i}`, label: `${i}`, DiningSection: 1 });
+  }
+  for (let i = 16; i <= 30; i++) {
+    tables.push({ id: `fb-${i}`, label: `${i}`, DiningSection: 2 });
+  }
+  for (let i = 31; i <= 40; i++) {
+    tables.push({ id: `fb-${i}`, label: `${i}`, DiningSection: 3 });
+  }
+  for (let i = 1; i <= 20; i++) {
+    tables.push({ id: `fb-T${i}`, label: `T${i}`, DiningSection: 4 });
+  }
+  for (let i = 1; i <= 20; i++) {
+    tables.push({ id: `fb-D${i}`, label: `D${i}`, DiningSection: 3 });
+  }
+  return tables;
+};
 
 export default function Category() {
   const { width } = useWindowDimensions();
@@ -141,15 +159,22 @@ export default function Category() {
         });
         loadedSections.current.add(section);
       } else {
-        // No tables found for this section in the DB - Clear those section tables from UI
         setAllTables((prev) => {
-          const sectionNum = { SECTION_1: 1, SECTION_2: 2, SECTION_3: 3, TAKEAWAY: 4 }[section];
-          return prev.filter((t) => t.DiningSection !== sectionNum);
+          // No data from API — use fallback for this section only
+          const sectionNum = { SECTION_1: 1, SECTION_2: 2, SECTION_3: 3, TAKEAWAY: 4 }[section] ?? 0;
+          const fallback = getFallbackTables().filter((t) => t.DiningSection === sectionNum);
+          const others = prev.filter((t) => t.DiningSection !== sectionNum);
+          return [...others, ...fallback];
         });
       }
     } catch (error) {
-      console.warn(`fetchTables(${section}) failed:`, error);
-      // Keep existing data or let ListEmptyComponent handle failed state
+      console.warn(`fetchTables(${section}) failed, using fallback:`, error);
+      const sectionNum = { SECTION_1: 1, SECTION_2: 2, SECTION_3: 3, TAKEAWAY: 4 }[section] ?? 0;
+      const fallback = getFallbackTables().filter((t) => t.DiningSection === sectionNum);
+      setAllTables((prev) => {
+        const others = prev.filter((t) => t.DiningSection !== sectionNum);
+        return [...others, ...fallback];
+      });
     } finally {
       setLoading(false);
     }
@@ -367,34 +392,6 @@ export default function Category() {
 
           router.push("/menu/thai_kitchen");
         }}
-        onLongPress={() => {
-          if (isLockedByOther) return;
-          
-          Alert.alert(
-            "🔒 Table Management",
-            `Choose an action for Table ${item.label}`,
-            [
-              { text: "Cancel", style: "cancel" },
-              { 
-                text: "Lock / Reserve Table", 
-                onPress: async () => {
-                  try {
-                    const res = await fetch(`${API}/api/tables/lock-persistent`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ tableId: item.id }),
-                    });
-                    if (res.ok) {
-                      Alert.alert("Success", `Table ${item.label} is now locked.`);
-                    }
-                  } catch (e) {
-                    Alert.alert("Error", "Failed to lock table");
-                  }
-                }
-              }
-            ]
-          );
-        }}
       >
         {/* Locked overlay badge */}
         {isLockedByOther && (
@@ -545,28 +542,6 @@ export default function Category() {
                     {tables.filter(t => t.section === activeTab).length}
                   </Text>
                 </View>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.headerActionBtn, styles.lockBtn]}
-              onPress={() => router.push("/locked-tables")}
-              activeOpacity={0.75}
-            >
-              <Ionicons name="lock-closed-outline" size={16} color="#8bc34a" />
-              {isTablet && (
-                <Text style={[styles.headerActionText, { color: "#8bc34a" }]}>Locked</Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.headerActionBtn, styles.membersBtn]}
-              onPress={() => router.push("/members")}
-              activeOpacity={0.75}
-            >
-              <Ionicons name="people-outline" size={16} color="#3b82f6" />
-              {isTablet && (
-                <Text style={[styles.headerActionText, { color: "#3b82f6" }]}>Members</Text>
               )}
             </TouchableOpacity>
 
@@ -881,14 +856,6 @@ const styles = StyleSheet.create({
   salesBtn: {
     backgroundColor: "rgba(34,197,94,0.1)",
     borderColor: "rgba(34,197,94,0.2)",
-  },
-  lockBtn: {
-    backgroundColor: "rgba(139,195,74,0.1)",
-    borderColor: "rgba(139,195,74,0.2)",
-  },
-  membersBtn: {
-    backgroundColor: "rgba(59,130,246,0.1)",
-    borderColor: "rgba(59,130,246,0.2)",
   },
   logoutBtn: {
     backgroundColor: "rgba(239,68,68,0.1)",
