@@ -542,28 +542,28 @@ app.get("/api/sales/transactions", async (req, res) => {
     }
 
     const result = await pool.request()
-      .input("StartDate", sql.DateTime, `${startDate} 00:00:00`)
-      .input("EndDate", sql.DateTime, `${endDate} 23:59:59`)
-      .query(`
-        SELECT
-          sh.SettlementID,
-          sh.LastSettlementDate AS SettlementDate,
-          sh.BillNo,
-          ISNULL(sts.PayMode, 'CASH') AS PayMode,
-          ISNULL(sts.SysAmount, 0) AS SysAmount,
-          ISNULL(sts.ManualAmount, 0) AS ManualAmount,
-          ISNULL(sts.ReceiptCount, 0) AS ReceiptCount,
-          m.Name as MemberName
-        FROM SettlementHeader sh
-        INNER JOIN SettlementTotalSales sts 
-          ON sh.SettlementID = sts.SettlementID
-        LEFT JOIN MemberMaster m 
-          ON sh.MemberId = m.MemberId
-        WHERE 
-          sh.LastSettlementDate IS NOT NULL
-          AND sh.LastSettlementDate BETWEEN @StartDate AND @EndDate        
-          ORDER BY sh.LastSettlementDate DESC
-      `);
+  .input("StartDate", sql.DateTime, `${startDate} 00:00:00`)
+  .input("EndDate", sql.DateTime, `${endDate} 23:59:59`)
+  .query(`
+    SELECT
+      sh.SettlementID,
+      sh.LastSettlementDate AS SettlementDate,
+      sh.BillNo,
+      ISNULL(sts.PayMode, 'CASH') AS PayMode,
+      ISNULL(sts.SysAmount, 0) AS SysAmount,
+      ISNULL(sts.ManualAmount, 0) AS ManualAmount,
+      ISNULL(sts.ReceiptCount, 0) AS ReceiptCount,
+      m.Name as MemberName
+    FROM SettlementHeader sh
+    INNER JOIN SettlementTotalSales sts 
+      ON sh.SettlementID = sts.SettlementID
+    LEFT JOIN MemberMaster m 
+      ON sh.MemberId = m.MemberId
+    WHERE 
+      sh.LastSettlementDate IS NOT NULL
+      AND sh.LastSettlementDate BETWEEN @StartDate AND @EndDate        
+    ORDER BY sh.LastSettlementDate DESC
+  `);
 
     console.log(`✅ Transactions: ${result.recordset.length} rows for ${startDate} → ${endDate}`);
     res.json(result.recordset);
