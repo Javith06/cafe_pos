@@ -12,7 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { BlurView } from "expo-blur";
-import { API_URL } from "../constants/Config";
+import { API_URL } from "@/constants/Config";
 import { Fonts } from "../constants/Fonts";
 
 type TableType = {
@@ -30,10 +30,10 @@ export default function LockedTablesScreen() {
 
   const fetchTables = async () => {
     try {
-      setLoading(true);
+      if (tables.length === 0) setLoading(true);
       const res = await fetch(`${API_URL}/api/tables/locked`);
       const data = await res.json();
-      setTables(data);
+      setTables(Array.isArray(data) ? data : []);
     } catch (err) {
       console.log(err);
       Alert.alert("Error", "Failed to fetch locked tables");

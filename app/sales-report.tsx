@@ -10,9 +10,8 @@ import {
   ImageBackground,
   Dimensions,
   Modal,
-  Animated,
-  StatusBar,
 } from "react-native";
+import { API_URL } from "@/constants/Config";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
@@ -22,7 +21,6 @@ import * as Haptics from "expo-haptics";
 import { Fonts } from "../constants/Fonts";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
-const API_URL = "https://cafepos-production-3428.up.railway.app";
 
 type FilterType = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
 
@@ -41,8 +39,6 @@ export default function SalesReport() {
   const [activePaymentModes, setActivePaymentModes] = useState<string[]>(["CASH", "CARD", "NETS", "PAYNOW"]);
   const [activeOrderTypes, setActiveOrderTypes] = useState<string[]>(["DINE-IN", "TAKEAWAY"]);
   const [sortOrder, setSortOrder] = useState<"NEWEST" | "HIGHEST">("NEWEST");
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const sidebarAnim = React.useRef(new Animated.Value(-280)).current;
 
   const isTablet = SCREEN_W >= 768;
 
@@ -80,7 +76,8 @@ export default function SalesReport() {
 
   const fetchData = async () => {
     try {
-      setLoading(true);
+      // Avoid flickering: Only show full loading spinner if we have NO sales data yet
+      if (sales.length === 0) setLoading(true);
       await Promise.all([fetchSales(), fetchSummary()]);
     } catch (error) {
       console.error("Error:", error);
@@ -277,648 +274,879 @@ export default function SalesReport() {
     fetchOrderDetails(order.SettlementID);
   };
 
-  const toggleSidebar = () => {
-    const toValue = isSidebarOpen ? -280 : 0;
-    Animated.timing(sidebarAnim, {
-      toValue,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
-    setIsSidebarOpen(!isSidebarOpen);
-  };
-
   const renderMetricTile = (
     label: string,
     value: string | number,
     icon: any,
-    color: string,
-    trend?: string,
+    color: string
   ) => (
-    <View style={styles.metricCard}>
-      <View style={[styles.cardIconBg, { backgroundColor: `${color}15` }]}>
-        <Ionicons name={icon} size={22} color={color} />
+    <View style={[styles.metricTile, { borderLeftColor: color }]}>
+      <View style={styles.tileHeader}>
+        <Ionicons name={icon} size={14} color="#94a3b8" />
+        <Text style={styles.tileLabel}>{label}</Text>
       </View>
-      <View style={styles.cardContent}>
-        <Text style={styles.cardLabel}>{label}</Text>
-        <Text style={styles.cardValue}>{value}</Text>
-        {trend && (
-          <View style={styles.trendRow}>
-            <Ionicons name="trending-up" size={12} color="#10b981" />
-            <Text style={styles.trendText}>{trend} vs last month</Text>
-          </View>
-        )}
-      </View>
+      <Text style={[styles.tileValue, { color }]}>{value}</Text>
     </View>
   );
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
-      <SafeAreaView style={styles.safeArea} edges={["top"]}>
-        {/* TOP DASHBOARD HEADER */}
-        <View style={styles.dashboardHeader}>
-          <View style={styles.headerLeft}>
-            <TouchableOpacity onPress={toggleSidebar} style={styles.iconBtn}>
-              <Ionicons name="menu-outline" size={26} color="#1e293b" />
-            </TouchableOpacity>
-            <View style={styles.titleArea}>
-              <Text style={styles.mainTitle}>Sales Report</Text>
-              <Text style={styles.mainSubtitle}>{selectedFilter} Tracking • {selectedDate}</Text>
-            </View>
-          </View>
-          
-          <View style={styles.headerRight}>
-            <TouchableOpacity style={styles.iconBtn} onPress={onRefresh}>
-              <Ionicons name="refresh-outline" size={22} color="#64748b" />
-            </TouchableOpacity>
-            <View style={styles.profileBox}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>AD</Text>
+    <View style={{ flex: 1 }}>
+      <ImageBackground
+        source={require("../assets/images/mesh_bg.png")}
+        style={{ width: SCREEN_W, height: SCREEN_H }}
+        resizeMode="cover"
+      >
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.overlay}>
+            {/* Header / Nav */}
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                <Ionicons name="arrow-back" size={24} color="#fff" />
+              </TouchableOpacity>
+              <View style={styles.headerTitleWrap}>
+                <Text style={styles.headerTitle}>SALES DASHBOARD</Text>
+                <Text style={styles.headerSubtitle}>Real-time performance analytics</Text>
               </View>
-              {isTablet && (
-                <View style={styles.profileText}>
-                  <Text style={styles.profileName}>Admin Store</Text>
-                  <Text style={styles.profileRole}>Manager</Text>
-                </View>
-              )}
-            </View>
-          </View>
-        </View>
-
-        <View style={{ flex: 1, flexDirection: "row" }}>
-          {/* COLLAPSIBLE SIDEBAR NAVIGATION */}
-          <Animated.View style={[styles.sidebar, { transform: [{ translateX: sidebarAnim }] }]}>
-             <View style={styles.sidebarHeader}>
-                <Text style={styles.sidebarBrand}>Deal<Text style={{ color: "#4f46e5" }}>Deck</Text></Text>
-                <TouchableOpacity onPress={toggleSidebar} style={styles.sidebarCloseBtn}>
-                   <Ionicons name="chevron-back" size={20} color="#94a3b8" />
-                </TouchableOpacity>
-             </View>
-             
-             <ScrollView style={styles.sidebarNav} showsVerticalScrollIndicator={false}>
-                <Text style={styles.sidebarSectionLabel}>MENU</Text>
-                {[
-                  { id: "dash", label: "Dashboard", icon: "grid-outline" },
-                  { id: "report", label: "Report", icon: "bar-chart", active: true },
-                  { id: "prod", label: "Products", icon: "cube-outline" },
-                  { id: "cons", label: "Consumer", icon: "people-outline" }
-                ].map(m => (
-                  <TouchableOpacity key={m.id} style={[styles.navItem, m.active && styles.navItemActive]}>
-                    <Ionicons name={m.icon as any} size={20} color={m.active ? "#fff" : "#94a3b8"} />
-                    <Text style={[styles.navText, m.active && styles.navTextActive]}>{m.label}</Text>
-                  </TouchableOpacity>
-                ))}
-
-                <Text style={[styles.sidebarSectionLabel, { marginTop: 25 }]}>FINANCIAL</Text>
-                {[
-                  { id: "tx", label: "Transactions", icon: "receipt-outline" },
-                  { id: "inv", label: "Invoices", icon: "documents-outline" }
-                ].map(m => (
-                  <TouchableOpacity key={m.id} style={styles.navItem}>
-                    <Ionicons name={m.icon as any} size={20} color="#94a3b8" />
-                    <Text style={styles.navText}>{m.label}</Text>
-                  </TouchableOpacity>
-                ))}
-             </ScrollView>
-
-             <View style={styles.sidebarFooter}>
-                <TouchableOpacity style={styles.upgradeBtn}>
-                   <Ionicons name="rocket-outline" size={18} color="#fff" />
-                   <Text style={styles.upgradeText}>Upgrade Pro</Text>
-                </TouchableOpacity>
-             </View>
-          </Animated.View>
-
-          {/* MAIN TRANSACTIONAL CONTENT */}
-          <ScrollView 
-            style={styles.mainContent}
-            showsVerticalScrollIndicator={false}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#4f46e5" />}
-          >
-            {/* Range Pills */}
-            <View style={styles.pillContainer}>
-               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                {(["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] as FilterType[]).map((f) => (
-                  <TouchableOpacity
-                    key={f}
-                    onPress={() => setSelectedFilter(f)}
-                    style={[styles.pillBtn, selectedFilter === f && styles.pillActive]}
-                  >
-                    <Text style={[styles.pillText, selectedFilter === f && styles.pillTextActive]}>{f}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-              
-              <View style={styles.spacer} />
-              
-              <TouchableOpacity onPress={() => setShowFilterPanel(true)} style={styles.filterBtn}>
-                <Ionicons name="options-outline" size={18} color="#4f46e5" />
-                <Text style={styles.filterBtnText}>Filters</Text>
+              <TouchableOpacity
+                onPress={() => setShowFilterPanel(true)}
+                style={styles.filterMenuBtn}
+              >
+                <Ionicons name="filter-outline" size={20} color="#22c55e" />
+                <Text style={styles.filterBtnLabel}>FILTER</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Centered Date Navigation */}
-            <View style={styles.dateControlRow}>
-              <TouchableOpacity onPress={() => changeDate(-1)} style={styles.navDateBtn}>
-                <Ionicons name="chevron-back" size={20} color="#4f46e5" />
-              </TouchableOpacity>
-              <View style={styles.dateDisplayBox}>
-                <Ionicons name="calendar-outline" size={16} color="#64748b" style={{ marginRight: 8 }} />
-                <Text style={styles.dateDisplayText}>{selectedDate}</Text>
-              </View>
-              <TouchableOpacity onPress={() => changeDate(1)} style={styles.navDateBtn}>
-                <Ionicons name="chevron-forward" size={20} color="#4f46e5" />
-              </TouchableOpacity>
-            </View>
-
-            {/* High-Level Metrics */}
-            <View style={styles.metricsRow}>
-              {renderMetricTile("Total Revenue", formatCurrency(filteredMetrics.TotalSales), "wallet-outline", "#4f46e5", "+2.0%")}
-              {renderMetricTile("Avg Check", formatCurrency(avgOrder), "analytics-outline", "#3b82f6", "+1.1%")}
-              {renderMetricTile("Orders", filteredMetrics.TotalTransactions, "receipt-outline", "#10b981", "+0.8%")}
-              {renderMetricTile("Items", filteredMetrics.TotalItems, "cube-outline", "#f59e0b", "+12.1%")}
-            </View>
-
-            <View style={[styles.contentRow, { flexDirection: isTablet ? "row" : "column" }]}>
-              {/* Payment Mix Breakdown */}
-              <View style={[styles.statCard, { flex: 1.5 }]}>
-                <Text style={styles.cardTitle}>Payment Distribution</Text>
-                <View style={styles.circularChartPlaceholder}>
-                   <View style={styles.ringOuter}>
-                      <View style={styles.ringInner}>
-                         <Text style={styles.centerValue}>{formatCurrency(filteredMetrics.TotalSales)}</Text>
-                         <Text style={styles.centerLabel}>Total Sales</Text>
-                      </View>
+            <ScrollView 
+              showsVerticalScrollIndicator={false}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#22c55e" />}
+              contentContainerStyle={{ paddingBottom: 40 }}
+            >
+              <View style={styles.badgeRow}>
+                {activePaymentModes.length < 4 && activePaymentModes.map(m => (
+                  <View key={m} style={[styles.activeBadge, { borderColor: m === "CARD" ? "#818cf8" : "#22c55e" }]}>
+                    <Text style={[styles.badgeText, m === "CARD" && { color: "#818cf8" }]}>{m}</Text>
+                    <TouchableOpacity onPress={() => togglePaymentMode(m)}>
+                      <Ionicons name="close-circle" size={14} color={m === "CARD" ? "#818cf8" : "#22c55e"} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                {activeOrderTypes.length < 2 && activeOrderTypes.map(t => (
+                  <View key={t} style={[styles.activeBadge, { borderColor: "#3b82f6" }]}>
+                    <Text style={[styles.badgeText, { color: "#3b82f6" }]}>{t}</Text>
+                    <TouchableOpacity onPress={() => toggleOrderType(t)}>
+                      <Ionicons name="close-circle" size={14} color="#3b82f6" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                {sortOrder === "HIGHEST" && (
+                   <View style={[styles.activeBadge, { backgroundColor: "rgba(245,158,11,0.1)", borderColor: "#f59e0b" }]}>
+                     <Text style={[styles.badgeText, { color: "#f59e0b" }]}>TOP SALES</Text>
                    </View>
+                )}
+              </View>
+              {/* Filter Toggles */}
+              <View style={styles.filterBar}>
+                {(["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] as FilterType[]).map(
+                  (f) => (
+                    <TouchableOpacity
+                      key={f}
+                      onPress={() => setSelectedFilter(f)}
+                      style={[
+                        styles.filterBtn,
+                        selectedFilter === f && styles.activeFilterBtn,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.filterText,
+                          selectedFilter === f && styles.activeFilterText,
+                        ]}
+                      >
+                        {f}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                )}
+              </View>
+
+              {/* Date Navigation */}
+              <View style={styles.dateControl}>
+                <TouchableOpacity onPress={() => changeDate(-1)} style={styles.navBtn}>
+                  <Ionicons name="chevron-back" size={20} color="#fff" />
+                </TouchableOpacity>
+                <View style={styles.dateDisplay}>
+                  <Text style={styles.dateText}>{selectedDate}</Text>
                 </View>
-                
-                <View style={styles.legendGrid}>
-                  {[
-                    { label: "CASH", val: paymentMix.cash, color: "#10b981" },
-                    { label: "CARD", val: paymentMix.card, color: "#818cf8" },
-                    { label: "NETS", val: paymentMix.nets, color: "#3b82f6" },
-                    { label: "PAYNOW", val: paymentMix.paynow, color: "#f59e0b" }
-                  ].map(p => (
-                    <View key={p.label} style={styles.legendEntry}>
-                       <View style={[styles.legendDot, { backgroundColor: p.color }]} />
-                       <View>
-                          <Text style={styles.legendLabel}>{p.label}</Text>
-                          <Text style={styles.legendVal}>{p.val.toFixed(1)}%</Text>
-                       </View>
-                    </View>
-                  ))}
+                <TouchableOpacity onPress={() => changeDate(1)} style={styles.navBtn}>
+                  <Ionicons name="chevron-forward" size={20} color="#fff" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.metricsGrid}>
+                {renderMetricTile(
+                  "Gross Revenue",
+                  formatCurrency(filteredMetrics.TotalSales),
+                  "card-outline",
+                  "#22c55e"
+                )}
+                {renderMetricTile(
+                  "Avg Check",
+                  formatCurrency(avgOrder),
+                  "analytics-outline",
+                  "#3b82f6"
+                )}
+                {renderMetricTile(
+                  "Total Orders",
+                  filteredMetrics.TotalTransactions,
+                  "receipt-outline",
+                  "#f59e0b"
+                )}
+                {renderMetricTile(
+                  "Items Sold",
+                  filteredMetrics.TotalItems,
+                  "fast-food-outline",
+                  "#ec4899"
+                )}
+              </View>
+
+              {/* Payment Mix Chart */}
+              <View style={styles.chartCard}>
+                <Text style={styles.cardTitle}>PAYMENT CHANNEL MIX</Text>
+                <View style={styles.progressRow}>
+                  {paymentMix.cash > 0 && <View style={[styles.progressSegment, { width: `${paymentMix.cash}%`, backgroundColor: "#22c55e" }]} />}
+                  {paymentMix.card > 0 && <View style={[styles.progressSegment, { width: `${paymentMix.card}%`, backgroundColor: "#818cf8" }]} />}
+                  {paymentMix.nets > 0 && <View style={[styles.progressSegment, { width: `${paymentMix.nets}%`, backgroundColor: "#3b82f6" }]} />}
+                  {paymentMix.paynow > 0 && <View style={[styles.progressSegment, { width: `${paymentMix.paynow}%`, backgroundColor: "#f59e0b" }]} />}
+                </View>
+                <View style={styles.legendRow}>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.dot, { backgroundColor: "#22c55e" }]} />
+                    <Text style={styles.legendText}>CASH ({paymentMix.cash.toFixed(0)}%)</Text>
+                  </View>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.dot, { backgroundColor: "#818cf8" }]} />
+                    <Text style={styles.legendText}>CARD ({paymentMix.card.toFixed(0)}%)</Text>
+                  </View>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.dot, { backgroundColor: "#3b82f6" }]} />
+                    <Text style={styles.legendText}>NETS ({paymentMix.nets.toFixed(0)}%)</Text>
+                  </View>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.dot, { backgroundColor: "#f59e0b" }]} />
+                    <Text style={styles.legendText}>DIGITAL ({paymentMix.paynow.toFixed(0)}%)</Text>
+                  </View>
                 </View>
               </View>
 
-              {/* Recent Transaction Log */}
-              <View style={[styles.statCard, { flex: 2 }]}>
-                <View style={styles.cardHeaderArea}>
-                   <Text style={styles.cardTitle}>Recent Transactions</Text>
-                   <TouchableOpacity onPress={() => fetchData()}>
-                      <Text style={styles.viewAllText}>Refresh</Text>
-                   </TouchableOpacity>
-                </View>
-                {filteredSales.slice(0, 10).map((item, idx) => (
-                  <TouchableOpacity key={idx} onPress={() => handleOrderPress(item)} style={styles.activityRow}>
-                    <View style={[styles.activityIcon, { backgroundColor: item.PayMode === "CASH" ? "#10b98115" : "#3b82f615" }]}>
+              {/* Recent Activity */}
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionHeaderText}>RECENT ACTIVITY</Text>
+                <TouchableOpacity onPress={() => fetchData()}>
+                  <Text style={styles.seeAllText}>REFRESH</Text>
+                </TouchableOpacity>
+              </View>
+
+              {filteredSales.slice(0, 30).map((item, idx) => (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  key={idx}
+                  onPress={() => handleOrderPress(item)}
+                  style={styles.transactionCard}
+                >
+                  <View style={styles.txLeft}>
+                    <View style={styles.txIconWrap}>
                        <Ionicons 
-                        name={item.PayMode === "CASH" ? "cash-outline" : "card-outline"} 
+                        name={item.PayMode === "CASH" ? "cash-outline" : item.PayMode === "NETS" ? "card-outline" : "qr-code-outline"} 
                         size={18} 
-                        color={item.PayMode === "CASH" ? "#10b981" : "#3b82f6"} 
+                        color="#94a3b8" 
                        />
                     </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                       <Text style={styles.activityTitle}>Order # {item.BillID || item.SettlementID?.slice(0, 6)}</Text>
-                       <Text style={styles.activityTime}>{new Date(item.SettlementDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {item.PayMode}</Text>
+                    <View>
+                      <Text style={styles.txTitle}>Order Settled</Text>
+                      <Text style={styles.txSub}>
+                        {new Date(item.SettlementDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {item.PayMode}
+                      </Text>
                     </View>
-                    <Text style={styles.activityValue}>{formatCurrency(item.SysAmount)}</Text>
+                  </View>
+                  <View style={styles.txRight}>
+                    <Text style={styles.txAmount}>{formatCurrency(item.SysAmount)}</Text>
+                    <View style={styles.paidBadge}>
+                      <Text style={styles.paidText}>PAID</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            {/* ORDER DETAIL MODAL */}
+            <Modal
+              visible={!!selectedOrder}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setSelectedOrder(null)}
+            >
+              <BlurView intensity={15} tint="dark" style={styles.modalOverlay}>
+                <TouchableOpacity
+                  activeOpacity={1}
+                  style={styles.modalDismiss}
+                  onPress={() => setSelectedOrder(null)}
+                />
+                <View style={styles.modalContent}>
+                  <View style={styles.modalHeader}>
+                    <View>
+                      <Text style={styles.modalTitle}># {selectedOrder?.SettlementID?.slice(0, 8)}</Text>
+                      <Text style={styles.modalSub}>{new Date(selectedOrder?.SettlementDate).toLocaleString()}</Text>
+                    </View>
+                    <TouchableOpacity onPress={() => setSelectedOrder(null)} style={styles.closeBtn}>
+                      <Ionicons name="close" size={24} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.modalDivider} />
+
+                  <View style={styles.modalBody}>
+                    <Text style={styles.orderLabel}>ORDER SUMMARY</Text>
+                    
+                    {loadingDetails ? (
+                      <ActivityIndicator color="#22c55e" style={{ marginVertical: 30 }} />
+                    ) : orderDetails.length > 0 ? (
+                      <View style={styles.itemsList}>
+                        {orderDetails.map((item, idx) => (
+                          <View key={idx} style={styles.orderItemRow}>
+                            <Text style={styles.orderItemQty}>{item.Qty}x</Text>
+                            <Text style={styles.orderItemName}>{item.DishName}</Text>
+                            <Text style={styles.orderItemPrice}>${(item.Price * item.Qty).toFixed(2)}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : (
+                      <Text style={{ color: "#64748b", fontStyle: "italic", textAlign: "center", marginVertical: 20 }}>
+                        No item data found for this transaction
+                      </Text>
+                    )}
+
+                    <View style={styles.modalDivider} />
+
+                    <View style={styles.paymentSummary}>
+                      <View style={styles.totalRow}>
+                        <Text style={styles.totalLabel}>Grand Total</Text>
+                        <Text style={styles.totalValue}>${selectedOrder?.SysAmount?.toFixed(2)}</Text>
+                      </View>
+                      <View style={styles.paymentRowDetail}>
+                        <Text style={styles.paymentLabelDetail}>Payment Mode</Text>
+                        <Text style={styles.paymentValueDetail}>{selectedOrder?.PayMode}</Text>
+                      </View>
+                      <View style={styles.paymentRowDetail}>
+                        <Text style={styles.paymentLabelDetail}>Status</Text>
+                        <Text style={[styles.paymentValueDetail, { color: "#22c55e" }]}>Settled ✅</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => setSelectedOrder(null)}
+                    style={styles.doneBtn}
+                  >
+                    <Text style={styles.doneBtnText}>CLOSE</Text>
                   </TouchableOpacity>
-                ))}
+                </View>
+              </BlurView>
+            </Modal>
+
+            {/* ADVANCED FILTER SIDEBAR */}
+            <Modal
+              visible={showFilterPanel}
+              transparent
+              animationType="none"
+              onRequestClose={() => setShowFilterPanel(false)}
+            >
+              <View style={styles.sidebarOverlay}>
+                <TouchableOpacity 
+                   activeOpacity={1} 
+                   style={styles.sidebarDismiss} 
+                   onPress={() => setShowFilterPanel(false)} 
+                />
+                <View style={styles.sidebarContent}>
+                  <View style={styles.sidebarHeader}>
+                    <Text style={styles.sidebarTitle}>ADVANCED FILTERS</Text>
+                    <TouchableOpacity onPress={() => setShowFilterPanel(false)}>
+                      <Ionicons name="close" size={24} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+
+                  <ScrollView showsVerticalScrollIndicator={false}>
+                    <View style={styles.sidebarSection}>
+                      <Text style={styles.sectionLabel}>PAYMENT MODES</Text>
+                      <View style={styles.chipRow}>
+                        {["CASH", "CARD", "NETS", "PAYNOW"].map(m => (
+                          <TouchableOpacity 
+                            key={m} 
+                            onPress={() => togglePaymentMode(m)}
+                            style={[styles.chip, activePaymentModes.includes(m) && styles.activeChip]}
+                          >
+                            <Text style={[styles.chipText, activePaymentModes.includes(m) && styles.activeChipText]}>{m}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+
+                    <View style={styles.sidebarSection}>
+                      <Text style={styles.sectionLabel}>ORDER TYPE</Text>
+                      <View style={styles.chipRow}>
+                        {["DINE-IN", "TAKEAWAY"].map(t => (
+                          <TouchableOpacity 
+                            key={t} 
+                            onPress={() => toggleOrderType(t)}
+                            style={[styles.chip, activeOrderTypes.includes(t) && styles.activeChip, { minWidth: 100 }]}
+                          >
+                            <Text style={[styles.chipText, activeOrderTypes.includes(t) && styles.activeChipText]}>{t}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+
+                    <View style={styles.sidebarSection}>
+                      <Text style={styles.sectionLabel}>SORT BY</Text>
+                      <TouchableOpacity 
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setSortOrder("NEWEST");
+                        }}
+                        style={[styles.sortBtn, sortOrder === "NEWEST" && styles.activeSortBtn]}
+                      >
+                        <Ionicons name="time-outline" size={18} color={sortOrder === "NEWEST" ? "#22c55e" : "#64748b"} />
+                        <Text style={[styles.sortText, sortOrder === "NEWEST" && styles.activeSortText]}>Newest First</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setSortOrder("HIGHEST");
+                        }}
+                        style={[styles.sortBtn, sortOrder === "HIGHEST" && styles.activeSortBtn]}
+                      >
+                        <Ionicons name="trending-up-outline" size={18} color={sortOrder === "HIGHEST" ? "#22c55e" : "#64748b"} />
+                        <Text style={[styles.sortText, sortOrder === "HIGHEST" && styles.activeSortText]}>Highest Amount</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </ScrollView>
+
+                  <View style={styles.sidebarFooter}>
+                    <TouchableOpacity 
+                      onPress={() => {
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        setActivePaymentModes(["CASH", "CARD", "NETS", "PAYNOW"]);
+                        setActiveOrderTypes(["DINE-IN", "TAKEAWAY"]);
+                        setSortOrder("NEWEST");
+                      }}
+                      style={styles.resetBtn}
+                    >
+                      <Text style={styles.resetText}>RESET ALL</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        setShowFilterPanel(false);
+                      }}
+                      style={styles.applyBtn}
+                    >
+                      <Text style={styles.applyText}>APPLY</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
-            </View>
-          </ScrollView>
-        </View>
-
-        {/* TRANSACTION DETAIL POPUP */}
-        <Modal
-          visible={!!selectedOrder}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setSelectedOrder(null)}
-        >
-          <View style={styles.modalOverlay}>
-            <TouchableOpacity activeOpacity={1} style={styles.modalDismiss} onPress={() => setSelectedOrder(null)} />
-            <View style={styles.modalContent}>
-               <View style={styles.modalHeader}>
-                 <View>
-                    <Text style={styles.modTitle}># {selectedOrder?.BillID || selectedOrder?.SettlementID?.slice(0, 8)}</Text>
-                    <Text style={styles.modSub}>{new Date(selectedOrder?.SettlementDate).toLocaleString()}</Text>
-                 </View>
-                 <TouchableOpacity onPress={() => setSelectedOrder(null)} style={styles.modClose}>
-                    <Ionicons name="close" size={24} color="#1e293b" />
-                 </TouchableOpacity>
-               </View>
-
-               <View style={styles.modBody}>
-                  <Text style={styles.modLabel}>Order Items</Text>
-                  {loadingDetails ? (
-                    <ActivityIndicator color="#4f46e5" style={{ marginVertical: 30 }} />
-                  ) : (
-                    <View style={styles.modItemsList}>
-                       {orderDetails.map((item, idx) => (
-                         <View key={idx} style={styles.modItemRow}>
-                           <View style={styles.modQtyBox}><Text style={styles.modQty}>{item.Qty}x</Text></View>
-                           <Text style={styles.modName}>{item.DishName}</Text>
-                           <Text style={styles.modPrice}>${(item.Price * item.Qty).toFixed(2)}</Text>
-                         </View>
-                       ))}
-                    </View>
-                  )}
-
-                  <View style={styles.modSummary}>
-                     <View style={styles.modTotalRow}>
-                        <Text style={styles.modTotalLabel}>Total Amount</Text>
-                        <Text style={styles.modTotalValue}>${selectedOrder?.SysAmount?.toFixed(2)}</Text>
-                     </View>
-                     <View style={styles.modDetailRow}>
-                        <Text style={styles.modDetailLabel}>Payment Method</Text>
-                        <Text style={styles.modDetailValue}>{selectedOrder?.PayMode}</Text>
-                     </View>
-                  </View>
-               </View>
-               
-               <TouchableOpacity onPress={() => setSelectedOrder(null)} style={styles.modDoneBtn}>
-                  <Text style={styles.modDoneText}>Done</Text>
-               </TouchableOpacity>
-            </View>
+            </Modal>
           </View>
-        </Modal>
-
-        {/* SIDEBAR FILTER PANEL */}
-        <Modal
-          visible={showFilterPanel}
-          transparent
-          animationType="slide"
-          onRequestClose={() => setShowFilterPanel(false)}
-        >
-          <View style={styles.filterOverlay}>
-             <TouchableOpacity activeOpacity={1} style={styles.filterDismiss} onPress={() => setShowFilterPanel(false)} />
-             <View style={styles.filterSheet}>
-                <View style={styles.sheetHeader}>
-                  <Text style={styles.sheetTitle}>Filters</Text>
-                  <TouchableOpacity onPress={() => setShowFilterPanel(false)}>
-                    <Ionicons name="close" size={24} color="#1e293b" />
-                  </TouchableOpacity>
-                </View>
-
-                <ScrollView showsVerticalScrollIndicator={false}>
-                  <View style={styles.sheetSection}>
-                    <Text style={styles.sheetLabel}>PAYMENT MODES</Text>
-                    <View style={styles.chipGrid}>
-                       {["CASH", "CARD", "NETS", "PAYNOW"].map(m => (
-                         <TouchableOpacity key={m} onPress={() => togglePaymentMode(m)} style={[styles.chip, activePaymentModes.includes(m) && styles.chipActive]}>
-                           <Text style={[styles.chipText, activePaymentModes.includes(m) && styles.chipTextActive]}>{m}</Text>
-                         </TouchableOpacity>
-                       ))}
-                    </View>
-                  </View>
-
-                  <View style={styles.sheetSection}>
-                    <Text style={styles.sheetLabel}>SORT ORDER</Text>
-                    <View style={styles.chipGrid}>
-                       {["NEWEST", "HIGHEST"].map((s: any) => (
-                         <TouchableOpacity key={s} onPress={() => setSortOrder(s)} style={[styles.chip, sortOrder === s && styles.chipActive]}>
-                           <Text style={[styles.chipText, sortOrder === s && styles.chipTextActive]}>{s}</Text>
-                         </TouchableOpacity>
-                       ))}
-                    </View>
-                  </View>
-                </ScrollView>
-
-                <View style={styles.sheetFooter}>
-                   <TouchableOpacity style={styles.sheetApplyBtn} onPress={() => setShowFilterPanel(false)}>
-                      <Text style={styles.sheetApplyText}>Apply Filters</Text>
-                   </TouchableOpacity>
-                </View>
-             </View>
-          </View>
-        </Modal>
-      </SafeAreaView>
+        </SafeAreaView>
+      </ImageBackground>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#fff" },
-  container: { flex: 1, backgroundColor: "#f8fafc" },
-  
-  /* HEADER */
-  dashboardHeader: {
-    height: 70,
+  safeArea: { flex: 1 },
+  overlay: { flex: 1, paddingHorizontal: 16 },
+  header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
-    zIndex: 10,
-  },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 15 },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: 10 },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "#f1f5f9",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  titleArea: { gap: 2 },
-  mainTitle: { fontSize: 18, fontFamily: Fonts.black, color: "#1e293b" },
-  mainSubtitle: { fontSize: 10, fontFamily: Fonts.bold, color: "#94a3b8", textTransform: "uppercase" },
-  
-  /* PROFILE */
-  profileBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingLeft: 10,
-    marginLeft: 5,
-    borderLeftWidth: 1,
-    borderLeftColor: "#f1f5f9",
-  },
-  avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: "#4f46e515",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1.5,
-    borderColor: "#4f46e530",
-  },
-  avatarText: { color: "#4f46e5", fontFamily: Fonts.black, fontSize: 12 },
-  profileText: { gap: 1 },
-  profileName: { fontSize: 13, fontFamily: Fonts.extraBold, color: "#1e293b" },
-  profileRole: { fontSize: 9, fontFamily: Fonts.bold, color: "#94a3b8", textTransform: "uppercase" },
-
-  /* SIDEBAR */
-  sidebar: {
-    position: "absolute",
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 280,
-    backgroundColor: "#1e293b",
-    zIndex: 100,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 10, height: 0 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  sidebarHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 30, paddingHorizontal: 10 },
-  sidebarBrand: { fontSize: 24, fontFamily: Fonts.black, color: "#fff" },
-  sidebarCloseBtn: { width: 32, height: 32, borderRadius: 8, backgroundColor: "rgba(255,255,255,0.05)", justifyContent: "center", alignItems: "center" },
-  sidebarSectionLabel: { fontSize: 10, fontFamily: Fonts.black, color: "#475569", letterSpacing: 1.5, marginBottom: 15, paddingHorizontal: 10 },
-  sidebarNav: { flex: 1 },
-  navItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 15,
-    borderRadius: 12,
-    marginBottom: 5,
+    paddingVertical: 18,
     gap: 12,
   },
-  navItemActive: { backgroundColor: "#4f46e5" },
-  navText: { fontSize: 14, fontFamily: Fonts.bold, color: "#94a3b8" },
-  navTextActive: { color: "#fff" },
-  sidebarFooter: { marginTop: 20 },
-  upgradeBtn: {
-    flexDirection: "row",
-    backgroundColor: "#4f46e5",
-    padding: 15,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  upgradeText: { color: "#fff", fontFamily: Fonts.black, fontSize: 13 },
-
-  /* MAIN CONTENT */
-  mainContent: {
-    flex: 1,
-    padding: 20,
-    backgroundColor: "#f8fafc",
-  },
-  pillContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20,
-    gap: 8,
-  },
-  pillBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#f1f5f9",
-  },
-  pillActive: {
-    backgroundColor: "#4f46e5",
-    borderColor: "#4f46e5",
-  },
-  pillText: { fontSize: 11, fontFamily: Fonts.bold, color: "#64748b" },
-  pillTextActive: { color: "#fff" },
-  spacer: { flex: 1 },
-  filterBtn: {
+  filterMenuBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: "#4f46e510",
+    backgroundColor: "rgba(34,197,94,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.2)",
   },
-  filterBtnText: { color: "#4f46e5", fontFamily: Fonts.black, fontSize: 12 },
-
-  /* DATE CONTROL */
-  dateControlRow: {
+  filterBtnLabel: {
+    color: "#4ade80",
+    fontFamily: Fonts.bold,
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  headerTitleWrap: { flex: 1 },
+  headerTitle: {
+    color: "#fff",
+    fontFamily: Fonts.black,
+    fontSize: 20,
+    letterSpacing: 1,
+  },
+  headerSubtitle: {
+    color: "#4ade80",
+    fontFamily: Fonts.semiBold,
+    fontSize: 11,
+    marginTop: 1,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  filterBar: {
+    flexDirection: "row",
+    borderRadius: 12,
+    overflow: "hidden",
+    padding: 4,
+    backgroundColor: "rgba(15, 23, 42, 0.7)",
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+  },
+  filterBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+    borderRadius: 8,
+  },
+  activeFilterBtn: {
+    backgroundColor: "rgba(34,197,94,0.15)",
+  },
+  filterText: {
+    color: "#64748b",
+    fontFamily: Fonts.black,
+    fontSize: 10,
+  },
+  activeFilterText: {
+    color: "#22c55e",
+  },
+  dateControl: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "space-between",
     marginBottom: 20,
-    gap: 20,
-    backgroundColor: "#fff",
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#f1f5f9",
+    gap: 12,
   },
-  navDateBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#4f46e510", justifyContent: "center", alignItems: "center" },
-  dateDisplayBox: { flexDirection: "row", alignItems: "center", paddingHorizontal: 10 },
-  dateDisplayText: { fontSize: 15, fontFamily: Fonts.black, color: "#1e293b" },
-
-  /* METRICS */
-  metricsRow: {
+  navBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dateDisplay: {
+    flex: 1,
+    height: 40,
+    borderRadius: 10,
+    overflow: "hidden",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(15, 23, 42, 0.7)",
+  },
+  dateText: {
+    color: "#fff",
+    fontFamily: Fonts.extraBold,
+    fontSize: 14,
+  },
+  metricsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 15,
-    marginBottom: 20,
+    gap: 10,
+    marginBottom: 16,
   },
-  metricCard: {
-    flex: 1,
-    minWidth: SCREEN_W >= 768 ? 180 : "45%",
-    backgroundColor: "#fff",
-    borderRadius: 24,
+  metricTile: {
+    width: (SCREEN_W - 32 - 10) / 2,
     padding: 16,
+    borderRadius: 14,
+    borderLeftWidth: 3,
+    backgroundColor: "rgba(15, 23, 42, 0.85)",
+  },
+  tileHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 8,
+  },
+  tileLabel: {
+    color: "#94a3b8",
+    fontFamily: Fonts.semiBold,
+    fontSize: 11,
+    textTransform: "uppercase",
+  },
+  tileValue: {
+    fontFamily: Fonts.black,
+    fontSize: 20,
+  },
+  chartCard: {
+    padding: 20,
+    borderRadius: 18,
+    marginBottom: 24,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(15, 23, 42, 0.85)",
+  },
+  cardTitle: {
+    color: "#94a3b8",
+    fontFamily: Fonts.black,
+    fontSize: 12,
+    letterSpacing: 1,
+    marginBottom: 16,
+  },
+  progressRow: {
+    height: 12,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 6,
+    overflow: "hidden",
+    flexDirection: "row",
+    marginBottom: 16,
+  },
+  progressSegment: { height: "100%" },
+  legendRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: {
+    color: "#94a3b8",
+    fontFamily: Fonts.bold,
+    fontSize: 10,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    marginBottom: 12,
+    marginTop: 8,
+  },
+  sectionHeaderText: {
+    color: "#64748b",
+    fontFamily: Fonts.black,
+    fontSize: 12,
+    letterSpacing: 1,
+  },
+  seeAllText: {
+    color: "#22c55e",
+    fontFamily: Fonts.bold,
+    fontSize: 12,
+  },
+  transactionCard: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+    backgroundColor: "rgba(15, 23, 42, 0.75)",
+  },
+  txLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.03,
-    shadowRadius: 10,
-    elevation: 2,
   },
-  cardIconBg: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  cardContent: { flex: 1 },
-  cardLabel: { fontSize: 10, fontFamily: Fonts.bold, color: "#94a3b8", marginBottom: 2 },
-  cardValue: { fontSize: 16, fontFamily: Fonts.black, color: "#1e293b" },
-  trendRow: { flexDirection: "row", alignItems: "center", gap: 3, marginTop: 4 },
-  trendText: { fontSize: 9, fontFamily: Fonts.bold, color: "#10b981" },
-
-  /* CHARTS & LISTS */
-  contentRow: { gap: 20, marginBottom: 40 },
-  statCard: {
-    backgroundColor: "#fff",
-    borderRadius: 24,
-    padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.03,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  cardTitle: { fontSize: 16, fontFamily: Fonts.black, color: "#1e293b", marginBottom: 20 },
-  
-  circularChartPlaceholder: {
-    height: 200,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  ringOuter: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    borderWidth: 15,
-    borderColor: "#4f46e520",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  ringInner: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "#fff",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  centerValue: { fontSize: 18, fontFamily: Fonts.black, color: "#1e293b" },
-  centerLabel: { fontSize: 10, fontFamily: Fonts.bold, color: "#94a3b8" },
-
-  legendGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 15,
-  },
-  legendEntry: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    minWidth: 80,
-  },
-  legendDot: { width: 8, height: 8, borderRadius: 4 },
-  legendLabel: { fontSize: 10, fontFamily: Fonts.bold, color: "#94a3b8" },
-  legendVal: { fontSize: 13, fontFamily: Fonts.black, color: "#1e293b" },
-
-  /* ACTIVITY ROW */
-  cardHeaderArea: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
-  viewAllText: { fontSize: 12, fontFamily: Fonts.bold, color: "#4f46e5" },
-  activityRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
-  },
-  activityIcon: {
+  txIconWrap: {
     width: 36,
     height: 36,
     borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.04)",
     justifyContent: "center",
     alignItems: "center",
   },
-  activityTitle: { fontSize: 14, fontFamily: Fonts.extraBold, color: "#1e293b" },
-  activityTime: { fontSize: 11, fontFamily: Fonts.bold, color: "#94a3b8" },
-  activityValue: { fontSize: 15, fontFamily: Fonts.black, color: "#1e293b" },
+  txTitle: {
+    color: "#fff",
+    fontFamily: Fonts.bold,
+    fontSize: 14,
+  },
+  txSub: {
+    color: "#64748b",
+    fontFamily: Fonts.medium,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  txRight: {
+    alignItems: "flex-end",
+  },
+  txAmount: {
+    color: "#22c55e",
+    fontFamily: Fonts.black,
+    fontSize: 15,
+  },
+  paidBadge: {
+    backgroundColor: "rgba(34,197,94,0.1)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 4,
+  },
+  paidText: {
+    color: "#4ade80",
+    fontFamily: Fonts.black,
+    fontSize: 8,
+  },
 
-  /* MODALS */
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 20 },
-  modalDismiss: { ...StyleSheet.absoluteFillObject },
-  modalContent: { width: "100%", maxWidth: 500, backgroundColor: "#fff", borderRadius: 32, padding: 24, overflow: "hidden" },
-  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
-  modTitle: { fontSize: 20, fontFamily: Fonts.black, color: "#1e293b" },
-  modSub: { fontSize: 12, fontFamily: Fonts.bold, color: "#94a3b8" },
-  modClose: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#f1f5f9", justifyContent: "center", alignItems: "center" },
-  modBody: { marginVertical: 20 },
-  modLabel: { fontSize: 12, fontFamily: Fonts.black, color: "#4f46e5", letterSpacing: 1, marginBottom: 15 },
-  modItemsList: { gap: 12 },
-  modItemRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  modQtyBox: { width: 28, height: 28, borderRadius: 8, backgroundColor: "#4f46e510", justifyContent: "center", alignItems: "center" },
-  modQty: { fontSize: 11, fontFamily: Fonts.black, color: "#4f46e5" },
-  modName: { flex: 1, fontSize: 14, fontFamily: Fonts.bold, color: "#1e293b" },
-  modPrice: { fontSize: 14, fontFamily: Fonts.black, color: "#1e293b" },
-  modSummary: { marginTop: 30, paddingTop: 20, borderTopWidth: 1, borderTopColor: "#f1f5f9", gap: 10 },
-  modTotalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 5 },
-  modTotalLabel: { fontSize: 16, fontFamily: Fonts.black, color: "#1e293b" },
-  modTotalValue: { fontSize: 20, fontFamily: Fonts.black, color: "#4f46e5" },
-  modDetailRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  modDetailLabel: { fontSize: 12, fontFamily: Fonts.bold, color: "#94a3b8" },
-  modDetailValue: { fontSize: 12, fontFamily: Fonts.black, color: "#1e293b" },
-  modDoneBtn: { backgroundColor: "#4f46e5", height: 55, borderRadius: 20, justifyContent: "center", alignItems: "center", marginTop: 20 },
-  modDoneText: { fontSize: 16, fontFamily: Fonts.black, color: "#fff" },
+  /* MODAL */
+  modalOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  modalDismiss: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  modalContent: {
+    width: Math.min(SCREEN_W * 0.9, 480),
+    backgroundColor: "#1e293b",
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 20,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  modalTitle: {
+    color: "#fff",
+    fontFamily: Fonts.black,
+    fontSize: 18,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  modalSub: {
+    color: "#4ade80",
+    fontFamily: Fonts.semiBold,
+    fontSize: 11,
+    marginTop: 2,
+    textTransform: "uppercase",
+  },
+  closeBtn: {
+    padding: 4,
+  },
+  modalBody: {
+    paddingTop: 8,
+  },
+  modalDivider: {
+    height: 1,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    marginVertical: 16,
+  },
+  orderLabel: {
+    color: "#64748b",
+    fontFamily: Fonts.black,
+    fontSize: 11,
+    letterSpacing: 1,
+    marginBottom: 12,
+  },
+  itemsList: {
+    maxHeight: 250,
+  },
+  orderItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    gap: 10,
+  },
+  orderItemQty: {
+    color: "#22c55e",
+    fontFamily: Fonts.black,
+    fontSize: 14,
+    width: 30,
+  },
+  orderItemName: {
+    flex: 1,
+    color: "#e2e8f0",
+    fontFamily: Fonts.bold,
+    fontSize: 14,
+  },
+  orderItemPrice: {
+    color: "#fff",
+    fontFamily: Fonts.black,
+    fontSize: 14,
+  },
+  paymentSummary: {
+    gap: 8,
+  },
+  totalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  totalLabel: {
+    color: "#fff",
+    fontFamily: Fonts.black,
+    fontSize: 16,
+  },
+  totalValue: {
+    color: "#22c55e",
+    fontFamily: Fonts.black,
+    fontSize: 24,
+  },
+  paymentRowDetail: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  paymentLabelDetail: {
+    color: "#64748b",
+    fontFamily: Fonts.bold,
+    fontSize: 13,
+  },
+  paymentValueDetail: {
+    color: "#fff",
+    fontFamily: Fonts.extraBold,
+    fontSize: 13,
+  },
+  doneBtn: {
+    backgroundColor: "rgba(34,197,94,0.15)",
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginTop: 24,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.3)",
+  },
+  doneBtnText: {
+    color: "#4ade80",
+    fontFamily: Fonts.black,
+    fontSize: 14,
+    letterSpacing: 1,
+  },
 
-  /* FILTER SHEET */
-  filterOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "flex-end" },
-  filterDismiss: { ...StyleSheet.absoluteFillObject },
-  filterSheet: { backgroundColor: "#fff", borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 40 },
-  sheetHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 30 },
-  sheetTitle: { fontSize: 22, fontFamily: Fonts.black, color: "#1e293b" },
-  sheetSection: { marginBottom: 30 },
-  sheetLabel: { fontSize: 11, fontFamily: Fonts.black, color: "#94a3b8", letterSpacing: 1, marginBottom: 15 },
-  chipGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  chip: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 16, backgroundColor: "#f1f5f9", borderWidth: 1, borderColor: "#f1f5f9" },
-  chipActive: { backgroundColor: "#4f46e510", borderColor: "#4f46e5" },
-  chipText: { fontSize: 13, fontFamily: Fonts.bold, color: "#64748b" },
-  chipTextActive: { color: "#4f46e5" },
-  sheetFooter: { marginTop: 20 },
-  sheetApplyBtn: { backgroundColor: "#4f46e5", height: 60, borderRadius: 20, justifyContent: "center", alignItems: "center" },
-  sheetApplyText: { fontSize: 16, fontFamily: Fonts.black, color: "#fff" },
-});
+  /* SIDEBAR */
+  sidebarOverlay: {
+    flex: 1,
+    flexDirection: "row-reverse",
+    backgroundColor: "rgba(0,0,0,0.4)",
+  },
+  sidebarDismiss: { flex: 1 },
+  sidebarContent: {
+    width: Math.min(SCREEN_W * 0.8, 320),
+    height: "100%",
+    backgroundColor: "#0f172a",
+    padding: 24,
+    paddingTop: 60,
+    borderLeftWidth: 1,
+    borderLeftColor: "rgba(255,255,255,0.1)",
+  },
+  sidebarHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 30,
+  },
+  sidebarTitle: {
+    color: "#fff",
+    fontFamily: Fonts.black,
+    fontSize: 16,
+    letterSpacing: 1,
+  },
+  sidebarSection: { marginBottom: 24 },
+  sectionLabel: {
+    color: "#475569",
+    fontFamily: Fonts.black,
+    fontSize: 10,
+    letterSpacing: 1,
+    marginBottom: 12,
+  },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  activeChip: {
+    backgroundColor: "rgba(34,197,94,0.15)",
+    borderColor: "rgba(34,197,94,0.3)",
+  },
+  chipText: { color: "#64748b", fontFamily: Fonts.bold, fontSize: 12 },
+  activeChipText: { color: "#22c55e" },
+  sortBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    marginBottom: 8,
+  },
+  activeSortBtn: {
+    backgroundColor: "rgba(34,197,94,0.08)",
+  },
+  sortText: { color: "#64748b", fontFamily: Fonts.bold, fontSize: 13 },
+  activeSortText: { color: "#f1f5f9" },
+  sidebarFooter: {
+    marginTop: "auto",
+    gap: 12,
+  },
+  applyBtn: {
+    backgroundColor: "#22c55e",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  applyText: { color: "#052b12", fontFamily: Fonts.black, fontSize: 14 },
+  resetBtn: {
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  resetText: { color: "#64748b", fontFamily: Fonts.bold, fontSize: 12 },
+
+  badgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
+  activeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  badgeText: { color: "#22c55e", fontFamily: Fonts.black, fontSize: 9, letterSpacing: 0.5 },
+});

@@ -27,7 +27,7 @@ import {
 } from "../../stores/cartStore";
 import { useOrderContextStore } from "../../stores/orderContextStore";
 
-const API = "https://cafepos-production-3428.up.railway.app";
+import { API_URL } from "@/constants/Config";
 
 const kitchenIcons: Record<string, string> = {
   "THAI KITCHEN": "🍜",
@@ -231,7 +231,10 @@ export default function MenuScreen() {
 
   // Load kitchens
   useEffect(() => {
-    fetch(`${API}/kitchens`)
+    // Only show full loading if no kitchens loaded yet
+    if (kitchens.length === 0) setIsInitialLoading(true);
+
+    fetch(`${API_URL}/kitchens`)
       .then((res) => res.json())
       .then((data) => {
         const safe = Array.isArray(data) ? data : [];
@@ -268,7 +271,7 @@ export default function MenuScreen() {
 
     console.log("Fetching dish groups for kitchen:", kitchenName);
     try {
-      const res = await fetch(`${API}/dishgroups/${kitchenId}`);
+      const res = await fetch(`${API_URL}/dishgroups/${kitchenId}`);
       if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
       const data = await res.json();
       console.log("Groups received:", data);
@@ -292,7 +295,7 @@ export default function MenuScreen() {
     console.log("Fetching dishes for group:", groupId);
 
     try {
-      const res = await fetch(`${API}/dishes/${groupId}`);
+      const res = await fetch(`${API_URL}/dishes/${groupId}`);
       if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
 
       const data = await res.json();
@@ -335,7 +338,7 @@ export default function MenuScreen() {
     setCustomPrice("");
 
     try {
-      const res = await fetch(`${API}/modifiers/${dish.DishId}`);
+      const res = await fetch(`${API_URL}/modifiers/${dish.DishId}`);
       const data = await res.json();
 
       if (Array.isArray(data) && data.length > 0) {
@@ -712,14 +715,6 @@ export default function MenuScreen() {
                         <Text style={styles.name} numberOfLines={2}>
                           {item.Name}
                         </Text>
-                        <TouchableOpacity
-                          style={styles.addToCartBtnSmall}
-                          onPress={() => openModifiers(item)}
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons name="add-circle" size={20} color="#4ade80" />
-                          <Text style={styles.addToCartBtnTextSmall}>Add to Cart</Text>
-                        </TouchableOpacity>
                       </View>
                     </TouchableOpacity>
                   )
@@ -1158,25 +1153,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.extraBold,
     fontSize: 14,
     minHeight: 38,
-  },
-  addToCartBtnSmall: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    backgroundColor: "rgba(34,197,94,0.12)",
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(34,197,94,0.25)",
-    marginTop: 6,
-  },
-  addToCartBtnTextSmall: {
-    color: "#4ade80",
-    fontFamily: Fonts.black,
-    fontSize: 11,
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
   },
   price: {
     color: "#22c55e",

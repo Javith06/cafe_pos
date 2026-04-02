@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { API_URL } from "../constants/Config";
+import { API_URL } from "@/constants/Config";
 import { Fonts } from "../constants/Fonts";
 import { BlurView } from "expo-blur";
 
@@ -40,10 +40,10 @@ export default function MembersScreen() {
 
   const fetchMembers = async () => {
     try {
-      setLoading(true);
+      if (members.length === 0) setLoading(true);
       const res = await fetch(`${API_URL}/api/members`);
       const data = await res.json();
-      setMembers(data);
+      setMembers(Array.isArray(data) ? data : []);
     } catch (err) {
       console.log(err);
       Alert.alert("Error", "Failed to load members");

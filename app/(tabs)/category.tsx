@@ -6,7 +6,6 @@ import {
   ActivityIndicator,
   FlatList,
   ImageBackground,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -26,8 +25,6 @@ import {
 import { getHeldOrders, removeHeldOrder } from "../../stores/heldOrdersStore";
 import { setOrderContext } from "../../stores/orderContextStore";
 import { useTableStatusStore } from "../../stores/tableStatusStore";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { API_URL } from "../../constants/Config";
 
 type TableItem = {
   id: string;
@@ -80,9 +77,6 @@ export default function Category() {
   const [activeTab, setActiveTab] = useState<string>("SECTION_1");
   const [allTables, setAllTables] = useState<TableItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTableOrder, setSelectedTableOrder] = useState<any>(null);
-  const [lockedTables, setLockedTables] = useState<string[]>([]);
-  const [sessionId, setSessionId] = useState<string>("");
   const sectionScrollRef = useRef<ScrollView>(null);
 
   const tables = useTableStatusStore((s) => s.tables);
@@ -138,31 +132,6 @@ export default function Category() {
   };
 
   useEffect(() => {
-    const initSession = async () => {
-      let id = await AsyncStorage.getItem("pos_session_id");
-      if (!id) {
-        id = Math.random().toString(36).substring(7);
-        await AsyncStorage.getItem("pos_session_id");
-        await AsyncStorage.setItem("pos_session_id", id);
-      }
-      setSessionId(id);
-    };
-    initSession();
-
-    const fetchLocked = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/tables/locked`);
-        const data = await res.json();
-        setLockedTables(data.map((l: any) => l.TableId));
-      } catch (e) {}
-    };
-
-    fetchLocked();
-    const interval = setInterval(fetchLocked, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
     if (urlSection && SECTIONS.includes(urlSection)) {
       setActiveTab(urlSection);
     }
@@ -207,7 +176,6 @@ export default function Category() {
   }).length;
 
   const renderItem = ({ item }: { item: TableItem }) => {
-    const isLockedByOther = lockedTables.includes(item.id);
     const tableData = tables.find(
       (t) => t.section === activeTab && t.tableNo === item.label,
     );
@@ -292,27 +260,16 @@ export default function Category() {
     return (
       <TouchableOpacity
         activeOpacity={0.8}
-        disabled={isLockedByOther}
         style={[
           styles.tableBox,
           {
             width: itemSize,
             height: itemSize,
             borderColor,
-            backgroundColor: isLockedByOther ? "rgba(100, 116, 139, 0.4)" : bgColor,
-            opacity: isLockedByOther ? 0.6 : 1,
+            backgroundColor: bgColor,
           },
         ]}
-        onPress={async () => {
-          // Lock table
-          try {
-            await fetch(`${API_URL}/api/tables/lock`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ tableId: item.id, userId: sessionId }),
-            });
-          } catch (e) {}
-
+        onPress={() => {
           let newContext: any;
           if (activeTab === "TAKEAWAY") {
             newContext = {
@@ -359,26 +316,6 @@ export default function Category() {
               <Text style={[styles.billText, { fontSize: smallFont + 1 }]}>
                 ${billAmount.toFixed(2)}
               </Text>
-              {!isLockedByOther && (
-                <TouchableOpacity
-                  style={styles.viewOrderBtn}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    const activeOrder = activeOrders.find(
-                      (o: any) => o.orderId === tableData.orderId,
-                    );
-                    setSelectedTableOrder(activeOrder || { items: [], orderId: tableData.orderId, tableNo: item.label });
-                  }}
-                >
-                  <Ionicons name="eye-outline" size={14} color="#fff" />
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-          {isLockedByOther && (
-            <View style={styles.lockOverlay}>
-              <Ionicons name="lock-closed" size={20} color="#cbd5e1" />
-              <Text style={styles.lockLabel}>IN USE</Text>
             </View>
           )}
         </View>
@@ -561,49 +498,6 @@ export default function Category() {
             </View>
           }
         />
-
-        {/* ═══════════ TABLE ORDER PREVIEW MODAL ═══════════ */}
-        <Modal
-          visible={!!selectedTableOrder}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setSelectedTableOrder(null)}
-        >
-          <BlurView intensity={20} tint="dark" style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <View>
-                  <Text style={styles.modalTitle}>Table {selectedTableOrder?.tableNo || selectedTableOrder?.context?.tableNo} Order</Text>
-                  <Text style={styles.modalSub}>Order #{selectedTableOrder?.orderId}</Text>
-                </View>
-                <TouchableOpacity onPress={() => setSelectedTableOrder(null)} style={styles.closeBtn}>
-                  <Ionicons name="close" size={24} color="#fff" />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-                {selectedTableOrder?.items && selectedTableOrder.items.length > 0 ? (
-                  selectedTableOrder.items.map((it: any, idx: number) => (
-                    <View key={idx} style={styles.orderRow}>
-                      <Text style={styles.orderQty}>{it.qty}x</Text>
-                      <Text style={styles.orderName}>{it.name}</Text>
-                      <Text style={styles.orderPrice}>${((it.price || 0) * it.qty).toFixed(2)}</Text>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={styles.emptyOrderText}>No items sent to kitchen yet.</Text>
-                )}
-              </ScrollView>
-
-              <TouchableOpacity
-                style={styles.modalCloseBtn}
-                onPress={() => setSelectedTableOrder(null)}
-              >
-                <Text style={styles.modalCloseBtnText}>CLOSE</Text>
-              </TouchableOpacity>
-            </View>
-          </BlurView>
-        </Modal>
       </ImageBackground>
     </SafeAreaView>
   );
@@ -910,118 +804,4 @@ const styles = StyleSheet.create({
     borderColor: "rgba(34,197,94,0.3)",
   },
   retryText: { color: "#4ade80", fontFamily: Fonts.bold, fontSize: 14 },
-
-  /* ── View Order Button ── */
-  viewOrderBtn: {
-    marginTop: 6,
-    padding: 6,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.2)",
-  },
-
-  /* ── Modal ── */
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: "#1e293b",
-    width: "100%",
-    maxWidth: 400,
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  modalTitle: {
-    color: "#fff",
-    fontSize: 18,
-    fontFamily: Fonts.black,
-  },
-  modalSub: {
-    color: "#4ade80",
-    fontSize: 11,
-    fontFamily: Fonts.bold,
-    textTransform: "uppercase",
-  },
-  closeBtn: {
-    padding: 4,
-  },
-  modalBody: {
-    maxHeight: 400,
-    marginBottom: 20,
-  },
-  orderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
-  },
-  orderQty: {
-    width: 30,
-    color: "#4ade80",
-    fontFamily: Fonts.black,
-    fontSize: 14,
-  },
-  orderName: {
-    flex: 1,
-    color: "#f1f5f9",
-    fontFamily: Fonts.semiBold,
-    fontSize: 14,
-  },
-  orderPrice: {
-    color: "#f1f5f9",
-    fontFamily: Fonts.bold,
-    fontSize: 14,
-  },
-  emptyOrderText: {
-    color: "#64748b",
-    textAlign: "center",
-    marginVertical: 30,
-    fontSize: 15,
-    fontFamily: Fonts.medium,
-  },
-  modalCloseBtn: {
-    backgroundColor: "rgba(255,255,255,0.08)",
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  modalCloseBtnText: {
-    color: "#fff",
-    fontFamily: Fonts.black,
-    fontSize: 14,
-  },
-
-  /* ── Lock Overlay ── */
-  lockOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(15, 23, 42, 0.4)",
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 14,
-    gap: 4,
-  },
-  lockLabel: {
-    color: "#cbd5e1",
-    fontSize: 10,
-    fontFamily: Fonts.black,
-    letterSpacing: 0.5,
-  },
 });
