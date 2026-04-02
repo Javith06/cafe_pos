@@ -415,7 +415,7 @@ app.get("/api/sales/daily/:date", async (req, res) => {
           ISNULL(SUM(CASE WHEN sts.PayMode = 'CREDIT' THEN sts.SysAmount ELSE 0 END), 0) as MemberSales,
           ISNULL(SUM(sts.ReceiptCount), 0) as TotalItems
         FROM SettlementHeader sh
-        INNER JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
+        LEFT JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
         WHERE sh.LastSettlementDate BETWEEN @StartOfDay AND @EndOfDay
       `);
     res.json(result.recordset[0] || {});
@@ -541,31 +541,35 @@ app.get("/api/sales/transactions", async (req, res) => {
       return res.status(400).json({ error: "startDate and endDate are required" });
     }
 
-    const result = await pool.request()
-  .input("StartDate", sql.DateTime, `${startDate} 00:00:00`)
-  .input("EndDate", sql.DateTime, `${endDate} 23:59:59`)
-  .query(`
-    SELECT
-      sh.SettlementID,
-      sh.LastSettlementDate AS SettlementDate,
-      sh.BillNo,
-      ISNULL(sts.PayMode, 'CASH') AS PayMode,
-      ISNULL(sts.SysAmount, 0) AS SysAmount,
-      ISNULL(sts.ManualAmount, 0) AS ManualAmount,
-      ISNULL(sts.ReceiptCount, 0) AS ReceiptCount,
-      m.Name as MemberName
-    FROM SettlementHeader sh
-    INNER JOIN SettlementTotalSales sts 
-      ON sh.SettlementID = sts.SettlementID
-    LEFT JOIN MemberMaster m 
-      ON sh.MemberId = m.MemberId
-    WHERE 
-      sh.LastSettlementDate IS NOT NULL
-      AND sh.LastSettlementDate BETWEEN @StartDate AND @EndDate        
-    ORDER BY sh.LastSettlementDate DESC
-  `);
+    console.log(`📊 Fetching transactions: ${startDate} to ${endDate}`);
 
-    console.log(`✅ Transactions: ${result.recordset.length} rows for ${startDate} → ${endDate}`);
+    const result = await pool.request()
+      .input("StartDateParam", sql.VarChar, startDate)
+      .input("EndDateParam", sql.VarChar, endDate)
+      .query(`
+        SELECT
+          sh.SettlementID,
+          sh.LastSettlementDate AS SettlementDate,
+          sh.BillNo,
+          ISNULL(sts.PayMode, 'CASH') AS PayMode,
+          ISNULL(sts.SysAmount, 0) AS SysAmount,
+          ISNULL(sts.ManualAmount, 0) AS ManualAmount,
+          ISNULL(sts.ReceiptCount, 0) AS ReceiptCount,
+          m.Name as MemberName
+        FROM SettlementHeader sh
+        LEFT JOIN SettlementTotalSales sts 
+          ON sh.SettlementID = sts.SettlementID
+        LEFT JOIN MemberMaster m 
+          ON sh.MemberId = m.MemberId
+        WHERE 
+          sh.LastSettlementDate IS NOT NULL
+          AND CAST(sh.LastSettlementDate AS DATE) 
+              BETWEEN CAST(@StartDateParam AS DATE) 
+              AND CAST(@EndDateParam AS DATE)       
+        ORDER BY sh.LastSettlementDate DESC
+      `);
+
+    console.log(`✅ Transactions found: ${result.recordset.length}`);
     res.json(result.recordset);
   } catch (err) {
     console.error("TRANSACTIONS ERROR:", err);
@@ -593,7 +597,7 @@ app.get("/api/sales/range", async (req, res) => {
           SUM(CASE WHEN sts.PayMode = 'CARD' THEN sts.SysAmount ELSE 0 END) as CardSales,
           SUM(CASE WHEN sts.PayMode = 'CREDIT' THEN sts.SysAmount ELSE 0 END) as MemberSales
         FROM SettlementHeader sh
-        INNER JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
+        LEFT JOIN SettlementTotalSales sts ON sh.SettlementID = sts.SettlementID
         WHERE sh.LastSettlementDate BETWEEN @StartDate AND @EndDate
         GROUP BY CAST(sh.LastSettlementDate AS DATE)
         ORDER BY SaleDate DESC
