@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Fonts } from "../constants/Fonts";
 import { useToast } from "../components/Toast";
+import { API_URL } from "@/constants/Config";
 
 import {
   findActiveOrder,
@@ -28,8 +29,6 @@ import {
   getOrderContext,
 } from "../stores/orderContextStore";
 import { useTableStatusStore } from "../stores/tableStatusStore";
-
-const API_URL = "https://cafepos-production-3428.up.railway.app";
 
 export default function PaymentScreen() {
   const closeActiveOrder = useActiveOrdersStore((s) => s.closeActiveOrder);
@@ -139,10 +138,33 @@ export default function PaymentScreen() {
       console.log("Total Amount:", total);
       console.log("Payment Method:", method);
       
+      // Validate Order ID before attempting to save
+      if (!activeOrder?.orderId || !/^#[A-Z0-9]{6}$/.test(activeOrder.orderId)) {
+        showToast({ type: "error", message: "Invalid Order ID", subtitle: "Order ID format is invalid" });
+        return false;
+      }
+
+      // Check if Order ID already exists
+      try {
+        const checkResponse = await fetch(`${API_URL}/api/orders/check/${activeOrder.orderId}`);
+        if (checkResponse.status === 409) {
+          showToast({ 
+            type: "error", 
+            message: "Duplicate Order ID", 
+            subtitle: "This order ID already exists. Creating new order..." 
+          });
+          // Note: A new order ID will be regenerated on next attempt
+          return false;
+        }
+      } catch (checkErr) {
+        console.warn("Could not validate Order ID, proceeding:", checkErr);
+        // Continue anyway - validation endpoint might be down
+      }
+      
       const saleData = {
         orderId: activeOrder?.orderId,
-        orderType: context?.orderType,
-        tableNo: context?.tableNo || context?.takeawayNo,
+        orderType: context?.orderType === "DINE_IN" ? "DINE-IN" : context?.orderType || "DINE-IN",
+        tableNo: context?.orderType === "TAKEAWAY" ? context?.takeawayNo : context?.tableNo,
         section: context?.section,
         items: cart.map(item => ({
           dishId: item.id,
@@ -153,6 +175,7 @@ export default function PaymentScreen() {
         subTotal: subtotal,
         taxAmount: tax,
         discountAmount: discountAmount,
+        discountType: discount?.type || "fixed",
         totalAmount: total,
         paymentMethod: method,
         cashierId: "FFA46DDA-2871-42BB-BE6D-A547AE9C1B88"
@@ -176,17 +199,32 @@ export default function PaymentScreen() {
       const result = await response.json();
       console.log("Response data:", result);
       
+      // Handle specific error codes
+      if (response.status === 409) {
+        showToast({ type: "error", message: "Duplicate Order ID", subtitle: "This order ID already exists. Please try again." });
+        return false;
+      }
+
+      if (response.status === 400) {
+        showToast({ type: "error", message: "Invalid Order", subtitle: result.error || "Order validation failed" });
+        return false;
+      }
+
       if (result.success) {
         console.log("✅ Sale saved successfully:", result.settlementId);
         return true;
       } else {
         console.log("⚠️ Sale save failed:", result);
+        showToast({ type: "error", message: "Payment Failed", subtitle: result.error || "Unable to process payment" });
         return false;
       }
     } catch (error: any) {
       console.error("❌ Failed to save sale:", error);
       if (error.name === 'AbortError') {
         console.log("Request timeout");
+        showToast({ type: "error", message: "Request Timeout", subtitle: "Server took too long to respond" });
+      } else {
+        showToast({ type: "error", message: "Payment Error", subtitle: error.message });
       }
       return false;
     }

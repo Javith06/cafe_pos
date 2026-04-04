@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   ImageBackground,
   ScrollView,
@@ -15,6 +16,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Fonts } from "../../constants/Fonts";
+import { API_URL } from "../../constants/Config";
 
 import { useActiveOrdersStore } from "../../stores/activeOrdersStore";
 import {
@@ -48,27 +50,6 @@ const SECTION_SHORT: Record<string, string> = {
   TAKEAWAY: "TW",
 };
 
-// 🔥 FALLBACK DATA - If API fails
-const getFallbackTables = (): TableItem[] => {
-  const tables: TableItem[] = [];
-  for (let i = 1; i <= 15; i++) {
-    tables.push({ id: `fb-${i}`, label: `${i}`, DiningSection: 1 });
-  }
-  for (let i = 16; i <= 30; i++) {
-    tables.push({ id: `fb-${i}`, label: `${i}`, DiningSection: 2 });
-  }
-  for (let i = 31; i <= 40; i++) {
-    tables.push({ id: `fb-${i}`, label: `${i}`, DiningSection: 3 });
-  }
-  for (let i = 1; i <= 20; i++) {
-    tables.push({ id: `fb-T${i}`, label: `T${i}`, DiningSection: 4 });
-  }
-  for (let i = 1; i <= 20; i++) {
-    tables.push({ id: `fb-D${i}`, label: `D${i}`, DiningSection: 3 });
-  }
-  return tables;
-};
-
 export default function Category() {
   const { width } = useWindowDimensions();
   const router = useRouter();
@@ -91,41 +72,65 @@ export default function Category() {
 
   const fetchTables = async () => {
     try {
+      console.log(`🔄 Fetching tables from ${API_URL}/tables...`);
+      
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
 
       const response = await fetch(
-        "https://cafepos-production-3428.up.railway.app/tables",
-        { signal: controller.signal },
+        `${API_URL}/tables`,
+        { 
+          signal: controller.signal,
+          headers: { "Accept": "application/json" }
+        },
       );
 
       clearTimeout(timeoutId);
 
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        console.error(`❌ HTTP ${response.status}:`, response.statusText);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
       const data = await response.json();
+      console.log("📦 API Response:", data);
 
       let tablesArray: any[] = [];
-      if (Array.isArray(data)) tablesArray = data;
-      else if (data?.data && Array.isArray(data.data)) tablesArray = data.data;
-      else if (data?.recordset && Array.isArray(data.recordset)) tablesArray = data.recordset;
+      if (Array.isArray(data)) {
+        tablesArray = data;
+      } else if (data?.data && Array.isArray(data.data)) {
+        tablesArray = data.data;
+      } else if (data?.recordset && Array.isArray(data.recordset)) {
+        tablesArray = data.recordset;
+      } else {
+        console.warn("⚠️ Unexpected response format:", typeof data);
+        tablesArray = [];
+      }
 
       if (tablesArray.length > 0) {
+        // Convert database data maintaining the DiningSection mapping
         const convertedData = tablesArray
           .map((item: any) => ({
-            id: item.id || item.TableId,
-            label: item.label || item.TableNumber,
-            DiningSection: Number(item.DiningSection),
+            id: item.TableId || item.id,
+            label: item.TableNumber || item.label,
+            DiningSection: Number(item.DiningSection) || 1,
           }))
           .filter((item) => item.id && item.label);
 
+        console.log(`✅ Successfully loaded ${convertedData.length} tables from database`);
         setAllTables(convertedData);
       } else {
-        throw new Error("No data from API");
+        console.error("❌ API returned empty table list");
+        throw new Error("No tables returned from API");
       }
     } catch (error) {
-      const fallbackData = getFallbackTables();
-      setAllTables(fallbackData);
+      console.error("❌ Critical: Failed to fetch tables from API:", error);
+      Alert.alert(
+        "Connection Error",
+        `Failed to connect to server at ${API_URL}\n\nPlease ensure the backend server is running and accessible.`,
+        [{ text: "OK" }]
+      );
+      setAllTables([]);
     } finally {
       setLoading(false);
     }
@@ -162,7 +167,7 @@ export default function Category() {
   const smallFont = Math.max(9, Math.min(14, itemSize * 0.18));
 
   const currentTables = allTables.filter((table) => {
-    if (activeTab === "TAKEAWAY") return table.DiningSection === 3 || table.DiningSection === 4;
+    if (activeTab === "TAKEAWAY") return table.DiningSection === 4;
     else if (activeTab === "SECTION_1") return table.DiningSection === 1;
     else if (activeTab === "SECTION_2") return table.DiningSection === 2;
     else if (activeTab === "SECTION_3") return table.DiningSection === 3;
@@ -228,6 +233,11 @@ export default function Category() {
       const elapsedMinutes = Math.floor(elapsedMs / 60000);
 
       switch (tableData.status) {
+        case "LOCKED":
+          bgColor = "rgba(251, 191, 36, 0.3)";
+          borderColor = "#fbbf24";
+          timeText = "RESERVED";
+          break;
         case "HOLD":
           bgColor = "rgba(37, 99, 235, 0.55)";
           borderColor = "#60a5fa";
@@ -253,8 +263,10 @@ export default function Category() {
       const time = new Date(tableData.startTime);
       const hours = time.getHours().toString().padStart(2, "0");
       const mins = time.getMinutes().toString().padStart(2, "0");
-      timeText = `${hours}:${mins}`;
-      orderText = `#${tableData.orderId}`;
+      if (tableData.status !== "LOCKED") {
+        timeText = `${hours}:${mins}`;
+        orderText = `#${tableData.orderId}`;
+      }
     }
 
     return (
@@ -270,6 +282,15 @@ export default function Category() {
           },
         ]}
         onPress={() => {
+          // Prevent interaction with locked tables
+          if (tableData && tableData.status === "LOCKED") {
+            Alert.alert("Table Locked", "This table is reserved. Visit Lock Tables to unlock it.", [
+              { text: "Go to Lock Tables", onPress: () => router.push("/locked-tables") },
+              { text: "Cancel", style: "cancel" },
+            ]);
+            return;
+          }
+
           let newContext: any;
           if (activeTab === "TAKEAWAY") {
             newContext = {
@@ -305,7 +326,7 @@ export default function Category() {
           <Text style={[styles.tableNumber, { fontSize: numberFont }]}>
             {item.label}
           </Text>
-          {tableData && (
+          {tableData && tableData.status !== "LOCKED" && (
             <View style={styles.tableInfo}>
               <Text style={[styles.timeText, { fontSize: smallFont }]}>
                 {timeText}
@@ -316,6 +337,12 @@ export default function Category() {
               <Text style={[styles.billText, { fontSize: smallFont + 1 }]}>
                 ${billAmount.toFixed(2)}
               </Text>
+            </View>
+          )}
+          {tableData && tableData.status === "LOCKED" && (
+            <View style={styles.lockedOverlay}>
+              <Ionicons name="lock-closed" size={20} color="#fbbf24" />
+              <Text style={[styles.timeText, { fontSize: smallFont }]}>RESERVED</Text>
             </View>
           )}
         </View>
@@ -424,6 +451,17 @@ export default function Category() {
               <Ionicons name="time-outline" size={16} color="#94a3b8" />
               {isTablet && (
                 <Text style={styles.headerActionText}>Time</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.headerActionBtn}
+              onPress={() => router.push("/locked-tables")}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="lock-outline" size={16} color="#f59e0b" />
+              {isTablet && (
+                <Text style={[styles.headerActionText, { color: "#f59e0b" }]}>Lock Tables</Text>
               )}
             </TouchableOpacity>
 
@@ -776,6 +814,11 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0,0,0,0.4)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  lockedOverlay: {
+    alignItems: "center",
+    gap: 4,
+    marginTop: 6,
   },
 
   /* ── Empty State ── */

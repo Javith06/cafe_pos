@@ -7,6 +7,8 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  ImageBackground,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,42 +16,130 @@ import { useRouter } from "expo-router";
 import { BlurView } from "expo-blur";
 import { API_URL } from "@/constants/Config";
 import { Fonts } from "../constants/Fonts";
+import { setOrderContext } from "../stores/orderContextStore";
+
+const { width: SCREEN_W } = Dimensions.get("window");
 
 type TableType = {
   tableId: string;
   tableNumber: string;
+  isLocked?: boolean;
+  diningSection?: number;
 };
 
-const MAX_TABLE = 15; // Adjusted for better visibility on one screen
+const SECTIONS = ["SECTION_1", "SECTION_2", "SECTION_3"];
+const SECTION_LABELS: Record<string, string> = {
+  SECTION_1: "Section 1",
+  SECTION_2: "Section 2",
+  SECTION_3: "Section 3",
+};
 
 export default function LockedTablesScreen() {
   const router = useRouter();
-  const [tables, setTables] = useState<TableType[]>([]);
+  const [lockedTables, setLockedTables] = useState<TableType[]>([]);
+  const [allTables, setAllTables] = useState<TableType[]>([]);
+  const [activeSection, setActiveSection] = useState("SECTION_1");
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(0);
 
-  const fetchTables = async () => {
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
     try {
-      if (tables.length === 0) setLoading(true);
-      const res = await fetch(`${API_URL}/api/tables/locked`);
-      const data = await res.json();
-      setTables(Array.isArray(data) ? data : []);
+      setLoading(true);
+      
+      // Fetch all tables from database
+      const tablesRes = await fetch(`${API_URL}/tables`);
+      const tablesData = await tablesRes.json();
+      
+      // Fetch locked tables
+      const lockedRes = await fetch(`${API_URL}/api/tables/locked`);
+      const lockedData = await lockedRes.json();
+      const locked = Array.isArray(lockedData) ? lockedData : [];
+      
+      setLockedTables(locked);
+
+      // Convert all tables from API response
+      const availableTables: TableType[] = Array.isArray(tablesData)
+        ? tablesData.map((table: any) => ({
+            tableId: table.id || table.TableId,
+            tableNumber: table.label || table.TableNumber,
+            diningSection: Number(table.DiningSection) || 1,
+            isLocked: locked.some(
+              (t: any) => (t.tableNumber || t.TableNumber) === (table.label || table.TableNumber)
+            ),
+          }))
+        : [];
+
+      console.log(`✅ Loaded ${availableTables.length} tables from database`);
+      setAllTables(availableTables);
     } catch (err) {
-      console.log(err);
-      Alert.alert("Error", "Failed to fetch locked tables");
+      console.log("Error fetching tables:", err);
+      Alert.alert("Error", "Failed to fetch tables");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchTables();
-  }, []);
+  // Map DiningSection number from database to section string
+  const getSectionFromDiningSection = (diningSection?: number): string => {
+    switch (diningSection) {
+      case 1:
+        return "SECTION_1";
+      case 2:
+        return "SECTION_2";
+      case 3:
+        return "SECTION_3";
+      default:
+        return "SECTION_1";
+    }
+  };
+
+  const continueWithOrder = (tableNumber: string, diningSection?: number) => {
+    const section = getSectionFromDiningSection(diningSection);
+    setOrderContext({
+      orderType: "DINE_IN",
+      section: section,
+      tableNo: tableNumber,
+    });
+    router.push("/menu/thai_kitchen");
+  };
+
+  const lockTable = async (tableId: string, tableNumber: string) => {
+    Alert.alert(
+      "Lock Table",
+      `Lock Table ${tableNumber} for reservation?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Lock",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const res = await fetch(`${API_URL}/api/tables/lock-persistent`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ tableId: tableId || `table-${tableNumber}` }),
+              });
+              if (res.ok) {
+                fetchData();
+                Alert.alert("Success", `Table ${tableNumber} locked for reservation`);
+              }
+            } catch (err) {
+              console.log(err);
+              Alert.alert("Error", "Failed to lock table");
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const unlockTable = async (tableId: string, tableNumber: string) => {
     Alert.alert(
       "Unlock Table",
-      `Are you sure you want to unlock Table ${tableNumber}?`,
+      `Unlock Table ${tableNumber}?`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -60,10 +150,11 @@ export default function LockedTablesScreen() {
               const res = await fetch(`${API_URL}/api/tables/unlock-persistent`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ tableId }),
+                body: JSON.stringify({ tableId: tableId || `table-${tableNumber}` }),
               });
               if (res.ok) {
-                fetchTables(); // refresh
+                fetchData();
+                Alert.alert("Success", `Table ${tableNumber} unlocked`);
               }
             } catch (err) {
               console.log(err);
@@ -75,129 +166,373 @@ export default function LockedTablesScreen() {
     );
   };
 
-  const startIndex = page * MAX_TABLE;
-  const endIndex = Math.min(startIndex + MAX_TABLE, tables.length);
-  const currentTables = tables.slice(startIndex, endIndex);
+  const sectionTables = allTables.filter(
+    (t) => getSectionFromDiningSection(t.diningSection) === activeSection
+  );
 
-  const renderItem = ({ item }: { item: TableType }) => (
-    <TouchableOpacity
-      style={styles.tableBtn}
-      onPress={() => unlockTable(item.tableId, item.tableNumber)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.iconCircle}>
-        <Ionicons name="lock-closed" size={20} color="#fff" />
-      </View>
-      <Text style={styles.tableNumText}>{item.tableNumber}</Text>
-      <Text style={styles.statusText}>LOCKED</Text>
-    </TouchableOpacity>
+  const renderTableItem = ({ item }: { item: TableType }) => (
+    <View style={[styles.tableCard, item.isLocked && styles.lockedCard]}>
+      <TouchableOpacity
+        style={styles.tableContent}
+        onPress={() => {
+          if (item.isLocked) {
+            Alert.alert(
+              "Locked Table",
+              `Table ${item.tableNumber} is locked. Continue order processing?`,
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Continue Order",
+                  onPress: () => continueWithOrder(item.tableNumber, item.diningSection),
+                },
+              ]
+            );
+          } else {
+            lockTable(item.tableId, item.tableNumber);
+          }
+        }}
+      >
+        <View style={[styles.tableIcon, item.isLocked && styles.lockedIcon]}>
+          <Ionicons
+            name={item.isLocked ? "lock-closed" : "lock-open-outline"}
+            size={24}
+            color={item.isLocked ? "#fbbf24" : "#64748b"}
+          />
+        </View>
+        <Text style={styles.tableNumber}>{item.tableNumber}</Text>
+        <Text style={[styles.tableStatus, item.isLocked && styles.lockedStatus]}>
+          {item.isLocked ? "LOCKED" : "AVAILABLE"}
+        </Text>
+      </TouchableOpacity>
+
+      {item.isLocked && (
+        <TouchableOpacity
+          style={styles.unlockBtn}
+          onPress={() => unlockTable(item.tableId, item.tableNumber)}
+        >
+          <Ionicons name="close" size={14} color="#f87171" />
+        </TouchableOpacity>
+      )}
+    </View>
   );
 
   return (
-    <View style={styles.container}>
-      <SafeAreaView style={{ flex: 1 }}>
+    <ImageBackground
+      source={require("../assets/images/mesh_bg.png")}
+      style={{ flex: 1 }}
+      resizeMode="cover"
+    >
+      <View style={styles.overlay} />
+      <SafeAreaView style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="chevron-back" size={24} color="#fff" />
+            <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Locked Tables</Text>
-          <TouchableOpacity onPress={fetchTables} style={styles.refreshBtn}>
-            <Ionicons name="refresh" size={22} color="#4ade80" />
+          <View>
+            <Text style={styles.headerTitle}>Lock Table</Text>
+            <Text style={styles.headerSubtitle}>Reserve or manage tables</Text>
+          </View>
+          <TouchableOpacity onPress={fetchData} style={styles.refreshBtn}>
+            <Ionicons name="refresh" size={20} color="#4ade80" />
           </TouchableOpacity>
         </View>
 
+        {/* Section Tabs */}
+        <View style={styles.sectionTabs}>
+          {SECTIONS.map((section) => (
+            <TouchableOpacity
+              key={section}
+              style={[styles.sectionTab, activeSection === section && styles.activeSectionTab]}
+              onPress={() => setActiveSection(section)}
+            >
+              <Text
+                style={[
+                  styles.sectionTabText,
+                  activeSection === section && styles.activeSectionTabText,
+                ]}
+              >
+                {SECTION_LABELS[section]}
+              </Text>
+              <View
+                style={[
+                  styles.sectionTabBadge,
+                  activeSection === section && styles.activeSectionTabBadge,
+                ]}
+              >
+                <Text style={styles.sectionTabBadgeText}>
+                  {sectionTables.filter((t) => t.isLocked).length}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         {loading ? (
-          <View style={styles.loadingBox}>
+          <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#4ade80" />
+            <Text style={styles.loadingText}>Loading tables...</Text>
           </View>
         ) : (
-          <View style={{ flex: 1, padding: 16 }}>
-            <FlatList
-              data={currentTables}
-              keyExtractor={(item) => item.tableId}
-              renderItem={renderItem}
-              numColumns={3}
-              columnWrapperStyle={styles.row}
-              ListEmptyComponent={
-                <View style={styles.emptyBox}>
-                  <Ionicons name="lock-open-outline" size={64} color="rgba(255,255,255,0.1)" />
-                  <Text style={styles.emptyText}>No tables are currently locked</Text>
-                </View>
-              }
-            />
-
-            {tables.length > MAX_TABLE && (
-              <View style={styles.pagination}>
-                <TouchableOpacity
-                  style={[styles.navBtn, page === 0 && styles.disabledBtn]}
-                  onPress={() => page > 0 && setPage(page - 1)}
-                  disabled={page === 0}
-                >
-                  <Ionicons name="chevron-back" size={20} color="#fff" />
-                  <Text style={styles.navText}>Back</Text>
-                </TouchableOpacity>
-
-                <Text style={styles.pageInfo}>
-                  {startIndex + 1}-{endIndex} of {tables.length}
-                </Text>
-
-                <TouchableOpacity
-                  style={[styles.navBtn, endIndex >= tables.length && styles.disabledBtn]}
-                  onPress={() => endIndex < tables.length && setPage(page + 1)}
-                  disabled={endIndex >= tables.length}
-                >
-                  <Text style={styles.navText}>Next</Text>
-                  <Ionicons name="chevron-forward" size={20} color="#fff" />
-                </TouchableOpacity>
+          <FlatList
+            data={sectionTables}
+            keyExtractor={(item) => item.tableId}
+            renderItem={renderTableItem}
+            numColumns={4}
+            columnWrapperStyle={styles.gridRow}
+            contentContainerStyle={styles.gridContent}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Ionicons name="grid-outline" size={48} color="rgba(255,255,255,0.1)" />
+                <Text style={styles.emptyText}>No tables in this section</Text>
               </View>
-            )}
-          </View>
+            }
+          />
         )}
+
+        {/* Info Footer */}
+        <BlurView intensity={40} tint="dark" style={styles.footer}>
+          <View style={styles.infoRow}>
+            <View style={styles.infoBadge}>
+              <View style={styles.lockedDot} />
+              <Text style={styles.infoText}>Tap to lock table for reservation</Text>
+            </View>
+            <View style={styles.infoBadge}>
+              <View style={styles.availableDot} />
+              <Text style={styles.infoText}>Tap locked table to continue order</Text>
+            </View>
+          </View>
+        </BlurView>
       </SafeAreaView>
-    </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#060A08",
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.45)",
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.05)",
-  },
-  headerTitle: {
-    fontSize: 20,
-    color: "#fff",
-    fontFamily: Fonts.black,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 12,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.08)",
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  headerTitle: {
+    color: "#fff",
+    fontFamily: Fonts.black,
+    fontSize: 20,
+    letterSpacing: 0.5,
+  },
+  headerSubtitle: {
+    color: "#64748b",
+    fontFamily: Fonts.semiBold,
+    fontSize: 11,
+    marginTop: 2,
   },
   refreshBtn: {
+    marginLeft: "auto",
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(74, 222, 128, 0.1)",
+    borderRadius: 10,
+    backgroundColor: "rgba(74, 222, 128, 0.15)",
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(74, 222, 128, 0.3)",
   },
-  loadingBox: {
+  sectionTabs: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    gap: 8,
+  },
+  sectionTab: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  activeSectionTab: {
+    backgroundColor: "rgba(34,197,94,0.12)",
+    borderColor: "rgba(34,197,94,0.4)",
+  },
+  sectionTabText: {
+    color: "#64748b",
+    fontFamily: Fonts.bold,
+    fontSize: 12,
+  },
+  activeSectionTabText: {
+    color: "#4ade80",
+  },
+  sectionTabBadge: {
+    backgroundColor: "rgba(255,255,255,0.1)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    minWidth: 24,
+    alignItems: "center",
+  },
+  activeSectionTabBadge: {
+    backgroundColor: "rgba(74, 222, 128, 0.25)",
+  },
+  sectionTabBadgeText: {
+    color: "#fff",
+    fontFamily: Fonts.bold,
+    fontSize: 10,
+  },
+  loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+  },
+  loadingText: {
+    color: "#94a3b8",
+    fontFamily: Fonts.medium,
+    fontSize: 14,
+    marginTop: 12,
+  },
+  gridContent: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    paddingBottom: 120,
+  },
+  gridRow: {
+    gap: 10,
+    marginBottom: 10,
+  },
+  tableCard: {
+    flex: 1,
+    borderRadius: 14,
+    backgroundColor: "rgba(15, 23, 42, 0.7)",
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.08)",
+    overflow: "hidden",
+    minHeight: 120,
+  },
+  lockedCard: {
+    backgroundColor: "rgba(251, 191, 36, 0.1)",
+    borderColor: "rgba(251, 191, 36, 0.35)",
+  },
+  tableContent: {
+    flex: 1,
+    padding: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tableIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 13,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  lockedIcon: {
+    backgroundColor: "rgba(251, 191, 36, 0.15)",
+    borderColor: "rgba(251, 191, 36, 0.4)",
+  },
+  tableNumber: {
+    color: "#fff",
+    fontFamily: Fonts.black,
+    fontSize: 18,
+    letterSpacing: 0.5,
+  },
+  tableStatus: {
+    color: "#64748b",
+    fontFamily: Fonts.bold,
+    fontSize: 10,
+    marginTop: 8,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  lockedStatus: {
+    color: "#fbbf24",
+  },
+  unlockBtn: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    width: 26,
+    height: 26,
+    borderRadius: 8,
+    backgroundColor: "rgba(248, 113, 113, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(248, 113, 113, 0.3)",
+  },
+  footer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.1)",
+  },
+  infoRow: {
+    gap: 8,
+  },
+  infoBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 6,
+  },
+  lockedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#fbbf24",
+  },
+  availableDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#64748b",
+  },
+  infoText: {
+    color: "#94a3b8",
+    fontFamily: Fonts.medium,
+    fontSize: 11,
+  },
+  emptyContainer: {
+    alignItems: "center",
+    paddingVertical: 40,
+  },
+  emptyText: {
+    color: "#64748b",
+    fontFamily: Fonts.medium,
+    fontSize: 14,
+    marginTop: 12,
   },
   row: {
     justifyContent: "flex-start",

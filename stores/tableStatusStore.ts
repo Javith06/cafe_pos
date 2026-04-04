@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type TableStatusType = 'EMPTY' | 'HOLD' | 'SENT' | 'BILL_REQUESTED';
+export type TableStatusType = 'EMPTY' | 'HOLD' | 'SENT' | 'BILL_REQUESTED' | 'LOCKED';
 
 export type TableStatus = {
   section: string;
@@ -12,6 +12,7 @@ export type TableStatus = {
 
 type TableStatusState = {
   tables: TableStatus[];
+  lockedTables: string[]; // Store table IDs that are locked
   updateTableStatus: (
     section: string,
     tableNo: string,
@@ -20,11 +21,15 @@ type TableStatusState = {
     startTime?: number
   ) => void;
   clearTable: (section: string, tableNo: string) => void;
+  lockTable: (tableId: string) => void;
+  unlockTable: (tableId: string) => void;
+  isTableLocked: (tableId: string) => boolean;
   getTables: () => TableStatus[];
 };
 
 export const useTableStatusStore = create<TableStatusState>((set, get) => ({
   tables: [],
+  lockedTables: [],
 
   updateTableStatus: (section, tableNo, orderId, status, startTime) => {
     set((state) => {
@@ -64,6 +69,25 @@ export const useTableStatusStore = create<TableStatusState>((set, get) => ({
         (t) => !(t.section === section && t.tableNo === tableNo)
       ),
     }));
+  },
+
+  lockTable: (tableId) => {
+    set((state) => {
+      if (!state.lockedTables.includes(tableId)) {
+        return { lockedTables: [...state.lockedTables, tableId] };
+      }
+      return state;
+    });
+  },
+
+  unlockTable: (tableId) => {
+    set((state) => ({
+      lockedTables: state.lockedTables.filter((id) => id !== tableId),
+    }));
+  },
+
+  isTableLocked: (tableId) => {
+    return get().lockedTables.includes(tableId);
   },
 
   getTables: () => get().tables,

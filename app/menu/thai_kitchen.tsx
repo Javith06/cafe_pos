@@ -60,11 +60,12 @@ type Group = {
 
 type Dish = {
   DishId: string;
-  DishIntId: number;
+  DishIntId?: number;
   Name: string;
   Price?: number;
   ImageBase64?: string;
-  imageid?: number;
+  Imageid?: number;
+  HasImage?: number;
 };
 
 type Modifier = {
@@ -73,7 +74,7 @@ type Modifier = {
   Price?: number;
 };
 
-// Image Component with Error Handling
+// Image Component with On-Demand Loading
 const DishImage = ({
   dish,
   style,
@@ -84,20 +85,29 @@ const DishImage = ({
   kitchenName?: string;
 }) => {
   const [error, setError] = useState(false);
+  const [imageBase64, setImageBase64] = useState<string | null>(dish.ImageBase64 || null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     setError(false);
-  }, [dish.DishId]);
-
-  const getImageUrl = () => {
-    if (error) return null;
-    if (dish.ImageBase64) {
-      return { uri: dish.ImageBase64 };
+    setImageBase64(null);
+    
+    // Only fetch image if HasImage=1 and we don't have it yet
+    if (dish.HasImage && dish.Imageid && !imageBase64) {
+      setLoading(true);
+      fetch(`${API_URL}/image/${dish.Imageid}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.imageBase64) {
+            setImageBase64(data.imageBase64);
+          }
+        })
+        .catch(() => setError(true))
+        .finally(() => setLoading(false));
     }
-    return null;
-  };
+  }, [dish.DishId, dish.Imageid, dish.HasImage, imageBase64]);
 
-  const imageUrl = getImageUrl();
+  const imageUrl = imageBase64 ? { uri: imageBase64 } : null;
 
   // Placeholder: kitchen color bg + subtle icon
   if (!imageUrl || error) {
@@ -185,6 +195,7 @@ export default function MenuScreen() {
   const [showModifier, setShowModifier] = useState(false);
   const [selectedDish, setSelectedDish] = useState<Dish | null>(null);
   const [selectedModifierIds, setSelectedModifierIds] = useState<string[]>([]);
+  const [loadingModifiers, setLoadingModifiers] = useState(false);
 
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [customPrice, setCustomPrice] = useState("");
@@ -334,17 +345,28 @@ export default function MenuScreen() {
     setSelectedDish(dish);
     setSelectedModifierIds([]);
     setCustomModifiers([]);
+    setModifiers([]); // Clear previous modifiers immediately
     setCustomText("");
     setCustomPrice("");
+    setLoadingModifiers(true);
+    setShowModifier(true); // Show modal immediately with loading state
 
     try {
       const res = await fetch(`${API_URL}/modifiers/${dish.DishId}`);
+      
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: Failed to fetch modifiers`);
+      }
+      
       const data = await res.json();
 
       if (Array.isArray(data) && data.length > 0) {
         setModifiers(data);
-        setShowModifier(true);
+        setLoadingModifiers(false);
       } else {
+        // No modifiers for this dish, add to cart directly
+        setShowModifier(false);
+        setLoadingModifiers(false);
         addToCartGlobal({
           id: dish.DishId,
           name: dish.Name,
@@ -352,6 +374,10 @@ export default function MenuScreen() {
         });
       }
     } catch (err) {
+      console.error("Error fetching modifiers:", err);
+      setLoadingModifiers(false);
+      // On error, close modal and add to cart
+      setShowModifier(false);
       addToCartGlobal({
         id: dish.DishId,
         name: dish.Name,
@@ -743,64 +769,79 @@ export default function MenuScreen() {
                   Select modifiers for {selectedDish?.Name}
                 </Text>
 
-                <ScrollView
-                  style={{ maxHeight: 350 }}
-                  showsVerticalScrollIndicator={false}
-                >
-                  {modifiers.map((mod) => (
-                    <TouchableOpacity
-                      key={mod.ModifierID}
-                      style={styles.modifierRow}
-                      onPress={() => toggleModifier(mod)}
-                    >
-                      <Text style={styles.modifierName}>
-                        {mod.ModifierName}
-                        {mod.Price && mod.Price > 0 && (
-                          <Text style={styles.modifierPrice}>
-                            {" "}
-                            (+${mod.Price.toFixed(2)})
-                          </Text>
-                        )}
-                      </Text>
+                {loadingModifiers ? (
+                  <View style={{ paddingVertical: 40, alignItems: "center" }}>
+                    <ActivityIndicator size="large" color="#4ade80" />
+                    <Text style={{ color: "#94a3b8", marginTop: 12 }}>
+                      Loading modifiers...
+                    </Text>
+                  </View>
+                ) : modifiers.length === 0 ? (
+                  <View style={{ paddingVertical: 40, alignItems: "center" }}>
+                    <Text style={{ color: "#94a3b8", fontSize: 14 }}>
+                      No modifiers available for this item
+                    </Text>
+                  </View>
+                ) : (
+                  <ScrollView
+                    style={{ maxHeight: 350 }}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {modifiers.map((mod) => (
+                      <TouchableOpacity
+                        key={mod.ModifierID}
+                        style={styles.modifierRow}
+                        onPress={() => toggleModifier(mod)}
+                      >
+                        <Text style={styles.modifierName}>
+                          {mod.ModifierName?.trim()}
+                          {mod.Price && mod.Price > 0 && (
+                            <Text style={styles.modifierPrice}>
+                              {" "}
+                              (+${mod.Price.toFixed(2)})
+                            </Text>
+                          )}
+                        </Text>
 
-                      <View style={styles.checkbox}>
-                        {selectedModifierIds.includes(mod.ModifierID) && (
-                          <Text style={styles.checkmark}>✓</Text>
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-
-                  {customModifiers.length > 0 && (
-                    <View style={styles.customSection}>
-                      <Text style={styles.customSectionTitle}>
-                        Custom Items:
-                      </Text>
-                      {customModifiers.map((custom, idx) => (
-                        <View key={idx} style={styles.customItemRow}>
-                          <Text style={styles.customItemText}>
-                            {custom.ModifierName}{" "}
-                            {custom.Price &&
-                              custom.Price > 0 &&
-                              `(+$${custom.Price.toFixed(2)})`}
-                          </Text>
-                          <TouchableOpacity
-                            onPress={() => {
-                              setCustomModifiers((prev) =>
-                                prev.filter((_, i) => i !== idx),
-                              );
-                              setSelectedModifierIds((prev) =>
-                                prev.filter((id) => id !== custom.ModifierID),
-                              );
-                            }}
-                          >
-                            <Text style={styles.removeText}>Remove</Text>
-                          </TouchableOpacity>
+                        <View style={styles.checkbox}>
+                          {selectedModifierIds.includes(mod.ModifierID) && (
+                            <Text style={styles.checkmark}>✓</Text>
+                          )}
                         </View>
-                      ))}
-                    </View>
-                  )}
-                </ScrollView>
+                      </TouchableOpacity>
+                    ))}
+
+                    {customModifiers.length > 0 && (
+                      <View style={styles.customSection}>
+                        <Text style={styles.customSectionTitle}>
+                          Custom Items:
+                        </Text>
+                        {customModifiers.map((custom, idx) => (
+                          <View key={idx} style={styles.customItemRow}>
+                            <Text style={styles.customItemText}>
+                              {custom.ModifierName}{" "}
+                              {custom.Price &&
+                                custom.Price > 0 &&
+                                `(+$${custom.Price.toFixed(2)})`}
+                            </Text>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setCustomModifiers((prev) =>
+                                  prev.filter((_, i) => i !== idx),
+                                );
+                                setSelectedModifierIds((prev) =>
+                                  prev.filter((id) => id !== custom.ModifierID),
+                                );
+                              }}
+                            >
+                              <Text style={styles.removeText}>Remove</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </ScrollView>
+                )}
 
                 <View style={styles.modalButtons}>
                   <TouchableOpacity

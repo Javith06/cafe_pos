@@ -1,7 +1,7 @@
 
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   FlatList,
   ImageBackground,
@@ -13,11 +13,14 @@ import {
   Modal,
   TextInput,
   View,
+  ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import { BlurView } from "expo-blur";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Fonts } from "../constants/Fonts";
 import { useToast } from "../components/Toast";
+import { API_URL } from "@/constants/Config";
 
 import DiscountModal from "../components/DiscountModal";
 import { findActiveOrder, useActiveOrdersStore } from "../stores/activeOrdersStore";
@@ -34,7 +37,11 @@ export default function SummaryScreen() {
 
   const [showDiscount, setShowDiscount] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
-  const [cancelPassword, setCancelPassword] = useState("");
+  const [cancelReasons, setCancelReasons] = useState<Array<{ CRCode: string; CRName: string }>>([]);
+  const [selectedCancelReason, setSelectedCancelReason] = useState<string | null>(null);
+  const [customCancelReason, setCustomCancelReason] = useState("");
+  const [isCancellingOrder, setIsCancellingOrder] = useState(false);
+  const [loadingReasons, setLoadingReasons] = useState(false);
 
   const cart = useMemo(() => {
     return activeOrder ? activeOrder.items : [];
@@ -68,23 +75,62 @@ export default function SummaryScreen() {
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const isLandscape = SCREEN_W > SCREEN_H;
 
-  const handleCancelOrder = () => {
-    if (cancelPassword !== "786") {
-      showToast({ type: "error", message: "Incorrect Password", subtitle: "Admin password required to cancel order" });
+  const fetchCancelReasons = async () => {
+    try {
+      setLoadingReasons(true);
+      const res = await fetch(`${API_URL}/api/cancel-reasons`);
+      const data = await res.json();
+      setCancelReasons(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error("Error fetching cancel reasons:", err);
+      showToast({ type: "error", message: "Failed to load cancellation reasons" });
+    } finally {
+      setLoadingReasons(false);
+    }
+  };
+
+  const handleCancelOrder = async () => {
+    if (!selectedCancelReason && !customCancelReason.trim()) {
+      showToast({
+        type: "error",
+        message: "Please select or enter a cancellation reason",
+      });
       return;
     }
 
-    if (context && activeOrder) {
-      closeActiveOrder(activeOrder.orderId);
-      clearCart();
-      if (context.orderType === "DINE_IN" && context.section && context.tableNo) {
-        updateTableStatus(context.section, context.tableNo, "", "EMPTY");
-      }
-    }
+    const reason = customCancelReason.trim() || selectedCancelReason || "No reason provided";
 
-    setShowCancelModal(false);
-    setCancelPassword("");
-    router.replace("/(tabs)/category");
+    setIsCancellingOrder(true);
+
+    try {
+      // Close the order locally (unpaid orders don't exist in DB yet)
+      if (context && activeOrder) {
+        closeActiveOrder(activeOrder.orderId);
+        clearCart();
+        if (context.orderType === "DINE_IN" && context.section && context.tableNo) {
+          updateTableStatus(context.section, context.tableNo, "", "EMPTY");
+        }
+      }
+
+      showToast({
+        type: "success",
+        message: "Order Cancelled",
+        subtitle: `Reason: ${reason}`,
+      });
+
+      setShowCancelModal(false);
+      setSelectedCancelReason(null);
+      setCustomCancelReason("");
+
+      setTimeout(() => {
+        router.replace("/(tabs)/category");
+      }, 500);
+    } catch (error) {
+      console.error("Cancel error:", error);
+      showToast({ type: "error", message: "Error cancelling order" });
+    } finally {
+      setIsCancellingOrder(false);
+    }
   };
 
   /* ================= CALCULATIONS ================= */
@@ -167,7 +213,10 @@ export default function SummaryScreen() {
               <View style={styles.headerRight}>
                 <TouchableOpacity
                   style={[styles.actionBtn, { backgroundColor: "rgba(239, 68, 68, 0.25)", marginRight: 6 }]}
-                  onPress={() => setShowCancelModal(true)}
+                  onPress={async () => {
+                    await fetchCancelReasons();
+                    setShowCancelModal(true);
+                  }}
                 >
                   <Ionicons name="trash-outline" size={18} color="#fca5a5" />
                   {isLandscape && <Text style={[styles.actionBtnText, { color: "#fca5a5" }]}>Cancel</Text>}
@@ -336,23 +385,88 @@ export default function SummaryScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Cancel Order?</Text>
-            <Text style={styles.modalDesc}>Please enter admin password to cancel.</Text>
-            <TextInput
-              style={styles.modalInput}
-              secureTextEntry
-              autoFocus
-              keyboardType="number-pad"
-              value={cancelPassword}
-              onChangeText={setCancelPassword}
-              placeholder="Admin Password"
-              placeholderTextColor="#6b7280"
-            />
+            <Text style={styles.modalDesc}>Please select a cancellation reason.</Text>
+
+            {loadingReasons ? (
+              <View style={{ paddingVertical: 40, alignItems: "center" }}>
+                <ActivityIndicator size="large" color="#4ade80" />
+              </View>
+            ) : (
+              <ScrollView style={{ maxHeight: 250 }} showsVerticalScrollIndicator={false}>
+                {cancelReasons.map((reason) => (
+                  <TouchableOpacity
+                    key={reason.CRCode}
+                    style={[
+                      styles.reasonRow,
+                      selectedCancelReason === reason.CRName && styles.reasonRowSelected,
+                    ]}
+                    onPress={() => {
+                      setSelectedCancelReason(reason.CRName);
+                      setCustomCancelReason("");
+                    }}
+                  >
+                    <View style={styles.reasonRadio}>
+                      {selectedCancelReason === reason.CRName && (
+                        <View style={styles.reasonRadioSelected} />
+                      )}
+                    </View>
+                    <Text style={styles.reasonName}>{reason.CRName}</Text>
+                  </TouchableOpacity>
+                ))}
+
+                <TouchableOpacity
+                  style={[
+                    styles.reasonRow,
+                    selectedCancelReason === "OTHER" && styles.reasonRowSelected,
+                  ]}
+                  onPress={() => setSelectedCancelReason("OTHER")}
+                >
+                  <View style={styles.reasonRadio}>
+                    {selectedCancelReason === "OTHER" && (
+                      <View style={styles.reasonRadioSelected} />
+                    )}
+                  </View>
+                  <Text style={styles.reasonName}>Other (Custom)</Text>
+                </TouchableOpacity>
+
+                {selectedCancelReason === "OTHER" && (
+                  <TextInput
+                    style={styles.customReasonInput}
+                    placeholder="Enter cancellation reason..."
+                    placeholderTextColor="#6b7280"
+                    value={customCancelReason}
+                    onChangeText={setCustomCancelReason}
+                    multiline
+                  />
+                )}
+              </ScrollView>
+            )}
+
             <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalBtnCancel} onPress={() => { setShowCancelModal(false); setCancelPassword(""); }}>
+              <TouchableOpacity
+                style={styles.modalBtnCancel}
+                onPress={() => {
+                  setShowCancelModal(false);
+                  setSelectedCancelReason(null);
+                  setCustomCancelReason("");
+                }}
+              >
                 <Text style={styles.modalBtnTextCancel}>Back</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.modalBtnConfirm} onPress={handleCancelOrder}>
-                <Text style={styles.modalBtnTextConfirm}>Confirm</Text>
+              <TouchableOpacity
+                style={styles.modalBtnConfirm}
+                disabled={isCancellingOrder}
+                onPress={() => {
+                  if (!loadingReasons) {
+                    handleCancelOrder();
+                  }
+                }}
+              >
+                {isCancellingOrder ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.modalBtnTextConfirm}>Confirm</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -734,6 +848,54 @@ const styles = StyleSheet.create({
   modalBtnTextConfirm: {
     color: "#fff",
     fontFamily: Fonts.bold,
+  },
+  reasonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  reasonRowSelected: {
+    backgroundColor: "rgba(34,197,94,0.2)",
+    borderWidth: 1,
+    borderColor: "#22c55e",
+  },
+  reasonRadio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: "#9ca3af",
+    marginRight: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  reasonRadioSelected: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: "#22c55e",
+  },
+  reasonName: {
+    flex: 1,
+    color: "#fff",
+    fontFamily: Fonts.medium,
+    fontSize: 14,
+  },
+  customReasonInput: {
+    backgroundColor: "rgba(255,255,255,0.08)",
+    borderRadius: 8,
+    padding: 12,
+    color: "#fff",
+    fontFamily: Fonts.regular,
+    marginTop: 12,
+    minHeight: 80,
+    textAlignVertical: "top",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
   },
 });
 

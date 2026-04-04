@@ -19,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { Fonts } from "../constants/Fonts";
+import { useToast } from "../components/Toast";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
@@ -26,9 +27,12 @@ type FilterType = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
 
 export default function SalesReport() {
   const router = useRouter();
+  const { showToast } = useToast();
   const [sales, setSales] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  // Always default to today's date for daily view
+  const todayDate = new Date().toISOString().split("T")[0];
+  const [selectedDate, setSelectedDate] = useState(todayDate);
   const [selectedFilter, setSelectedFilter] = useState<FilterType>("DAILY");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -172,9 +176,40 @@ export default function SalesReport() {
 
   // CLIENT-SIDE FILTERING & SORTING
   const filteredSales = useMemo(() => {
-    const filtered = sales.filter((s) => {
+    // First filter by date range based on selected filter
+    let dateScopedSales = sales;
+    
+    if (selectedFilter === "DAILY") {
+      // Filter to only today's sales
+      dateScopedSales = sales.filter(s => {
+        if (!s.SettlementDate) return false;
+        const saleDate = s.SettlementDate.split("T")[0];
+        return saleDate === selectedDate;
+      });
+    } else if (selectedFilter === "WEEKLY") {
+      // Filter to this week's sales (last 7 days)
+      const selectedDateObj = new Date(selectedDate);
+      const sevenDaysAgo = new Date(selectedDateObj.getTime() - 7 * 24 * 60 * 60 * 1000);
+      dateScopedSales = sales.filter(s => {
+        if (!s.SettlementDate) return false;
+        const saleDate = new Date(s.SettlementDate);
+        return saleDate >= sevenDaysAgo && saleDate <= selectedDateObj;
+      });
+    } else if (selectedFilter === "MONTHLY") {
+      // Filter to this month's sales
+      const selectedDateObj = new Date(selectedDate);
+      const firstDay = new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), 1);
+      const lastDay = new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth() + 1, 0);
+      dateScopedSales = sales.filter(s => {
+        if (!s.SettlementDate) return false;
+        const saleDate = new Date(s.SettlementDate);
+        return saleDate >= firstDay && saleDate <= lastDay;
+      });
+    }
+
+    // Then apply payment mode and order type filters
+    const filtered = dateScopedSales.filter((s) => {
        const modeMatch = activePaymentModes.includes(s.PayMode);
-       // Mock for now: assume all are DINE-IN if field missing OR if takeaway badge not applied yet
        const typeMatch = activeOrderTypes.length === 2 || (s.OrderType ? activeOrderTypes.includes(s.OrderType) : activeOrderTypes.includes("DINE-IN"));
        return modeMatch && typeMatch;
     });
@@ -184,7 +219,7 @@ export default function SalesReport() {
     } else {
       return [...filtered].sort((a, b) => b.SysAmount - a.SysAmount);
     }
-  }, [sales, activePaymentModes, activeOrderTypes, sortOrder]);
+  }, [sales, selectedFilter, selectedDate, activePaymentModes, activeOrderTypes, sortOrder]);
 
   const filteredMetrics = useMemo(() => {
     if (!summary || selectedFilter === "DAILY") {
@@ -273,6 +308,7 @@ export default function SalesReport() {
     setSelectedOrder(order);
     fetchOrderDetails(order.SettlementID);
   };
+
 
   const renderMetricTile = (
     label: string,
@@ -441,9 +477,11 @@ export default function SalesReport() {
               {/* Recent Activity */}
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionHeaderText}>RECENT ACTIVITY</Text>
-                <TouchableOpacity onPress={() => fetchData()}>
-                  <Text style={styles.seeAllText}>REFRESH</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <TouchableOpacity onPress={() => fetchData()}>
+                    <Text style={styles.seeAllText}>REFRESH</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
 
               {filteredSales.slice(0, 30).map((item, idx) => (
@@ -453,25 +491,52 @@ export default function SalesReport() {
                   onPress={() => handleOrderPress(item)}
                   style={styles.transactionCard}
                 >
-                  <View style={styles.txLeft}>
-                    <View style={styles.txIconWrap}>
-                       <Ionicons 
-                        name={item.PayMode === "CASH" ? "cash-outline" : item.PayMode === "NETS" ? "card-outline" : "qr-code-outline"} 
-                        size={18} 
-                        color="#94a3b8" 
-                       />
-                    </View>
-                    <View>
-                      <Text style={styles.txTitle}>Order Settled</Text>
-                      <Text style={styles.txSub}>
-                        {new Date(item.SettlementDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {item.PayMode}
-                      </Text>
-                    </View>
+
+                  {/* Icon */}
+                  <View style={styles.txIconWrap}>
+                    <Ionicons 
+                      name={item.PayMode === "CASH" ? "cash-outline" : item.PayMode === "NETS" ? "card-outline" : item.PayMode === "CARD" ? "card-outline" : "qr-code-outline"} 
+                      size={16} 
+                      color={
+                        item.PayMode === "CASH" ? "#22c55e" : 
+                        item.PayMode === "CARD" ? "#818cf8" : 
+                        item.PayMode === "NETS" ? "#3b82f6" : 
+                        "#f59e0b"
+                      } 
+                    />
                   </View>
-                  <View style={styles.txRight}>
+                  
+                  {/* Order ID & Type */}
+                  <View style={styles.txOrderInfo}>
+                    <Text style={styles.txTitle}>{item.OrderType === "TAKEAWAY" ? "🛍️ Takeaway" : item.TableNo ? `🪑 Table ${item.TableNo}` : "🪑 Dine-In"}</Text>
+                    <Text style={styles.txSmall}>Order #{item.OrderId || item.BillNo?.slice(-6) || "N/A"}</Text>
+                  </View>
+                  
+                  {/* Date & Time */}
+                  <View style={styles.txTimeInfo}>
+                    <Text style={styles.txDatetime}>{new Date(item.SettlementDate).toLocaleDateString([], { month: 'short', day: 'numeric' })} {new Date(item.SettlementDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+                  </View>
+                  
+                  {/* Payment Mode */}
+                  <View style={styles.txPaymentInfo}>
+                    <Text style={[styles.txPaymode, {
+                      color: item.PayMode === "CASH" ? "#22c55e" : 
+                             item.PayMode === "CARD" ? "#818cf8" : 
+                             item.PayMode === "NETS" ? "#3b82f6" : 
+                             "#f59e0b"
+                    }]}>
+                      {item.PayMode}
+                    </Text>
+                  </View>
+                  
+                  {/* Items Count */}
+                  <Text style={styles.txItemCountSmall}>{item.ReceiptCount || 0}x</Text>
+                  
+                  {/* Amount & Status */}
+                  <View style={styles.txRightInfo}>
                     <Text style={styles.txAmount}>{formatCurrency(item.SysAmount)}</Text>
-                    <View style={styles.paidBadge}>
-                      <Text style={styles.paidText}>PAID</Text>
+                    <View style={styles.paidBadgeSmall}>
+                      <Ionicons name="checkmark" size={10} color="#22c55e" />
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -493,9 +558,16 @@ export default function SalesReport() {
                 />
                 <View style={styles.modalContent}>
                   <View style={styles.modalHeader}>
-                    <View>
-                      <Text style={styles.modalTitle}># {selectedOrder?.SettlementID?.slice(0, 8)}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.modalTitle}>Order #{selectedOrder?.OrderId || selectedOrder?.BillNo?.slice(-6) || "N/A"}</Text>
                       <Text style={styles.modalSub}>{new Date(selectedOrder?.SettlementDate).toLocaleString()}</Text>
+                      {selectedOrder?.OrderType && (
+                        <Text style={[styles.modalSub, { marginTop: 4, color: "#3b82f6" }]}>
+                          {selectedOrder.OrderType === "TAKEAWAY" ? "🛍️ Takeaway" : "🪑 Dine-In"}
+                          {selectedOrder.TableNo ? ` • Table ${selectedOrder.TableNo}` : ""}
+                          {selectedOrder.Section ? ` • ${selectedOrder.Section}` : ""}
+                        </Text>
+                      )}
                     </View>
                     <TouchableOpacity onPress={() => setSelectedOrder(null)} style={styles.closeBtn}>
                       <Ionicons name="close" size={24} color="#fff" />
@@ -530,11 +602,15 @@ export default function SalesReport() {
                     <View style={styles.paymentSummary}>
                       <View style={styles.totalRow}>
                         <Text style={styles.totalLabel}>Grand Total</Text>
-                        <Text style={styles.totalValue}>${selectedOrder?.SysAmount?.toFixed(2)}</Text>
+                        <Text style={styles.totalValue}>{formatCurrency(selectedOrder?.SysAmount)}</Text>
                       </View>
                       <View style={styles.paymentRowDetail}>
                         <Text style={styles.paymentLabelDetail}>Payment Mode</Text>
                         <Text style={styles.paymentValueDetail}>{selectedOrder?.PayMode}</Text>
+                      </View>
+                      <View style={styles.paymentRowDetail}>
+                        <Text style={styles.paymentLabelDetail}>Items Sold</Text>
+                        <Text style={styles.paymentValueDetail}>{selectedOrder?.ReceiptCount} item(s)</Text>
                       </View>
                       <View style={styles.paymentRowDetail}>
                         <Text style={styles.paymentLabelDetail}>Status</Text>
@@ -543,12 +619,14 @@ export default function SalesReport() {
                     </View>
                   </View>
 
-                  <TouchableOpacity
-                    onPress={() => setSelectedOrder(null)}
-                    style={styles.doneBtn}
-                  >
-                    <Text style={styles.doneBtnText}>CLOSE</Text>
-                  </TouchableOpacity>
+                  <View style={styles.modalFooter}>
+                    <TouchableOpacity
+                      onPress={() => setSelectedOrder(null)}
+                      style={[styles.doneBtn, { flex: 1 }]}
+                    >
+                      <Text style={styles.doneBtnText}>CLOSE</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </BlurView>
             </Modal>
@@ -859,32 +937,173 @@ const styles = StyleSheet.create({
   },
   transactionCard: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    padding: 14,
-    borderRadius: 14,
+    padding: 12,
+    borderRadius: 12,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-    backgroundColor: "rgba(15, 23, 42, 0.75)",
-  },
-  txLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(15, 23, 42, 0.8)",
+    gap: 10,
   },
   txIconWrap: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: "rgba(255,255,255,0.06)",
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    flexShrink: 0,
+  },
+  txOrderInfo: {
+    flex: 1.2,
+    minWidth: 100,
   },
   txTitle: {
     color: "#fff",
     fontFamily: Fonts.bold,
+    fontSize: 13,
+    letterSpacing: 0.3,
+  },
+  txSmall: {
+    color: "#64748b",
+    fontFamily: Fonts.medium,
+    fontSize: 9,
+    marginTop: 1,
+  },
+  txTimeInfo: {
+    flex: 1,
+    minWidth: 90,
+  },
+  txDatetime: {
+    color: "#e2e8f0",
+    fontFamily: Fonts.semiBold,
+    fontSize: 11,
+  },
+  txPaymentInfo: {
+    flex: 0.75,
+    minWidth: 65,
+  },
+  txPaymode: {
+    fontFamily: Fonts.bold,
+    fontSize: 9,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  txItemCountSmall: {
+    color: "#94a3b8",
+    fontFamily: Fonts.bold,
+    fontSize: 10,
+    minWidth: 30,
+    textAlign: "center",
+  },
+  txRightInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexShrink: 0,
+  },
+  txAmount: {
+    color: "#22c55e",
+    fontFamily: Fonts.black,
     fontSize: 14,
+    letterSpacing: 0.5,
+  },
+  paidBadgeSmall: {
+    backgroundColor: "rgba(34,197,94,0.15)",
+    padding: 4,
+    borderRadius: 6,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.3)",
+  },
+  txTopRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+    gap: 12,
+  },
+  txIdSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1.5,
+  },
+  txTimeSection: {
+    alignItems: "center",
+    flex: 1,
+    paddingHorizontal: 8,
+  },
+  txDate: {
+    color: "#94a3b8",
+    fontFamily: Fonts.semiBold,
+    fontSize: 10,
+    letterSpacing: 0.4,
+  },
+  txTime: {
+    color: "#e2e8f0",
+    fontFamily: Fonts.bold,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  txAmountSection: {
+    alignItems: "flex-end",
+    flex: 1,
+    gap: 6,
+  },
+  paidBadge: {
+    backgroundColor: "rgba(34,197,94,0.12)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.25)",
+  },
+  paidText: {
+    color: "#4ade80",
+    fontFamily: Fonts.black,
+    fontSize: 9,
+    letterSpacing: 0.5,
+  },
+  txBottomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingTop: 10,
+    paddingHorizontal: 4,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.05)",
+  },
+  paymentModeTag: {
+    backgroundColor: "rgba(255,255,255,0.06)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  paymentModeTagText: {
+    fontFamily: Fonts.bold,
+    fontSize: 9,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  txItemCount: {
+    color: "#94a3b8",
+    fontFamily: Fonts.medium,
+    fontSize: 10,
+  },
+  txSection: {
+    color: "#64748b",
+    fontFamily: Fonts.medium,
+    fontSize: 10,
   },
   txSub: {
     color: "#64748b",
@@ -892,25 +1111,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
+  txDetails: {
+    color: "#475569",
+    fontFamily: Fonts.medium,
+    fontSize: 10,
+    marginTop: 3,
+  },
+  txLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
   txRight: {
     alignItems: "flex-end",
-  },
-  txAmount: {
-    color: "#22c55e",
-    fontFamily: Fonts.black,
-    fontSize: 15,
-  },
-  paidBadge: {
-    backgroundColor: "rgba(34,197,94,0.1)",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginTop: 4,
-  },
-  paidText: {
-    color: "#4ade80",
-    fontFamily: Fonts.black,
-    fontSize: 8,
   },
 
   /* MODAL */
@@ -1052,6 +1265,86 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.black,
     fontSize: 14,
     letterSpacing: 1,
+  },
+
+  /* CANCELLED ORDERS */
+  cancelledCard: {
+    opacity: 0.6,
+    borderColor: "rgba(239, 68, 68, 0.3)",
+    borderWidth: 1,
+  },
+  cancelledBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    backgroundColor: "#ef4444",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    zIndex: 10,
+  },
+  cancelledBadgeText: {
+    color: "#fff",
+    fontFamily: Fonts.bold,
+    fontSize: 8,
+    letterSpacing: 0.5,
+  },
+  cancelledText: {
+    color: "#999",
+    textDecorationLine: "line-through",
+  },
+  cancelledStatusBadge: {
+    backgroundColor: "rgba(239, 68, 68, 0.2)",
+  },
+
+  /* TOGGLE BUTTON */
+  toggleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    backgroundColor: "transparent",
+  },
+  toggleBtnActive: {
+    backgroundColor: "rgba(239, 68, 68, 0.2)",
+    borderColor: "#ef4444",
+  },
+  toggleBtnText: {
+    color: "#999",
+    fontFamily: Fonts.semiBold,
+    fontSize: 12,
+  },
+  toggleBtnTextActive: {
+    color: "#ef4444",
+  },
+
+  /* MODAL FOOTER */
+  modalFooter: {
+    flexDirection: "row",
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.1)",
+  },
+  cancelOrderBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#ef4444",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  cancelOrderBtnText: {
+    color: "#fff",
+    fontFamily: Fonts.semiBold,
+    fontSize: 13,
   },
 
   /* SIDEBAR */

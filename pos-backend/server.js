@@ -1,4 +1,5 @@
-require("dotenv").config();
+const path = require("path");
+require("dotenv").config({ path: path.resolve(__dirname, ".env") });
 
 const express = require("express");
 const cors = require("cors");
@@ -11,61 +12,174 @@ const PORT = process.env.PORT || 3000;
 
 /* ================= INITIALIZATION ================= */
 
-const initDB = async () => {
-  try {
-    const pool = await poolPromise;
+let pool = null;
 
-    // Ensure our custom table exists for detailed reports
-    await pool.request().query(`
-      IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='SettlementItemDetail' AND xtype='U')
-      CREATE TABLE SettlementItemDetail (
-        SettlementID UNIQUEIDENTIFIER,
-        DishName NVARCHAR(255),
-        Qty INT,
-        Price DECIMAL(18,2),
-        OrderDateTime DATETIME DEFAULT GETDATE()
-      )
-    `);
+const initDB = async (maxRetries = 3, retryDelay = 3000) => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`🔄 Database Connection Attempt ${attempt}/${maxRetries}...`);
+      pool = await poolPromise;
+      
+      if (!pool) {
+        throw new Error("Pool connection failed - pool is undefined");
+      }
 
-    // Ensure SettlementHeader has a BillNo string column to store random IDs (e.g., #A996E780)
-    await pool.request().query(`
-      IF EXISTS(SELECT * FROM sys.columns WHERE Name = N'BillNo' AND Object_ID = Object_ID(N'SettlementHeader') AND system_type_id = 56) -- 56 is INT
-      BEGIN
-         ALTER TABLE SettlementHeader ALTER COLUMN BillNo NVARCHAR(50);
-      END
-      ELSE IF NOT EXISTS(SELECT * FROM sys.columns WHERE Name = N'BillNo' AND Object_ID = Object_ID(N'SettlementHeader'))
-      BEGIN
-         ALTER TABLE SettlementHeader ADD BillNo NVARCHAR(50);
-      END
-    `);
+      // Ensure our custom table exists for detailed reports
+      await pool.request().query(`
+        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='SettlementItemDetail' AND xtype='U')
+        CREATE TABLE SettlementItemDetail (
+          SettlementID UNIQUEIDENTIFIER,
+          DishName NVARCHAR(255),
+          Qty INT,
+          Price DECIMAL(18,2),
+          OrderDateTime DATETIME DEFAULT GETDATE()
+        )
+      `);
 
-    // Ensure MemberMaster table exists
-    await pool.request().query(`
-      IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MemberMaster' AND xtype='U')
-      CREATE TABLE MemberMaster (
-        MemberId UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-        Name NVARCHAR(255),
-        Phone NVARCHAR(20) UNIQUE,
-        Email NVARCHAR(255),
-        CreditLimit DECIMAL(18,2) DEFAULT 1000,
-        CurrentBalance DECIMAL(18,2) DEFAULT 0,
-        CreatedAt DATETIME DEFAULT GETDATE()
-      )
-    `);
+      // Ensure SettlementHeader has a BillNo string column to store random IDs (e.g., #A996E780)
+      await pool.request().query(`
+        IF NOT EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='SettlementHeader' AND COLUMN_NAME='BillNo')
+           ALTER TABLE SettlementHeader ADD BillNo NVARCHAR(50);
+      `);
 
-    // Add MemberId to SettlementHeader if not exists
-    await pool.request().query(`
-      IF NOT EXISTS(SELECT * FROM sys.columns WHERE Name = N'MemberId' AND Object_ID = Object_ID(N'SettlementHeader'))
-      BEGIN
-         ALTER TABLE SettlementHeader ADD MemberId UNIQUEIDENTIFIER;
-      END
-    `);
+      // Ensure MemberMaster table exists
+      await pool.request().query(`
+        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MemberMaster' AND xtype='U')
+        CREATE TABLE MemberMaster (
+          MemberId UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+          Name NVARCHAR(255),
+          Phone NVARCHAR(20) UNIQUE,
+          Email NVARCHAR(255),
+          CreditLimit DECIMAL(18,2) DEFAULT 1000,
+          CurrentBalance DECIMAL(18,2) DEFAULT 0,
+          CreatedAt DATETIME DEFAULT GETDATE()
+        )
+      `);
 
-    console.log("✅ Database initialized: SettlementItemDetail and BillNo column ready.");
-  } catch (err) {
-    console.error("❌ DB Initialization Error:", err);
+      // Add MemberId to SettlementHeader if not exists
+      await pool.request().query(`
+        IF NOT EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='SettlementHeader' AND COLUMN_NAME='MemberId')
+           ALTER TABLE SettlementHeader ADD MemberId UNIQUEIDENTIFIER;
+      `);
+
+      // Add OrderId column to track the order number
+      await pool.request().query(`
+        IF NOT EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='SettlementHeader' AND COLUMN_NAME='OrderId')
+           ALTER TABLE SettlementHeader ADD OrderId NVARCHAR(50);
+      `);
+
+      // Add OrderType column (DINE-IN or TAKEAWAY)
+      await pool.request().query(`
+        IF NOT EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='SettlementHeader' AND COLUMN_NAME='OrderType')
+           ALTER TABLE SettlementHeader ADD OrderType NVARCHAR(50);
+      `);
+
+      // Add TableNo column for dine-in tracking
+      await pool.request().query(`
+        IF NOT EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='SettlementHeader' AND COLUMN_NAME='TableNo')
+           ALTER TABLE SettlementHeader ADD TableNo NVARCHAR(50);
+      `);
+
+      // Add Section column for location tracking
+      await pool.request().query(`
+        IF NOT EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='SettlementHeader' AND COLUMN_NAME='Section')
+           ALTER TABLE SettlementHeader ADD Section NVARCHAR(100);
+      `);
+
+      // Add CashierId column for cashier tracking
+      await pool.request().query(`
+        IF NOT EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='SettlementHeader' AND COLUMN_NAME='CashierId')
+           ALTER TABLE SettlementHeader ADD CashierId NVARCHAR(100);
+      `);
+
+      // Add cancellation tracking columns
+      await pool.request().query(`
+        IF NOT EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='SettlementHeader' AND COLUMN_NAME='IsCancelled')
+           ALTER TABLE SettlementHeader ADD IsCancelled BIT DEFAULT 0;
+      `);
+
+      await pool.request().query(`
+        IF NOT EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='SettlementHeader' AND COLUMN_NAME='CancellationReason')
+           ALTER TABLE SettlementHeader ADD CancellationReason NVARCHAR(500);
+      `);
+
+      await pool.request().query(`
+        IF NOT EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='SettlementHeader' AND COLUMN_NAME='CancelledBy')
+           ALTER TABLE SettlementHeader ADD CancelledBy NVARCHAR(100);
+      `);
+
+      await pool.request().query(`
+        IF NOT EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='SettlementHeader' AND COLUMN_NAME='CancelledDate')
+           ALTER TABLE SettlementHeader ADD CancelledDate DATETIME;
+      `);
+
+      // Add discount type tracking column
+      await pool.request().query(`
+        IF NOT EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='SettlementHeader' AND COLUMN_NAME='DiscountType')
+           ALTER TABLE SettlementHeader ADD DiscountType NVARCHAR(50);
+      `);
+
+      // Add UNIQUE constraint on OrderId to prevent duplicates
+      // First clean up any old duplicate OrderIds from the sequential system (1001, 1002, etc.)
+      await pool.request().query(`
+        DELETE FROM SettlementHeader 
+        WHERE OrderId IS NOT NULL 
+        AND OrderId LIKE '[0-9][0-9][0-9][0-9]'
+        AND LEN(OrderId) = 4;
+      `);
+
+      await pool.request().query(`
+        IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID('SettlementHeader') AND name = 'UX_OrderId')
+           CREATE UNIQUE NONCLUSTERED INDEX UX_OrderId ON SettlementHeader(OrderId) WHERE OrderId IS NOT NULL;
+      `);
+
+      // Ensure DailyAttendance table exists
+      await pool.request().query(`
+        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='DailyAttendance' AND xtype='U')
+        CREATE TABLE DailyAttendance (
+          AttendanceId UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+          DeliveryPersonId NVARCHAR(100),
+          EmployeeName NVARCHAR(255),
+          StartDateTime DATETIME,
+          BreakInTime DATETIME NULL,
+          BreakOutTime DATETIME NULL,
+          EndDateTime DATETIME NULL,
+          NoofHours DECIMAL(5,2),
+          NoofTrips INT DEFAULT 0,
+          TotalAmount DECIMAL(18,2) DEFAULT 0,
+          IsPaid BIT DEFAULT 0,
+          BusinessUnitId NVARCHAR(100),
+          CreatedBy NVARCHAR(100),
+          CreatedOn DATETIME DEFAULT GETDATE(),
+          ModifiedBy NVARCHAR(100) NULL,
+          ModifiedOn DATETIME NULL
+        )
+      `);
+
+      console.log("✅ Database initialized: SettlementItemDetail, cancellation tracking, discount type, and DailyAttendance table ready.");
+      return; // Success - exit
+    } catch (err) {
+      console.error(`❌ DB Initialization Error (Attempt ${attempt}/${maxRetries}):`, err.message);
+      
+      if (attempt < maxRetries) {
+        console.log(`⏳ Retrying in ${retryDelay / 1000} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      } else {
+        console.error("\n⚠️  Database connection failed after all retries.");
+        console.error("   Please verify your database configuration:");
+        console.error("   - Check that MSSQL Server is running and accessible");
+        console.error("   - Verify network connectivity to the database server");
+        console.error("   - Check credentials in the .env file:");
+        console.error(`     DB_SERVER: ${process.env.DB_SERVER}`);
+        console.error(`     DB_PORT: ${process.env.DB_PORT}`);
+        console.error(`     DB_NAME: ${process.env.DB_NAME}`);
+        console.error(`     DB_USER: ${process.env.DB_USER}`);
+        console.error("\n   The server will continue running, but database operations will fail.");
+      }
+    }
   }
 };
+
 initDB();
 
 // Helper to generate a random 8-character hex ID (e.g. A996E780)
@@ -86,6 +200,24 @@ app.use(
 );
 
 app.use(express.json());
+
+// Middleware to check database connection for API routes
+app.use((req, res, next) => {
+  // Skip check for root and test endpoints
+  if (req.path === "/" || req.path === "/test") {
+    return next();
+  }
+  
+  if (!pool) {
+    return res.status(503).json({
+      error: "Database Connection Unavailable",
+      message: "The server is currently unable to connect to the database. Please try again in a few moments.",
+      timestamp: new Date().toISOString(),
+    });
+  }
+  
+  next();
+});
 
 /* ================= ROOT ================= */
 app.get("/", (req, res) => {
@@ -155,17 +287,17 @@ app.get("/tables", async (req, res) => {
     // Map frontend section names to DiningSection values in the DB
     // Section 1=1, Section 2=2, Section 3=3, Takeaway=4
     const SECTION_MAP = {
-      SECTION_1: 1,
-      SECTION_2: 2,
-      SECTION_3: 3,
-      TAKEAWAY: 4,
+      SECTION_1: "1",
+      SECTION_2: "2",
+      SECTION_3: "3",
+      TAKEAWAY: "4",
     };
 
     let query = `
       SELECT
         TableId AS id,
-        TableNumber AS label,
-        DiningSection
+        CAST(TableNumber AS VARCHAR(50)) AS label,
+        CAST(DiningSection AS VARCHAR(10)) AS DiningSection
       FROM TableMaster
     `;
 
@@ -173,13 +305,14 @@ app.get("/tables", async (req, res) => {
 
     if (section && SECTION_MAP[section] !== undefined) {
       request.input("DiningSection", SECTION_MAP[section]);
-      query += ` WHERE DiningSection = @DiningSection`;
+      query += ` WHERE CAST(DiningSection AS VARCHAR(10)) = @DiningSection`;
     }
 
     query += ` ORDER BY SortCode`;
 
     const result = await request.query(query);
-    res.json(result.recordset);
+    console.log(`✅ /tables endpoint: Found ${result.recordset?.length || 0} tables`);
+    res.json(result.recordset || []);
   } catch (err) {
     console.error("TABLES ERROR:", err);
     res.status(500).json({ error: err.message });
@@ -305,6 +438,8 @@ app.get("/dishgroups/:CategoryId", async (req, res) => {
 app.get("/dishes/:DishGroupId", async (req, res) => {
   try {
     const pool = await poolPromise;
+    // Optimized: Don't convert images in SQL, just return image IDs
+    // Images will be fetched separately if needed
     const result = await pool
       .request()
       .input("DishGroupId", req.params.DishGroupId)
@@ -314,15 +449,8 @@ app.get("/dishes/:DishGroupId", async (req, res) => {
           d.Name,
           d.DishGroupId,
           ISNULL(p.Amount, 0) AS Price,
-          CASE 
-            WHEN i.ImageData IS NOT NULL THEN
-              'data:image/jpeg;base64,' + 
-              CAST('' AS XML).value(
-                'xs:base64Binary(sql:column("i.ImageData"))',
-                'VARCHAR(MAX)'
-              )
-            ELSE NULL
-          END AS ImageBase64
+          d.Imageid,
+          CASE WHEN i.Imageid IS NOT NULL THEN 1 ELSE 0 END AS HasImage
         FROM DishMaster d
         INNER JOIN DishPriceList p 
           ON d.DishId = p.DishId
@@ -330,11 +458,35 @@ app.get("/dishes/:DishGroupId", async (req, res) => {
           ON d.Imageid = i.Imageid
         WHERE d.IsActive = 1
         AND d.DishGroupId = @DishGroupId
+        ORDER BY d.Name ASC
       `);
     res.json(result.recordset);
   } catch (err) {
     console.error("DISH ERROR:", err);
     res.status(500).send(err.message);
+  }
+});
+
+/* ================= DISH IMAGE (ON DEMAND) ================= */
+app.get("/image/:imageId", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool
+      .request()
+      .input("Imageid", req.params.imageId)
+      .query(`
+        SELECT ImageData FROM ImageList WHERE Imageid = @Imageid
+      `);
+    
+    if (result.recordset.length > 0 && result.recordset[0].ImageData) {
+      const base64 = result.recordset[0].ImageData.toString('base64');
+      res.json({ imageBase64: 'data:image/jpeg;base64,' + base64 });
+    } else {
+      res.json({ imageBase64: null });
+    }
+  } catch (err) {
+    console.error("IMAGE FETCH ERROR:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -349,13 +501,16 @@ app.get("/modifiers/:dishId", async (req, res) => {
         SELECT 
           dm.DishId,
           dm.ModifierId AS ModifierID,
+          m.ModifierCode,
           m.ModifierName,
-          TRY_CAST(REPLACE(m.ModifierName, '$', '') AS FLOAT) AS Price
+          0 AS Price
         FROM DishModifier dm 
         INNER JOIN ModifierMaster m 
           ON dm.ModifierId = m.ModifierId
         WHERE dm.DishId = @dishId
+        ORDER BY m.ModifierName ASC
       `);
+    console.log(`✅ Modifiers for dish ${req.params.dishId}: ${result.recordset.length} found`);
     res.json(result.recordset);
   } catch (err) {
     console.error("MODIFIER ERROR:", err);
@@ -375,6 +530,11 @@ app.get("/api/sales/all", async (req, res) => {
       SELECT 
         sh.SettlementID,
         sh.LastSettlementDate AS SettlementDate,
+        sh.OrderId,
+        sh.OrderType,
+        sh.TableNo,
+        sh.Section,
+        sh.CashierId,
         sh.BillNo,
         ISNULL(sts.PayMode, 'CASH') as PayMode,
         ISNULL(sts.SysAmount, 0) as SysAmount,
@@ -425,9 +585,79 @@ app.get("/api/sales/daily/:date", async (req, res) => {
   }
 });
 
+/* ================= VALIDATION ENDPOINTS ================= */
+
+// Validate or check if OrderId exists (for conflict detection)
+app.get("/api/orders/check/:orderId", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const { orderId } = req.params;
+
+    // Validate format: #XXXXXX
+    if (!/^#[A-Z0-9]{6}$/.test(orderId)) {
+      return res.status(400).json({ valid: false, message: "Invalid Order ID format" });
+    }
+
+    const result = await pool.request()
+      .input("OrderId", orderId)
+      .query(`SELECT SettlementID FROM SettlementHeader WHERE OrderId = @OrderId`);
+
+    if (result.recordset.length > 0) {
+      return res.status(409).json({ valid: false, message: "Order ID already exists", exists: true });
+    }
+
+    res.json({ valid: true, message: "Order ID is unique", exists: false });
+  } catch (err) {
+    console.error("ORDER CHECK ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Validate cancellation reason is provided
+app.post("/api/orders/validate-cancel", async (req, res) => {
+  try {
+    const { settlementId, cancellationReason, cancelledBy } = req.body;
+
+    if (!settlementId) {
+      return res.status(400).json({ valid: false, message: "Settlement ID is required" });
+    }
+
+    if (!cancellationReason || !cancellationReason.trim()) {
+      return res.status(400).json({ valid: false, message: "Cancellation reason is required" });
+    }
+
+    if (!cancelledBy || !cancelledBy.trim()) {
+      return res.status(400).json({ valid: false, message: "Cancelled by is required" });
+    }
+
+    res.json({ valid: true, message: "Cancellation data is valid" });
+  } catch (err) {
+    console.error("CANCEL VALIDATION ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Validate modifier selection (ensure at least main dish is selected)
+app.post("/api/modifiers/validate", async (req, res) => {
+  try {
+    const { dishId, modifierIds } = req.body;
+
+    if (!dishId) {
+      return res.status(400).json({ valid: false, message: "Dish ID is required" });
+    }
+
+    // modifierIds is optional - user can add dish without modifiers
+    res.json({ valid: true, message: "Modifier selection is valid" });
+  } catch (err) {
+    console.error("MODIFIER VALIDATION ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // API 3: Save new sale
 app.post("/api/sales/save", async (req, res) => {
   try {
+    console.log("📤 [/api/sales/save] Request received:", req.body);
     const pool = await poolPromise;
     const {
       totalAmount,
@@ -436,11 +666,32 @@ app.post("/api/sales/save", async (req, res) => {
       subTotal,
       taxAmount,
       discountAmount,
+      discountType,
       orderId,
+      orderType,
+      tableNo,
+      section,
+      cashierId,
       memberId
     } = req.body;
 
-    console.log("Saving sale for Order:", orderId);
+    // Validate Order ID format (#XXXXXX)
+    if (!orderId || !/^#[A-Z0-9]{6}$/.test(orderId)) {
+      console.log("❌ Invalid Order ID format:", orderId);
+      return res.status(400).json({ error: "Invalid Order ID format. Expected: #XXXXXX" });
+    }
+
+    console.log("✅ Valid Order ID:", orderId);
+    console.log("Saving sale for Order:", orderId, "Type:", orderType, "Payment:", paymentMethod);
+
+    // Check if Order ID is unique before transaction
+    const existingOrder = await pool.request()
+      .input("OrderId", orderId)
+      .query(`SELECT SettlementID FROM SettlementHeader WHERE OrderId = @OrderId`);
+    
+    if (existingOrder.recordset.length > 0) {
+      return res.status(409).json({ error: "Order ID already exists. Please try creating a new order." });
+    }
 
     const transaction = new sql.Transaction(pool);
     await transaction.begin();
@@ -451,20 +702,25 @@ app.post("/api/sales/save", async (req, res) => {
       const settlementId = settlementIdResult.recordset[0].id;
       const billNo = generateRandomBillId();
 
-      console.log(`📝 Processing Sale: Bill #${billNo} (ID: ${settlementId})`);
+      console.log(`📝 Processing Sale: Bill #${billNo} (ID: ${settlementId}, OrderID: ${orderId})`);
 
-      // 2. Insert into SettlementHeader
+      // 2. Insert into SettlementHeader with all order details
       await transaction.request()
         .input("SettlementID", settlementId)
-        .input("Date", new Date())
+        .input("LastSettlementDate", new Date())
         .input("SubTotal", subTotal || 0)
         .input("TotalTax", taxAmount || 0)
         .input("DiscountAmount", discountAmount || 0)
+        .input("DiscountType", discountType || "fixed")
         .input("BillNo", billNo)
+        .input("OrderId", orderId || null)
+        .input("OrderType", orderType || "DINE-IN")
+        .input("TableNo", tableNo || null)
+        .input("Section", section || null)
         .input("MemberId", memberId || null)
         .query(`
-          INSERT INTO SettlementHeader (SettlementID, LastSettlementDate, SubTotal, TotalTax, DiscountAmount, BillNo, MemberId)
-          VALUES (@SettlementID, @Date, @SubTotal, @TotalTax, @DiscountAmount, @BillNo, @MemberId)
+          INSERT INTO SettlementHeader (SettlementID, LastSettlementDate, SubTotal, TotalTax, DiscountAmount, DiscountType, BillNo, OrderId, OrderType, TableNo, Section, MemberId)
+          VALUES (@SettlementID, @LastSettlementDate, @SubTotal, @TotalTax, @DiscountAmount, @DiscountType, @BillNo, @OrderId, @OrderType, @TableNo, @Section, @MemberId)
         `);
 
       // 3. Insert into SettlementTotalSales
@@ -627,6 +883,245 @@ app.get("/api/sales/detail/:id", async (req, res) => {
   } catch (err) {
     console.error("DETAIL ERROR:", err);
     res.json([]);
+  }
+});
+
+/* ================= CANCEL REASON MASTER ================= */
+app.get("/api/cancel-reasons", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+      SELECT CRCode, CRName, SortCode FROM [dbo].[CancelRemarksmaster] 
+      ORDER BY SortCode ASC
+    `);
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error("CANCEL REASONS ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ================= CANCEL ORDER ================= */
+app.post("/api/orders/cancel", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const { settlementId, cancellationReason, cancelledBy } = req.body;
+
+    if (!settlementId || !cancellationReason) {
+      return res.status(400).json({ error: "Missing settlementId or cancellationReason" });
+    }
+
+    await pool.request()
+      .input("SettlementID", settlementId)
+      .input("IsCancelled", true)
+      .input("CancellationReason", cancellationReason)
+      .input("CancelledBy", cancelledBy || "System")
+      .input("CancelledDate", new Date())
+      .query(`
+        UPDATE SettlementHeader 
+        SET IsCancelled = @IsCancelled, 
+            CancellationReason = @CancellationReason,
+            CancelledBy = @CancelledBy,
+            CancelledDate = @CancelledDate
+        WHERE SettlementID = @SettlementID
+      `);
+
+    console.log(`✅ Order cancelled: ${settlementId}, Reason: ${cancellationReason}`);
+    res.json({ success: true, settlementId });
+  } catch (err) {
+    console.error("CANCEL ORDER ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ================= DISCOUNT MASTER ================= */
+app.get("/api/discounts", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+      SELECT 
+        DiscountId, DiscountQty, Discountprice, ActualPrice, 
+        FromDate, ToDate, isActive, CreatedBy, CreatedDate
+      FROM [dbo].[Discount]
+      WHERE isActive = 1 
+      AND CAST(GETDATE() AS DATE) BETWEEN CAST(FromDate AS DATE) AND CAST(ToDate AS DATE)
+      ORDER BY DiscountQty ASC
+    `);
+    res.json(result.recordset || []);
+  } catch (err) {
+    console.error("DISCOUNT FETCH ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ================= APPLY DISCOUNT ================= */
+app.post("/api/discounts/apply", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const { settlementId, discountAmount, discountType } = req.body;
+
+    if (!settlementId) {
+      return res.status(400).json({ error: "Missing settlementId" });
+    }
+
+    await pool.request()
+      .input("SettlementID", settlementId)
+      .input("DiscountAmount", discountAmount || 0)
+      .input("DiscountType", discountType || "fixed")
+      .query(`
+        UPDATE SettlementHeader 
+        SET DiscountAmount = @DiscountAmount, DiscountType = @DiscountType
+        WHERE SettlementID = @SettlementID
+      `);
+
+    console.log(`✅ Discount applied: ${settlementId}, Amount: ${discountAmount}, Type: ${discountType}`);
+    res.json({ success: true, settlementId });
+  } catch (err) {
+    console.error("APPLY DISCOUNT ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ================= DAILY ATTENDANCE - CREATE/UPDATE ================= */
+app.post("/api/attendance/track", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const { 
+      employeeId, 
+      employeeName, 
+      action, // "START", "BREAK_IN", "BREAK_OUT", "END"
+      timestamp,
+      businessUnitId,
+      userId
+    } = req.body;
+
+    if (!employeeId || !action) {
+      return res.status(400).json({ error: "Missing employeeId or action" });
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Check if attendance record exists for today
+    const result = await pool.request()
+      .input("EmployeeId", employeeId)
+      .input("TodayDate", today)
+      .query(`
+        SELECT TOP 1 AttendanceId, StartDateTime, BreakInTime, BreakOutTime, EndDateTime
+        FROM DailyAttendance
+        WHERE DeliveryPersonId = @EmployeeId 
+        AND CAST(CreatedOn AS DATE) = CAST(@TodayDate AS DATE)
+      `);
+
+    const existingRecord = result.recordset?.[0];
+    const currentTime = timestamp ? new Date(timestamp) : new Date();
+
+    if (action === "START") {
+      // Create new record or update START if not exists
+      if (!existingRecord) {
+        const attendanceId = require('mssql').config.id ? crypto.randomUUID() : null;
+        await pool.request()
+          .input("DeliveryPersonId", employeeId)
+          .input("EmployeeName", employeeName || employeeId)
+          .input("StartDateTime", currentTime)
+          .input("CreatedBy", userId || "System")
+          .input("BusinessUnitId", businessUnitId || "")
+          .query(`
+            INSERT INTO DailyAttendance (DeliveryPersonId, EmployeeName, StartDateTime, CreatedBy, BusinessUnitId)
+            VALUES (@DeliveryPersonId, @EmployeeName, @StartDateTime, @CreatedBy, @BusinessUnitId)
+          `);
+        console.log(`✅ Shift started: ${employeeId} at ${currentTime}`);
+      }
+    } else if (action === "BREAK_IN") {
+      if (existingRecord) {
+        await pool.request()
+          .input("StartDateTime", existingRecord.StartDateTime)
+          .input("BreakInTime", currentTime)
+          .input("EmployeeId", employeeId)
+          .query(`
+            UPDATE DailyAttendance
+            SET BreakInTime = @BreakInTime
+            WHERE DeliveryPersonId = @EmployeeId
+            AND CAST(CreatedOn AS DATE) = CAST(GETDATE() AS DATE)
+          `);
+        console.log(`✅ Break started: ${employeeId} at ${currentTime}`);
+      }
+    } else if (action === "BREAK_OUT") {
+      if (existingRecord) {
+        await pool.request()
+          .input("BreakOutTime", currentTime)
+          .input("EmployeeId", employeeId)
+          .query(`
+            UPDATE DailyAttendance
+            SET BreakOutTime = @BreakOutTime
+            WHERE DeliveryPersonId = @EmployeeId
+            AND CAST(CreatedOn AS DATE) = CAST(GETDATE() AS DATE)
+          `);
+        console.log(`✅ Break ended: ${employeeId} at ${currentTime}`);
+      }
+    } else if (action === "END") {
+      if (existingRecord && !existingRecord.EndDateTime) {
+        // Calculate hours worked
+        const startTime = new Date(existingRecord.StartDateTime);
+        let breakDuration = 0;
+        
+        if (existingRecord.BreakInTime && existingRecord.BreakOutTime) {
+          const breakIn = new Date(existingRecord.BreakInTime);
+          const breakOut = new Date(existingRecord.BreakOutTime);
+          breakDuration = (breakOut - breakIn) / (1000 * 60 * 60); // Convert to hours
+        }
+
+        const totalHours = (currentTime - startTime) / (1000 * 60 * 60) - breakDuration;
+
+        await pool.request()
+          .input("EndDateTime", currentTime)
+          .input("NoofHours", Math.max(0, Math.round(totalHours * 100) / 100))
+          .input("ModifiedBy", userId || "System")
+          .input("ModifiedOn", new Date())
+          .input("EmployeeId", employeeId)
+          .query(`
+            UPDATE DailyAttendance
+            SET EndDateTime = @EndDateTime, 
+                NoofHours = @NoofHours,
+                ModifiedBy = @ModifiedBy,
+                ModifiedOn = @ModifiedOn
+            WHERE DeliveryPersonId = @EmployeeId
+            AND CAST(CreatedOn AS DATE) = CAST(GETDATE() AS DATE)
+          `);
+        console.log(`✅ Shift ended: ${employeeId} at ${currentTime}, Hours: ${totalHours}`);
+      }
+    }
+
+    res.json({ success: true, action });
+  } catch (err) {
+    console.error("ATTENDANCE TRACK ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ================= GET TODAY'S ATTENDANCE ================= */
+app.get("/api/attendance/today/:employeeId", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const { employeeId } = req.params;
+
+    const result = await pool.request()
+      .input("EmployeeId", employeeId)
+      .input("TodayDate", new Date())
+      .query(`
+        SELECT TOP 1 
+          AttendanceId, DeliveryPersonId, EmployeeName, StartDateTime, 
+          BreakInTime, BreakOutTime, EndDateTime, NoofHours, CreatedOn
+        FROM DailyAttendance
+        WHERE DeliveryPersonId = @EmployeeId
+        AND CAST(CreatedOn AS DATE) = CAST(@TodayDate AS DATE)
+        ORDER BY CreatedOn DESC
+      `);
+
+    res.json(result.recordset?.[0] || null);
+  } catch (err) {
+    console.error("GET ATTENDANCE ERROR:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 

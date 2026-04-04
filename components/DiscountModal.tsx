@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -16,6 +18,7 @@ import {
 import { useActiveOrdersStore } from "../stores/activeOrdersStore";
 import { useCartStore } from "../stores/cartStore";
 import { getOrderContext } from "../stores/orderContextStore";
+import { API_URL } from "@/constants/Config";
 
 export default function DiscountModal({
   visible,
@@ -33,9 +36,32 @@ export default function DiscountModal({
   const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
   const [inputValue, setInputValue] = useState("");
   const [previewDiscount, setPreviewDiscount] = useState(0);
+  const [availableDiscounts, setAvailableDiscounts] = useState<any[]>([]);
+  const [loadingDiscounts, setLoadingDiscounts] = useState(false);
 
   const quickPercentages = [5, 10, 15, 20, 25, 50];
   const quickFixed = [5, 10, 20, 50, 75, 100];
+
+  /* ================= FETCH AVAILABLE DISCOUNTS ================= */
+  useEffect(() => {
+    if (!visible) return;
+
+    const fetchDiscounts = async () => {
+      try {
+        setLoadingDiscounts(true);
+        const response = await fetch(`${API_URL}/api/discounts`);
+        const data = await response.json();
+        setAvailableDiscounts(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("Error fetching discounts:", err);
+        setAvailableDiscounts([]);
+      } finally {
+        setLoadingDiscounts(false);
+      }
+    };
+
+    fetchDiscounts();
+  }, [visible]);
 
   /* ================= PREVIEW ================= */
   useEffect(() => {
@@ -177,6 +203,32 @@ export default function DiscountModal({
                 </TouchableOpacity>
               ))}
             </View>
+
+            {/* AVAILABLE DISCOUNTS FROM DB */}
+            {availableDiscounts.length > 0 && (
+              <>
+                <Text style={styles.sectionLabel}>Available Promotions</Text>
+                {loadingDiscounts ? (
+                  <ActivityIndicator color="#4ade80" style={{ marginVertical: 12 }} />
+                ) : (
+                  <ScrollView style={styles.availableDiscountsScroll} horizontal showsHorizontalScrollIndicator={false}>
+                    {availableDiscounts.map((discount, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        style={styles.discountCard}
+                        onPress={() => {
+                          setDiscountType("fixed");
+                          setInputValue((discount.Discountprice || 0).toString());
+                        }}
+                      >
+                        <Text style={styles.discountCardLabel}>${discount.Discountprice || 0}</Text>
+                        <Text style={styles.discountCardSmall}>on {discount.DiscountQty} qty</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+              </>
+            )}
 
             {/* CUSTOM INPUT */}
             <Text style={styles.sectionLabel}>Custom Value</Text>
@@ -436,6 +488,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "900",
     letterSpacing: 0.5,
+  },
+
+  // Available Discounts
+  availableDiscountsScroll: {
+    marginBottom: 20,
+    marginHorizontal: -20,
+    paddingHorizontal: 20,
+  },
+  discountCard: {
+    backgroundColor: "rgba(59, 130, 246, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(59, 130, 246, 0.3)",
+    borderRadius: 10,
+    padding: 12,
+    marginRight: 10,
+    minWidth: 100,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  discountCardLabel: {
+    color: "#3b82f6",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  discountCardSmall: {
+    color: "#94a3b8",
+    fontSize: 10,
+    marginTop: 4,
   },
 });
 
