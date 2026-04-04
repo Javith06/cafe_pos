@@ -467,6 +467,7 @@ app.get("/dishes/:DishGroupId", async (req, res) => {
   }
 });
 
+<<<<<<< HEAD
 /* ================= DISH IMAGE (ON DEMAND) ================= */
 app.get("/image/:imageId", async (req, res) => {
   try {
@@ -486,6 +487,27 @@ app.get("/image/:imageId", async (req, res) => {
     }
   } catch (err) {
     console.error("IMAGE FETCH ERROR:", err);
+=======
+// GET all dishes (metadata only) for global searching across all kitchens
+app.get("/api/dishes/all", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+      SELECT
+        d.DishId,
+        d.Name,
+        d.DishGroupId,
+        g.CategoryId,
+        ISNULL(p.Amount, 1.0) AS Price
+      FROM DishMaster d
+      INNER JOIN DishPriceList p ON d.DishId = p.DishId
+      LEFT JOIN DishGroupMaster g ON d.DishGroupId = g.DishGroupId
+      WHERE d.IsActive = 1
+    `);
+    res.json(result.recordset);
+  } catch (err) {
+    console.error("ALL DISHES ERROR:", err);
+>>>>>>> f2438bd78885aacc4f0671f6bbc6ff6065cf39bd
     res.status(500).json({ error: err.message });
   }
 });
