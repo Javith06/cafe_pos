@@ -268,6 +268,16 @@ export default function SalesReport() {
     };
   }, [filteredMetrics]);
 
+  /** Rows for donut center labels (RN Text — avoids SvgText clipping / visibility issues). */
+  const paymentMixCenterRows = useMemo(() => {
+    const rows: { key: string; pct: number; color: string }[] = [];
+    if (filteredMetrics.Cash > 0) rows.push({ key: "CASH", pct: paymentMix.cash, color: "#22c55e" });
+    if (filteredMetrics.Card > 0) rows.push({ key: "CARD", pct: paymentMix.card, color: "#818cf8" });
+    if (filteredMetrics.Nets > 0) rows.push({ key: "NETS", pct: paymentMix.nets, color: "#3b82f6" });
+    if (filteredMetrics.PayNow > 0) rows.push({ key: "DIGITAL", pct: paymentMix.paynow, color: "#f59e0b" });
+    return rows.sort((a, b) => b.pct - a.pct);
+  }, [filteredMetrics, paymentMix]);
+
   const togglePaymentMode = (mode: string) => {
      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
      setActivePaymentModes(prev => 
@@ -343,8 +353,14 @@ export default function SalesReport() {
                 <Text style={styles.dashboardSubtitle}>Comprehensive performance dashboard</Text>
               </View>
               <View style={styles.headerActions}>
-                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                  <Ionicons name="arrow-back" size={24} color="#fff" />
+                <TouchableOpacity
+                  onPress={() => router.back()}
+                  style={styles.backBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Back"
+                >
+                  <Ionicons name="arrow-back" size={20} color="#fff" />
+                  <Text style={styles.backBtnLabel}>Back</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setShowFilterPanel(true)}
@@ -459,43 +475,36 @@ export default function SalesReport() {
                       <View style={styles.pieChartWrapper}>
                         <PieChart
                           data={[
-                            {
-                              value: filteredMetrics.Cash,
-                              color: "#22c55e",
-                              text: `${paymentMix.cash.toFixed(0)}%`,
-                              label: "CASH",
-                            },
-                            {
-                              value: filteredMetrics.Card,
-                              color: "#818cf8",
-                              text: `${paymentMix.card.toFixed(0)}%`,
-                              label: "CARD",
-                            },
-                            {
-                              value: filteredMetrics.Nets,
-                              color: "#3b82f6",
-                              text: `${paymentMix.nets.toFixed(0)}%`,
-                              label: "NETS",
-                            },
-                            {
-                              value: filteredMetrics.PayNow,
-                              color: "#f59e0b",
-                              text: `${paymentMix.paynow.toFixed(0)}%`,
-                              label: "DIGITAL",
-                            },
-                          ].filter(d => d.value > 0)}
+                            { value: filteredMetrics.Cash, color: "#22c55e", label: "CASH" },
+                            { value: filteredMetrics.Card, color: "#818cf8", label: "CARD" },
+                            { value: filteredMetrics.Nets, color: "#3b82f6", label: "NETS" },
+                            { value: filteredMetrics.PayNow, color: "#f59e0b", label: "DIGITAL" },
+                          ].filter((d) => d.value > 0)}
                           donut
-                          sectionAutoFocus
                           radius={70}
                           innerRadius={50}
-                          focusOnPress
-                          textColor="#fff"
-                          showText
-                          textSize={11}
-                          textBackgroundRadius={26}
-                          showValuesAsLabels={false}
+                          innerCircleColor="#0f172a"
+                          showText={false}
                           strokeColor="#0f172a"
                           strokeWidth={2}
+                          centerLabelComponent={() => (
+                            <View style={styles.pieDonutCenter}>
+                              {paymentMixCenterRows.map((row) => (
+                                <Text
+                                  key={row.key}
+                                  style={styles.pieDonutCenterLine}
+                                  numberOfLines={1}
+                                  adjustsFontSizeToFit
+                                  minimumFontScale={0.85}
+                                >
+                                  <Text style={[styles.pieDonutCenterPct, { color: row.color }]}>
+                                    {row.pct.toFixed(0)}%
+                                  </Text>
+                                  <Text style={styles.pieDonutCenterTag}> {row.key}</Text>
+                                </Text>
+                              ))}
+                            </View>
+                          )}
                         />
                       </View>
                     ) : (
@@ -956,14 +965,21 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   backBtn: {
-    width: 44,
-    height: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    minHeight: 44,
     borderRadius: 12,
     backgroundColor: "rgba(255,255,255,0.08)",
     justifyContent: "center",
-    alignItems: "center",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
+  },
+  backBtnLabel: {
+    color: "#f8fafc",
+    fontFamily: Fonts.semiBold,
+    fontSize: 14,
   },
   
   /* Badge Row */
@@ -1124,6 +1140,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 8,
+  },
+  pieDonutCenter: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 2,
+    gap: 4,
+    maxWidth: 96,
+  },
+  pieDonutCenterLine: {
+    fontFamily: Fonts.bold,
+    fontSize: 10,
+    textAlign: "center",
+  },
+  pieDonutCenterPct: {
+    fontFamily: Fonts.black,
+    fontSize: 12,
+  },
+  pieDonutCenterTag: {
+    color: "#cbd5e1",
+    fontFamily: Fonts.semiBold,
+    fontSize: 9,
   },
   emptyChartPlaceholder: {
     alignItems: "center",
