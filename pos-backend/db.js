@@ -12,12 +12,12 @@ const dbConfig = {
     encrypt: false,
     trustServerCertificate: true,
     enableArithAbort: true,
-    connectTimeout: 30000, // 30 seconds
-    requestTimeout: 30000, // 30 seconds
+    connectTimeout: 60000, // 60 seconds
+    requestTimeout: 60000, // 60 seconds
     appName: "POS_System"
   },
-  connectionTimeout: 30000,
-  requestTimeout: 30000,
+  connectionTimeout: 60000,
+  requestTimeout: 60000,
 };
 
 // Log configuration for debugging (mask password)

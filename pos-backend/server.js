@@ -546,18 +546,19 @@ app.post("/api/members/add", async (req, res) => {
   }
 });
 
-// Update Member
-app.put("/api/members/:memberId", async (req, res) => {
+// Update Member (ID in body)
+app.post("/api/members/update", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const { name, phone, email, creditLimit, currentBalance, balance } = req.body;
-    const { memberId } = req.params;
+    const { memberId, name, phone, email, creditLimit, currentBalance, balance } = req.body;
     
-    console.log(`Updating member ID: ${memberId}...`);
+    if (!memberId) return res.status(400).json({ error: "Missing memberId in request body" });
+    
+    console.log(`[MEMBER UPDATE] ID: "${memberId}" - Body:`, JSON.stringify(req.body));
     
     const result = await pool
       .request()
-      .input("MemberId", sql.NVarChar, memberId)
+      .input("IdParam", sql.UniqueIdentifier, memberId)
       .input("Name", sql.NVarChar, name)
       .input("Phone", sql.NVarChar, phone)
       .input("Email", sql.NVarChar, email || null)
@@ -572,46 +573,48 @@ app.put("/api/members/:memberId", async (req, res) => {
             CreditLimit = @CreditLimit, 
             CurrentBalance = @CurrentBalance, 
             Balance = @Balance
-        WHERE MemberId = @MemberId
+        WHERE MemberId = @IdParam
       `);
     
-    console.log(`Update result:`, result.rowsAffected);
+    console.log(`[MEMBER UPDATE] Success. Rows affected:`, result.rowsAffected[0]);
     
     if (result.rowsAffected[0] === 0) {
-      return res.status(404).json({ error: "Member ID not found in database." });
+      return res.status(404).json({ error: `Member record not found for ID: ${memberId}` });
     }
 
     res.json({ success: true });
   } catch (err) {
-    console.error("PUT MEMBER ERROR:", err);
+    console.error("[MEMBER UPDATE] ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Delete Member
-app.delete("/api/members/:memberId", async (req, res) => {
+// Delete Member (ID in body)
+app.post("/api/members/delete", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const { memberId } = req.params;
+    const { memberId } = req.body;
     
-    console.log(`Deleting member ID: ${memberId}...`);
+    if (!memberId) return res.status(400).json({ error: "Missing memberId in request body" });
+    
+    console.log(`[MEMBER DELETE] Request for ID: "${memberId}"`);
 
     const result = await pool
       .request()
-      .input("MemberId", sql.NVarChar, memberId)
+      .input("IdParam", sql.UniqueIdentifier, memberId)
       .query(`
-        DELETE FROM MemberMaster WHERE MemberId = @MemberId
+        DELETE FROM MemberMaster WHERE MemberId = @IdParam
       `);
     
-    console.log(`Delete result:`, result.rowsAffected);
+    console.log(`[MEMBER DELETE] Success. Rows affected:`, result.rowsAffected[0]);
 
     if (result.rowsAffected[0] === 0) {
-      return res.status(404).json({ error: "Member ID not found for deletion." });
+      return res.status(404).json({ error: `Member not found for deletion.` });
     }
 
     res.json({ success: true });
   } catch (err) {
-    console.error("DELETE MEMBER ERROR:", err);
+    console.error("[MEMBER DELETE] ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });

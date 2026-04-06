@@ -11,6 +11,7 @@ import {
   Modal,
   ScrollView,
   Dimensions,
+  RefreshControl,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -71,11 +72,12 @@ export default function MembersScreen() {
     try {
       setLoading(true);
       const res = await fetch(`${API_URL}/api/members?t=${Date.now()}`);
+      if (!res.ok) throw new Error("Server response error");
       const data = await res.json();
       setMembers(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Fetch Error:", err);
-      Alert.alert("Database Error", "Unable to connect to the member vault.");
+      console.error("[MEMBERS FETCH] Error:", err);
+      // Soft fail for list loading to avoid constant alerts
     } finally {
       setLoading(false);
     }
@@ -114,53 +116,50 @@ export default function MembersScreen() {
   const handleSaveMember = async () => {
     const { name, phone, email, creditLimit, currentBalance, balance } = formData;
     
-    // Strict Validation
-    if (
-      !name.trim() || 
-      !phone.trim() || 
-      !email.trim() || 
-      !creditLimit.trim() || 
-      !currentBalance.trim() || 
-      !balance.trim()
-    ) {
-      Alert.alert("Incomplete Form", "Please fill it.");
+    if (!name.trim() || !phone.trim() || !email.trim()) {
+      Alert.alert("Required Fields", "Name, Phone, and Email are required.");
       return;
     }
 
     setIsSaving(true);
     try {
       const isEdit = modalMode === "EDIT";
-      const targetId = editingMember?.MemberId;
+      const memberId = editingMember?.MemberId;
       
-      const url = isEdit ? `${API_URL}/api/members/${targetId}` : `${API_URL}/api/members/add`;
+      // FIXED: ID is now in the BODY for Update, not the URL
+      const url = isEdit ? `${API_URL}/api/members/update` : `${API_URL}/api/members/add`;
       
+      const payload = {
+        memberId,
+        name: name.trim(),
+        phone: phone.trim(),
+        email: email.trim(),
+        creditLimit: parseFloat(creditLimit) || 0,
+        currentBalance: parseFloat(currentBalance) || 0,
+        balance: parseFloat(balance) || 0,
+        initialBalance: parseFloat(balance) || 0,
+      };
+
       const res = await fetch(url, {
-        method: isEdit ? "PUT" : "POST",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          phone: phone.trim(),
-          email: email.trim(),
-          creditLimit: parseFloat(creditLimit) || 0,
-          currentBalance: parseFloat(currentBalance) || 0,
-          balance: parseFloat(balance) || 0,
-          initialBalance: parseFloat(balance) || 0,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const resultData = await res.json().catch(() => ({}));
 
       if (res.ok) {
         setModalMode("NONE");
+        // Longer timeout to allow remote DB to finalize
         setTimeout(() => {
           fetchMembers();
-          Alert.alert("Success", `Member details saved successfully.`);
-        }, 300);
+          Alert.alert("Success", "Record specialized.");
+        }, 800);
       } else {
-        Alert.alert("Save Failed", resultData.error || "Server could not update record.");
+        Alert.alert("Update Error", resultData.error || "The server is taking too long to respond.");
       }
     } catch (err) {
-      Alert.alert("Network Error", "Could not reach the server.");
+      Alert.alert("Network Lag", "The database connection is slow. Try again in a few seconds.");
     } finally {
       setIsSaving(false);
     }
@@ -169,27 +168,30 @@ export default function MembersScreen() {
   const handleDeleteMember = (member: MemberType) => {
     Alert.alert(
       "Confirm Removal",
-      `Permanently delete ${member.Name}?`,
+      `Delete ${member.Name} permanently?`,
       [
         { text: "Cancel", style: "cancel" },
         { 
-          text: "Yes, Delete", 
+          text: "Delete", 
           style: "destructive",
           onPress: async () => {
             try {
-              const res = await fetch(`${API_URL}/api/members/${member.MemberId}`, {
-                method: "DELETE",
+              // FIXED: ID is now in the BODY for Delete
+              const res = await fetch(`${API_URL}/api/members/delete`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ memberId: member.MemberId }),
               });
-              const resultData = await res.json().catch(() => ({}));
               
               if (res.ok) {
                 fetchMembers();
-                Alert.alert("Removed", "Member record deleted.");
+                Alert.alert("Removed", "Member removed from registry.");
               } else {
-                Alert.alert("Delete Error", resultData.error || "Could not remove member.");
+                const resultData = await res.json().catch(() => ({}));
+                Alert.alert("Fail", resultData.error || "Could not complete deletion.");
               }
             } catch (err) {
-              Alert.alert("Error", "Check your internet connection.");
+              Alert.alert("Connection Error", "Keep the server running and try again.");
             }
           }
         },
@@ -199,8 +201,7 @@ export default function MembersScreen() {
 
   const filteredMembers = members.filter(m => 
     m.Name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-    m.Phone.includes(searchQuery) ||
-    m.MemberId.toLowerCase().includes(searchQuery.toLowerCase())
+    m.Phone.includes(searchQuery)
   );
 
   const renderMember = ({ item }: { item: MemberType }) => {
@@ -249,12 +250,8 @@ export default function MembersScreen() {
               <Text style={styles.val}>${(item.CurrentBalance || 0).toFixed(2)}</Text>
            </View>
            <View style={styles.dataBox}>
-              <Text style={styles.label}>ACCOUNT BALANCE</Text>
+              <Text style={styles.label}>ACC BALANCE</Text>
               <Text style={[styles.val, { fontFamily: Fonts.black }]}>${(item.Balance || 0).toFixed(2)}</Text>
-           </View>
-           <View style={[styles.dataBox, { width: '100%', borderBottomWidth: 0, paddingBottom: 0 }]}>
-              <Text style={styles.label}>MEMBER ID: {item.MemberId}</Text>
-              <Text style={styles.valSmall}>Registered: {formatDt(item.CreatedAt)}</Text>
            </View>
         </View>
       </View>
@@ -264,43 +261,33 @@ export default function MembersScreen() {
   return (
     <View style={styles.container}>
       <SafeAreaView style={{ flex: 1 }}>
-        {/* Header */}
         <View style={styles.headerBar}>
           <TouchableOpacity onPress={() => router.back()} style={styles.circularBack}>
              <Ionicons name="chevron-back" size={24} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.screenTitle}>Member Database</Text>
+          <Text style={styles.screenTitle}>Member Management</Text>
           <TouchableOpacity onPress={openAddModal} style={styles.glassAddBtn}>
             <Ionicons name="add" size={20} color="#fff" />
-            <Text style={styles.glassBtnText}>Member</Text>
+            <Text style={styles.glassBtnText}>Add</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Search */}
-        <View style={[styles.searchWrapper, isSearchFocused && styles.searchWrapperActive]}>
+        <View style={styles.searchWrapper}>
           <BlurView intensity={15} tint="light" style={styles.searchInner}>
-             <Ionicons name="search-outline" size={20} color={isSearchFocused ? "#3b82f6" : "#64748b"} />
+             <Ionicons name="search-outline" size={20} color="#64748b" />
              <TextInput
-               placeholder="Search name, phone or ID..."
+               placeholder="Search by name or phone..."
                placeholderTextColor="#64748b"
                style={styles.searchField}
                value={searchQuery}
                onChangeText={setSearchQuery}
-               onFocus={() => setIsSearchFocused(true)}
-               onBlur={() => setIsSearchFocused(false)}
              />
-             {searchQuery !== "" && (
-               <TouchableOpacity onPress={() => setSearchQuery("")}>
-                 <Ionicons name="close-circle" size={18} color="#64748b" />
-               </TouchableOpacity>
-             )}
           </BlurView>
         </View>
 
         {loading ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color="#3b82f6" />
-            <Text style={styles.loadingTxt}>Fetching records...</Text>
           </View>
         ) : (
           <FlatList
@@ -308,24 +295,18 @@ export default function MembersScreen() {
             keyExtractor={(item) => item.MemberId}
             renderItem={renderMember}
             contentContainerStyle={styles.listContainer}
-            showsVerticalScrollIndicator={false}
-            ListEmptyComponent={
-              <View style={styles.center}>
-                <Ionicons name="people-outline" size={80} color="rgba(255,255,255,0.03)" />
-                <Text style={styles.emptyTxt}>No members found</Text>
-              </View>
+            refreshControl={
+              <RefreshControl refreshing={loading} onRefresh={fetchMembers} tintColor="#3b82f6" />
             }
           />
         )}
 
-        {/* Modal */}
-        <Modal visible={modalMode !== "NONE"} transparent animationType="fade">
-          <BlurView intensity={40} tint="dark" style={styles.overlay}>
+        <Modal visible={modalMode !== "NONE"} transparent animationType="slide">
+          <BlurView intensity={70} tint="dark" style={styles.overlay}>
              <View style={styles.formSheet}>
                 <View style={styles.sheetHeader}>
                    <View>
-                      <Text style={styles.sheetTitle}>{modalMode === "EDIT" ? "Modify Record" : "New Account"}</Text>
-                      <Text style={styles.sheetSubtitle}>{modalMode === "EDIT" ? "Update member profile" : "Create new member"}</Text>
+                      <Text style={styles.sheetTitle}>{modalMode === "EDIT" ? "Edit Member" : "Registration"}</Text>
                    </View>
                    <TouchableOpacity onPress={() => setModalMode("NONE")} style={styles.sheetClose}>
                       <Ionicons name="close" size={24} color="#fff" />
@@ -334,7 +315,7 @@ export default function MembersScreen() {
 
                 <ScrollView style={styles.sheetBody}>
                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>FULL NAME *</Text>
+                      <Text style={styles.inputLabel}>FULL NAME</Text>
                       <TextInput 
                         style={styles.sheetInput}
                         value={formData.name}
@@ -343,7 +324,7 @@ export default function MembersScreen() {
                    </View>
 
                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>PHONE NUMBER *</Text>
+                      <Text style={styles.inputLabel}>PHONE</Text>
                       <TextInput 
                         style={styles.sheetInput}
                         keyboardType="phone-pad"
@@ -353,7 +334,7 @@ export default function MembersScreen() {
                    </View>
 
                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>EMAIL ADDRESS *</Text>
+                      <Text style={styles.inputLabel}>EMAIL</Text>
                       <TextInput 
                         style={styles.sheetInput}
                         keyboardType="email-address"
@@ -364,7 +345,7 @@ export default function MembersScreen() {
 
                    <View style={styles.inputRow}>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.inputLabel}>CREDIT LIMIT *</Text>
+                        <Text style={styles.inputLabel}>CREDIT LIMIT</Text>
                         <TextInput 
                           style={styles.sheetInput}
                           keyboardType="numeric"
@@ -373,7 +354,7 @@ export default function MembersScreen() {
                         />
                       </View>
                       <View style={{ flex: 1 }}>
-                         <Text style={styles.inputLabel}>BALANCE *</Text>
+                         <Text style={styles.inputLabel}>ACC BALANCE</Text>
                          <TextInput 
                            style={styles.sheetInput}
                            keyboardType="numeric"
@@ -384,7 +365,7 @@ export default function MembersScreen() {
                    </View>
 
                    <View style={styles.inputGroup}>
-                      <Text style={styles.inputLabel}>CURRENT BALANCE *</Text>
+                      <Text style={styles.inputLabel}>CURRENT BALANCE</Text>
                       <TextInput 
                         style={styles.sheetInput}
                         keyboardType="numeric"
@@ -401,10 +382,7 @@ export default function MembersScreen() {
                       {isSaving ? (
                         <ActivityIndicator color="#000" />
                       ) : (
-                        <>
-                          <Ionicons name="checkmark-circle-outline" size={20} color="#000" />
-                          <Text style={styles.submitBtnText}>Save Changes</Text>
-                        </>
+                        <Text style={styles.submitBtnText}>Confirm</Text>
                       )}
                    </TouchableOpacity>
                    <View style={{ height: 40 }} />
@@ -419,45 +397,40 @@ export default function MembersScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#020617" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center", gap: 16 },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
   headerBar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
-  circularBack: { width: 42, height: 42, borderRadius: 21, backgroundColor: "rgba(255,255,255,0.05)", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
-  screenTitle: { flex: 1, color: "#fff", fontSize: 20, fontFamily: Fonts.black },
-  glassAddBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#3b82f6", borderRadius: 12 },
+  circularBack: { width: 42, height: 42, borderRadius: 21, backgroundColor: "rgba(255,255,255,0.1)", justifyContent: "center", alignItems: "center" },
+  screenTitle: { flex: 1, color: "#fff", fontSize: 18, fontFamily: Fonts.black },
+  glassAddBtn: { paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#3b82f6", borderRadius: 12 },
   glassBtnText: { color: "#fff", fontFamily: Fonts.bold, fontSize: 13 },
-  searchWrapper: { marginHorizontal: 16, marginBottom: 20, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: "rgba(255,255,255,0.05)" },
-  searchWrapperActive: { borderColor: "rgba(59, 130, 246, 0.4)" },
-  searchInner: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, height: 48, gap: 12 },
-  searchField: { flex: 1, color: "#fff", fontFamily: Fonts.medium, fontSize: 15 },
-  listContainer: { paddingHorizontal: 16, paddingBottom: 40, gap: 16 },
-  loadingTxt: { color: "#64748b", fontSize: 14, fontFamily: Fonts.medium },
-  emptyTxt: { color: "#475569", fontSize: 16, fontFamily: Fonts.bold },
-  memberCard: { backgroundColor: "rgba(30, 41, 59, 0.4)", borderRadius: 20, padding: 18, borderWidth: 1, borderColor: "rgba(255,255,255,0.05)" },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  avatarCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: "rgba(59,130,246,0.1)", justifyContent: "center", alignItems: "center", borderWidth: 1, borderColor: "rgba(59,130,246,0.2)" },
-  avatarLetter: { color: "#60a5fa", fontSize: 20, fontFamily: Fonts.black },
-  memberName: { color: "#fff", fontSize: 18, fontFamily: Fonts.bold },
-  phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  memberPhone: { color: "#94a3b8", fontSize: 13, fontFamily: Fonts.medium },
-  cardActions: { flexDirection: 'row', gap: 8 },
-  actionBtn: { width: 38, height: 38, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  cardDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.05)', marginVertical: 18 },
-  dataGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 16 },
-  dataBox: { width: '50%', paddingRight: 8 },
-  label: { color: "#475569", fontSize: 9, fontFamily: Fonts.black, letterSpacing: 0.8, marginBottom: 4 },
-  val: { color: "#f8fafc", fontSize: 14, fontFamily: Fonts.semiBold },
-  valSmall: { color: "#64748b", fontSize: 12, fontFamily: Fonts.medium },
+  searchWrapper: { marginHorizontal: 16, marginBottom: 20 },
+  searchInner: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, height: 44, borderRadius: 12, overflow: 'hidden' },
+  searchField: { flex: 1, color: "#fff", fontFamily: Fonts.medium, fontSize: 14, marginLeft: 10 },
+  listContainer: { paddingHorizontal: 16, paddingBottom: 40, gap: 12 },
+  memberCard: { backgroundColor: "rgba(30, 41, 59, 0.4)", borderRadius: 16, padding: 16, borderLeftWidth: 4, borderLeftColor: "#3b82f6" },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  avatarCircle: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(59,130,246,0.1)", justifyContent: "center", alignItems: "center" },
+  avatarLetter: { color: "#60a5fa", fontSize: 16, fontFamily: Fonts.black },
+  memberName: { color: "#fff", fontSize: 16, fontFamily: Fonts.bold },
+  phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  memberPhone: { color: "#94a3b8", fontSize: 11 },
+  cardActions: { flexDirection: 'row', gap: 6 },
+  actionBtn: { width: 34, height: 34, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  cardDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.05)', marginVertical: 12 },
+  dataGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 8 },
+  dataBox: { width: '50%' },
+  label: { color: "#64748b", fontSize: 8, fontFamily: Fonts.black, marginBottom: 2 },
+  val: { color: "#f8fafc", fontSize: 12, fontFamily: Fonts.semiBold },
   overlay: { flex: 1, justifyContent: "flex-end" },
-  formSheet: { backgroundColor: "#0f172a", borderTopLeftRadius: 32, borderTopRightRadius: 32, height: '92%', borderWidth: 1, borderColor: "rgba(255,255,255,0.1)" },
-  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
-  sheetTitle: { color: "#fff", fontSize: 24, fontFamily: Fonts.black },
-  sheetSubtitle: { color: "#64748b", fontSize: 14, fontFamily: Fonts.medium },
-  sheetClose: { width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.05)", justifyContent: 'center', alignItems: 'center' },
-  sheetBody: { padding: 24 },
-  inputGroup: { marginBottom: 22 },
-  inputRow: { flexDirection: 'row', gap: 16, marginBottom: 22 },
-  inputLabel: { color: "#94a3b8", fontSize: 11, fontFamily: Fonts.black, marginBottom: 8, letterSpacing: 1.2 },
-  sheetInput: { height: 54, backgroundColor: "rgba(255,255,255,0.04)", borderRadius: 14, color: "#fff", paddingHorizontal: 18, fontSize: 16, fontFamily: Fonts.medium, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" },
-  submitBtn: { backgroundColor: "#fff", height: 60, borderRadius: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 10 },
-  submitBtnText: { color: "#000", fontFamily: Fonts.black, fontSize: 16 },
+  formSheet: { backgroundColor: "#0f172a", borderTopLeftRadius: 24, borderTopRightRadius: 24, height: '85%' },
+  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20 },
+  sheetTitle: { color: "#fff", fontSize: 20, fontFamily: Fonts.black },
+  sheetClose: { width: 36, height: 36, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.1)", justifyContent: 'center', alignItems: 'center' },
+  sheetBody: { padding: 20, paddingTop: 0 },
+  inputGroup: { marginBottom: 16 },
+  inputRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  inputLabel: { color: "#94a3b8", fontSize: 9, fontFamily: Fonts.black, marginBottom: 6 },
+  sheetInput: { height: 46, backgroundColor: "rgba(255,255,255,0.04)", borderRadius: 10, color: "#fff", paddingHorizontal: 12, fontSize: 14, borderWidth: 1, borderColor: "rgba(255,255,255,0.1)" },
+  submitBtn: { backgroundColor: "#fff", height: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
+  submitBtnText: { color: "#000", fontFamily: Fonts.black, fontSize: 14 },
 });
