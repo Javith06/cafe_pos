@@ -606,6 +606,23 @@ export default function MenuScreen() {
                 )}
 
                 <TouchableOpacity
+                  style={[
+                    styles.searchToggle,
+                    isSearchVisible && styles.searchToggleActive,
+                  ]}
+                  onPress={() => {
+                    setIsSearchVisible(!isSearchVisible);
+                    if (isSearchVisible) setSearchText("");
+                  }}
+                >
+                  <Ionicons
+                    name={isSearchVisible ? "close" : "search"}
+                    size={20}
+                    color={isSearchVisible ? "#fff" : "#4ade80"}
+                  />
+                </TouchableOpacity>
+
+                <TouchableOpacity
                   onPress={() => router.replace("/(tabs)/category")}
                   style={styles.backBtn}
                 >
@@ -732,23 +749,6 @@ export default function MenuScreen() {
                 )}
                 
                 <View style={{ flex: 1 }} />
-
-                <TouchableOpacity
-                  style={[
-                    styles.searchToggle,
-                    isSearchVisible && styles.searchToggleActive,
-                  ]}
-                  onPress={() => {
-                    setIsSearchVisible(!isSearchVisible);
-                    if (isSearchVisible) setSearchText("");
-                  }}
-                >
-                  <Ionicons
-                    name={isSearchVisible ? "close" : "search"}
-                    size={20}
-                    color={isSearchVisible ? "#fff" : "#4ade80"}
-                  />
-                </TouchableOpacity>
               </View>
 
               {/* SEARCH BAR */}
@@ -1127,17 +1127,20 @@ const styles = StyleSheet.create({
   },
   searchBarWrapper: {
     marginBottom: 12,
-    borderRadius: 12,
+    borderRadius: 30,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
+    borderColor: "rgba(255,255,255,0.12)",
+    backgroundColor: "rgba(0,0,0,0.2)",
+    maxWidth: 400,
+    alignSelf: "flex-start",
   },
   searchBlur: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 10,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    gap: 8,
   },
   searchInput: {
     flex: 1,
