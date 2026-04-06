@@ -6,18 +6,18 @@ const { poolPromise } = require('./db');
   try {
     const pool = await poolPromise;
     const result = await pool.request().query(`
-      SELECT COLUMN_NAME, IS_NULLABLE, COLUMN_DEFAULT
+      SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE
       FROM INFORMATION_SCHEMA.COLUMNS 
-      WHERE TABLE_NAME = 'SettlementHeader' 
-      AND (IS_NULLABLE = 'NO' OR COLUMN_DEFAULT IS NULL)
+      WHERE TABLE_NAME = 'DailyAttendance'
       ORDER BY ORDINAL_POSITION
     `);
-    console.log('SettlementHeader required columns (no defaults/not nullable):');
+    
+    console.log('DailyAttendance columns:');
     result.recordset.forEach(r => {
-      const nullable = r.IS_NULLABLE === 'YES' ? 'nullable' : 'NOT NULL';
-      const deflt = r.COLUMN_DEFAULT ? `(default: ${r.COLUMN_DEFAULT})` : '(no default)';
-      console.log(`  - ${r.COLUMN_NAME}: ${nullable} ${deflt}`);
+      const nullable = r.IS_NULLABLE === 'YES' ? 'null' : 'NOT NULL';
+      console.log(`  - ${r.COLUMN_NAME} (${r.DATA_TYPE}) [${nullable}]`);
     });
+    
     process.exit(0);
   } catch (err) {
     console.error('ERROR:', err.message);

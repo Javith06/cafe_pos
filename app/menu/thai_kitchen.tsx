@@ -797,7 +797,7 @@ export default function MenuScreen() {
                 contentContainerStyle={styles.gridContent}
                 showsVerticalScrollIndicator={false}
                 ListEmptyComponent={
-                  !isLoadingDishes || searchText.trim() ? (
+                  !isLoadingDishes && filteredItems.length === 0 ? (
                     <View style={styles.emptyWrap}>
                       <Text style={styles.emptyText}>
                         {searchText ? `No dishes matching "${searchText}"` : "No items available"}
@@ -884,12 +884,12 @@ export default function MenuScreen() {
                       >
                         <Text style={styles.modifierName}>
                           {mod.ModifierName?.trim()}
-                          {mod.Price && mod.Price > 0 && (
+                          {mod.Price && mod.Price > 0 ? (
                             <Text style={styles.modifierPrice}>
                               {" "}
                               (+${mod.Price.toFixed(2)})
                             </Text>
-                          )}
+                          ) : null}
                         </Text>
 
                         <View style={styles.checkbox}>
@@ -985,8 +985,19 @@ export default function MenuScreen() {
                   placeholder="Enter price"
                   placeholderTextColor="#999"
                   value={customPrice}
-                  onChangeText={setCustomPrice}
-                  keyboardType="numeric"
+                  onChangeText={(text) => {
+                    // Only allow valid decimal numbers (no single digits like "0" or "o")
+                    const cleaned = text.replace(/[^0-9.]/g, '');
+                    // Remove leading zeros
+                    const formatted = cleaned.replace(/^0+([0-9])/, '$1');
+                    // Ensure only one decimal point
+                    const parts = formatted.split('.');
+                    if (parts.length <= 2) {
+                      setCustomPrice(parts.length === 2 ? parts[0] + '.' + parts[1].substring(0, 2) : parts[0]);
+                    }
+                  }}
+                  keyboardType="decimal-pad"
+                  maxLength={8}
                 />
 
                 <View style={styles.modalButtons}>

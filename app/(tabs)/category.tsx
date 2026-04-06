@@ -1,5 +1,5 @@
 import { BlurView } from "expo-blur";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -61,6 +61,8 @@ export default function Category() {
   const sectionScrollRef = useRef<ScrollView>(null);
 
   const tables = useTableStatusStore((s) => s.tables);
+  const getLockedName = useTableStatusStore((s) => s.getLockedName);
+  const setLockedName = useTableStatusStore((s) => s.setLockedName);
   const activeOrders = useActiveOrdersStore((s) => s.activeOrders);
   const carts = useCartStore((s) => s.carts);
 
@@ -68,7 +70,34 @@ export default function Category() {
 
   useEffect(() => {
     fetchTables();
+    fetchLockedTables();
   }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      // Refresh locked tables when screen comes back into focus
+      fetchLockedTables();
+    }, [])
+  );
+
+  const fetchLockedTables = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/tables/locked`);
+      const lockedTables = await response.json();
+      
+      if (Array.isArray(lockedTables)) {
+        lockedTables.forEach((table: any) => {
+          const tableNo = table.tableNumber || table.TableNumber;
+          const lockedName = table.lockedByName || "";
+          if (tableNo) {
+            setLockedName(tableNo, lockedName);
+          }
+        });
+      }
+    } catch (error) {
+      console.error("Failed to fetch locked tables:", error);
+    }
+  };
 
   const fetchTables = async () => {
     try {
@@ -343,6 +372,11 @@ export default function Category() {
             <View style={styles.lockedOverlay}>
               <Ionicons name="lock-closed" size={20} color="#fbbf24" />
               <Text style={[styles.timeText, { fontSize: smallFont }]}>RESERVED</Text>
+              {getLockedName(item.label) && (
+                <Text style={[styles.lockedNameText, { fontSize: smallFont - 1 }]}>
+                  {getLockedName(item.label)}
+                </Text>
+              )}
             </View>
           )}
         </View>
@@ -819,6 +853,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
     marginTop: 6,
+  },
+  lockedNameText: {
+    color: "#fbbf24",
+    fontFamily: Fonts.semiBold,
+    marginTop: 2,
   },
 
   /* ── Empty State ── */

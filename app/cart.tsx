@@ -33,9 +33,6 @@ export default function CartScreen() {
   const { width } = useWindowDimensions();
   const isTablet = width >= 768;
 
-  const [showCancelModal, setShowCancelModal] = React.useState(false);
-  const [cancelPassword, setCancelPassword] = React.useState("");
-  
   const [editingItem, setEditingItem] = React.useState<CartItem | null>(null);
   const [editQty, setEditQty] = React.useState(1);
   const [editNote, setEditNote] = React.useState("");
@@ -148,23 +145,6 @@ export default function CartScreen() {
     }
   };
 
-  const handleCancelOrder = () => {
-    if (cancelPassword !== "786") {
-      Alert.alert("Error", "Incorrect admin password.");
-      return;
-    }
-
-    if (activeOrder) closeActiveOrder(activeOrder.orderId);
-    clearCart();
-    if (orderContext.orderType === "DINE_IN" && orderContext.section && orderContext.tableNo) {
-      updateTableStatus(orderContext.section, orderContext.tableNo, "", "EMPTY");
-    }
-    
-    setShowCancelModal(false);
-    setCancelPassword("");
-    router.replace("/(tabs)/category");
-  };
-
   const handleEditItemSave = () => {
     if (!editingItem || !currentContextId) return;
     
@@ -204,12 +184,6 @@ export default function CartScreen() {
               </Pressable>
 
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <Pressable 
-                  style={[styles.clear, { backgroundColor: "rgba(239, 68, 68, 0.25)" }]} 
-                  onPress={() => setShowCancelModal(true)}
-                >
-                  <Text style={[styles.topBtnText, { color: "#fca5a5" }]}>Cancel Order</Text>
-                </Pressable>
                 <Pressable style={styles.clear} onPress={() => clearCart()}>
                   <Text style={styles.topBtnText}>Clear Cart</Text>
                 </Pressable>
@@ -427,34 +401,6 @@ export default function CartScreen() {
           </View>
         </View>
       </ImageBackground>
-
-      {/* CANCEL MODAL */}
-      <Modal transparent visible={showCancelModal} animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Cancel Order?</Text>
-            <Text style={styles.modalDesc}>Please enter admin password to cancel.</Text>
-            <TextInput
-              style={styles.modalInput}
-              secureTextEntry
-              autoFocus
-              keyboardType="number-pad"
-              value={cancelPassword}
-              onChangeText={setCancelPassword}
-              placeholder="Admin Password"
-              placeholderTextColor="#6b7280"
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalBtnCancel} onPress={() => { setShowCancelModal(false); setCancelPassword(""); }}>
-                <Text style={styles.modalBtnTextCancel}>Back</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalBtnConfirm} onPress={handleCancelOrder}>
-                <Text style={styles.modalBtnTextConfirm}>Confirm</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* EDIT ITEM MODAL */}
       <Modal transparent visible={!!editingItem} animationType="slide">

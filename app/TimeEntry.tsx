@@ -164,9 +164,9 @@ export default function TimeEntry() {
           showsVerticalScrollIndicator={false}
           scrollEnabled={!isMobile}
         >
-          <View style={[styles.content, { flexDirection: isMobile ? "column" : "row" }]}>
+          <View style={[styles.content, { flexDirection: "column", alignItems: "center", justifyContent: "center" }]}>
             {/* LOGIN FORM CARD */}
-            <BlurView intensity={50} tint="dark" style={styles.formCard}>
+            <BlurView intensity={50} tint="dark" style={[styles.formCard, { width: "100%", maxWidth: 420 }]}>
               <View style={styles.cardHeader}>
                 <Ionicons name="person-circle-outline" size={24} color="#4ade80" />
                 <Text style={styles.cardTitle}>Staff Information</Text>
@@ -316,23 +316,22 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     paddingBottom: 120,
+    paddingHorizontal: 16,
   },
   content: {
     gap: 16,
     justifyContent: "center",
+    alignItems: "center",
     paddingBottom: 20,
+    width: "100%",
   },
 
   /* CARD STYLES */
   formCard: {
-    flex: 1,
-    minWidth: 320,
-    maxWidth: 450,
-    padding: 20,
+    padding: 24,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
-    alignSelf: "center",
   },
   keypadCard: {
     flex: 1,

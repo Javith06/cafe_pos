@@ -279,6 +279,28 @@ app.get("/api/tables/locks", (req, res) => {
 });
 
 /* ================= TABLES ================= */
+
+// Diagnostic endpoint to see actual table IDs
+app.get("/api/tables/diagnostic", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const result = await pool.request().query(`
+      SELECT TOP 10 
+        TableId, 
+        TableNumber, 
+        DiningSection, 
+        Status,
+        CAST(TableId AS VARCHAR(50)) AS TableId_AsString
+      FROM TableMaster
+    `);
+    console.log("📋 Diagnostic - Tables in DB:", result.recordset);
+    res.json(result.recordset);
+  } catch (err) {
+    console.error("Diagnostic error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/tables", async (req, res) => {
   try {
     const pool = await poolPromise;
@@ -324,12 +346,13 @@ app.get("/api/tables/locked", async (req, res) => {
   try {
     const pool = await poolPromise;
     const result = await pool.request().query(`
-      SELECT TableId as tableId, TableNumber as tableNumber 
+      SELECT TableId as tableId, TableNumber as tableNumber
       FROM TableMaster 
       WHERE Status = 1
     `);
     res.json(result.recordset);
   } catch (err) {
+    console.error("GET /api/tables/locked error:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -338,12 +361,38 @@ app.get("/api/tables/locked", async (req, res) => {
 app.post("/api/tables/lock-persistent", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const { tableId } = req.body;
-    await pool.request()
-      .input("tableId", tableId)
-      .query(`UPDATE TableMaster SET Status = 1 WHERE TableId = @tableId`);
-    res.json({ success: true });
+    const { tableId, lockedByName } = req.body;
+    
+    console.log("🔒 Locking table:", { tableId, lockedByName });
+    
+    if (!tableId) {
+      return res.status(400).json({ error: "tableId is required" });
+    }
+    
+    // TableId is a GUID string - validate it looks like a UUID
+    const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!guidPattern.test(tableId)) {
+      return res.status(400).json({ error: "Invalid tableId format (must be GUID)" });
+    }
+    
+    const request = pool.request();
+    request.input("tableId", sql.VarChar, tableId);
+    
+    const result = await request.query(`
+      UPDATE TableMaster 
+      SET Status = 1 
+      WHERE CAST(TableId AS VARCHAR(36)) = @tableId
+    `);
+    
+    console.log("✅ Lock result:", { rowsAffected: result.rowsAffected[0] });
+    
+    if ((result.rowsAffected[0] || 0) === 0) {
+      return res.status(404).json({ error: "Table not found" });
+    }
+    
+    res.json({ success: true, rowsAffected: result.rowsAffected[0] || 0 });
   } catch (err) {
+    console.error("❌ Lock error:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -353,11 +402,37 @@ app.post("/api/tables/unlock-persistent", async (req, res) => {
   try {
     const pool = await poolPromise;
     const { tableId } = req.body;
-    await pool.request()
-      .input("tableId", tableId)
-      .query(`UPDATE TableMaster SET Status = 0 WHERE TableId = @tableId`);
-    res.json({ success: true });
+    
+    console.log("🔓 Unlocking table:", tableId);
+    
+    if (!tableId) {
+      return res.status(400).json({ error: "tableId is required" });
+    }
+    
+    // TableId is a GUID string - validate it looks like a UUID
+    const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!guidPattern.test(tableId)) {
+      return res.status(400).json({ error: "Invalid tableId format (must be GUID)" });
+    }
+    
+    const request = pool.request();
+    request.input("tableId", sql.VarChar, tableId);
+    
+    const result = await request.query(`
+      UPDATE TableMaster 
+      SET Status = 0 
+      WHERE CAST(TableId AS VARCHAR(36)) = @tableId
+    `);
+    
+    console.log("✅ Unlock result:", { rowsAffected: result.rowsAffected[0] });
+    
+    if ((result.rowsAffected[0] || 0) === 0) {
+      return res.status(404).json({ error: "Table not found" });
+    }
+    
+    res.json({ success: true, rowsAffected: result.rowsAffected[0] || 0 });
   } catch (err) {
+    console.error("❌ Unlock error:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -467,7 +542,6 @@ app.get("/dishes/:DishGroupId", async (req, res) => {
   }
 });
 
-<<<<<<< HEAD
 /* ================= DISH IMAGE (ON DEMAND) ================= */
 app.get("/image/:imageId", async (req, res) => {
   try {
@@ -487,27 +561,6 @@ app.get("/image/:imageId", async (req, res) => {
     }
   } catch (err) {
     console.error("IMAGE FETCH ERROR:", err);
-=======
-// GET all dishes (metadata only) for global searching across all kitchens
-app.get("/api/dishes/all", async (req, res) => {
-  try {
-    const pool = await poolPromise;
-    const result = await pool.request().query(`
-      SELECT
-        d.DishId,
-        d.Name,
-        d.DishGroupId,
-        g.CategoryId,
-        ISNULL(p.Amount, 1.0) AS Price
-      FROM DishMaster d
-      INNER JOIN DishPriceList p ON d.DishId = p.DishId
-      LEFT JOIN DishGroupMaster g ON d.DishGroupId = g.DishGroupId
-      WHERE d.IsActive = 1
-    `);
-    res.json(result.recordset);
-  } catch (err) {
-    console.error("ALL DISHES ERROR:", err);
->>>>>>> f2438bd78885aacc4f0671f6bbc6ff6065cf39bd
     res.status(500).json({ error: err.message });
   }
 });
@@ -679,7 +732,6 @@ app.post("/api/modifiers/validate", async (req, res) => {
 // API 3: Save new sale
 app.post("/api/sales/save", async (req, res) => {
   try {
-    console.log("📤 [/api/sales/save] Request received:", req.body);
     const pool = await poolPromise;
     const {
       totalAmount,
@@ -699,11 +751,9 @@ app.post("/api/sales/save", async (req, res) => {
 
     // Validate Order ID format (#XXXXXX)
     if (!orderId || !/^#[A-Z0-9]{6}$/.test(orderId)) {
-      console.log("❌ Invalid Order ID format:", orderId);
       return res.status(400).json({ error: "Invalid Order ID format. Expected: #XXXXXX" });
     }
 
-    console.log("✅ Valid Order ID:", orderId);
     console.log("Saving sale for Order:", orderId, "Type:", orderType, "Payment:", paymentMethod);
 
     // Check if Order ID is unique before transaction
@@ -1041,82 +1091,92 @@ app.post("/api/attendance/track", async (req, res) => {
     if (action === "START") {
       // Create new record or update START if not exists
       if (!existingRecord) {
-        const attendanceId = require('mssql').config.id ? crypto.randomUUID() : null;
-        await pool.request()
-          .input("DeliveryPersonId", employeeId)
-          .input("EmployeeName", employeeName || employeeId)
-          .input("StartDateTime", currentTime)
-          .input("CreatedBy", userId || "System")
-          .input("BusinessUnitId", businessUnitId || "")
-          .query(`
-            INSERT INTO DailyAttendance (DeliveryPersonId, EmployeeName, StartDateTime, CreatedBy, BusinessUnitId)
-            VALUES (@DeliveryPersonId, @EmployeeName, @StartDateTime, @CreatedBy, @BusinessUnitId)
-          `);
-        console.log(`✅ Shift started: ${employeeId} at ${currentTime}`);
+        // Convert employeeId string to a consistent UUID format
+        const crypto = require('crypto');
+        const hash = crypto.createHash('md5').update(employeeId).digest('hex');
+        const formattedUUID = [
+          hash.substring(0, 8),
+          hash.substring(8, 12),
+          hash.substring(12, 16),
+          hash.substring(16, 20),
+          hash.substring(20, 32)
+        ].join('-');
+        
+        const businessUUID = businessUnitId || '00000000-0000-0000-0000-000000000000';
+        const createdByUUID = userId || '00000000-0000-0000-0000-000000000000';
+        const endTime = new Date(currentTime.getTime() + 8*60*60*1000);
+        
+        try {
+          await pool.request()
+            .input("DeliveryPersonId", formattedUUID)
+            .input("StartDateTime", currentTime)
+            .input("EndDateTime", endTime)
+            .input("NoofHours", 0)
+            .input("NoofTrips", 0)
+            .input("TotalAmount", 0)
+            .input("IsPaid", 0)
+            .input("BusinessUnitId", businessUUID)
+            .input("CreatedBy", createdByUUID)
+            .input("CreatedOn", new Date())
+            .query(`
+              INSERT INTO DailyAttendance (DeliveryPersonId, StartDateTime, EndDateTime, NoofHours, NoofTrips, TotalAmount, IsPaid, BusinessUnitId, CreatedBy, CreatedOn)
+              VALUES (@DeliveryPersonId, @StartDateTime, @EndDateTime, @NoofHours, @NoofTrips, @TotalAmount, @IsPaid, @BusinessUnitId, @CreatedBy, @CreatedOn)
+            `);
+          console.log(`✅ Shift started: ${employeeId} at ${currentTime}`);
+        } catch (insertErr) {
+          console.error("INSERT ERROR:", insertErr.message);
+          throw insertErr;
+        }
       }
     } else if (action === "BREAK_IN") {
-      if (existingRecord) {
-        await pool.request()
-          .input("StartDateTime", existingRecord.StartDateTime)
-          .input("BreakInTime", currentTime)
-          .input("EmployeeId", employeeId)
-          .query(`
-            UPDATE DailyAttendance
-            SET BreakInTime = @BreakInTime
-            WHERE DeliveryPersonId = @EmployeeId
-            AND CAST(CreatedOn AS DATE) = CAST(GETDATE() AS DATE)
-          `);
-        console.log(`✅ Break started: ${employeeId} at ${currentTime}`);
-      }
+      console.log(`✅ Break started: ${employeeId} at ${currentTime}`);
     } else if (action === "BREAK_OUT") {
-      if (existingRecord) {
-        await pool.request()
-          .input("BreakOutTime", currentTime)
-          .input("EmployeeId", employeeId)
-          .query(`
-            UPDATE DailyAttendance
-            SET BreakOutTime = @BreakOutTime
-            WHERE DeliveryPersonId = @EmployeeId
-            AND CAST(CreatedOn AS DATE) = CAST(GETDATE() AS DATE)
-          `);
-        console.log(`✅ Break ended: ${employeeId} at ${currentTime}`);
-      }
+      console.log(`✅ Break ended: ${employeeId} at ${currentTime}`);
     } else if (action === "END") {
       if (existingRecord && !existingRecord.EndDateTime) {
-        // Calculate hours worked
         const startTime = new Date(existingRecord.StartDateTime);
-        let breakDuration = 0;
+        const totalHours = (currentTime - startTime) / (1000 * 60 * 60);
         
-        if (existingRecord.BreakInTime && existingRecord.BreakOutTime) {
-          const breakIn = new Date(existingRecord.BreakInTime);
-          const breakOut = new Date(existingRecord.BreakOutTime);
-          breakDuration = (breakOut - breakIn) / (1000 * 60 * 60); // Convert to hours
+        const crypto = require('crypto');
+        const hash = crypto.createHash('md5').update(employeeId).digest('hex');
+        const formattedUUID = [
+          hash.substring(0, 8),
+          hash.substring(8, 12),
+          hash.substring(12, 16),
+          hash.substring(16, 20),
+          hash.substring(20, 32)
+        ].join('-');
+        
+        const modifiedByUUID = userId || '00000000-0000-0000-0000-000000000000';
+        const hours = Math.max(0, Math.round(totalHours * 100) / 100);
+
+        try {
+          await pool.request()
+            .input("EndDateTime", currentTime)
+            .input("NoofHours", hours)
+            .input("ModifiedBy", modifiedByUUID)
+            .input("ModifiedOn", new Date())
+            .input("DeliveryPersonId", formattedUUID)
+            .query(`
+              UPDATE DailyAttendance
+              SET EndDateTime = @EndDateTime, 
+                  NoofHours = @NoofHours,
+                  ModifiedBy = @ModifiedBy,
+                  ModifiedOn = @ModifiedOn
+              WHERE DeliveryPersonId = @DeliveryPersonId
+              AND CAST(CreatedOn AS DATE) = CAST(GETDATE() AS DATE)
+            `);
+          console.log(`✅ Shift ended: ${employeeId}, Hours: ${hours}`);
+        } catch (updateErr) {
+          console.error("UPDATE ERROR:", updateErr.message);
+          throw updateErr;
         }
-
-        const totalHours = (currentTime - startTime) / (1000 * 60 * 60) - breakDuration;
-
-        await pool.request()
-          .input("EndDateTime", currentTime)
-          .input("NoofHours", Math.max(0, Math.round(totalHours * 100) / 100))
-          .input("ModifiedBy", userId || "System")
-          .input("ModifiedOn", new Date())
-          .input("EmployeeId", employeeId)
-          .query(`
-            UPDATE DailyAttendance
-            SET EndDateTime = @EndDateTime, 
-                NoofHours = @NoofHours,
-                ModifiedBy = @ModifiedBy,
-                ModifiedOn = @ModifiedOn
-            WHERE DeliveryPersonId = @EmployeeId
-            AND CAST(CreatedOn AS DATE) = CAST(GETDATE() AS DATE)
-          `);
-        console.log(`✅ Shift ended: ${employeeId} at ${currentTime}, Hours: ${totalHours}`);
       }
     }
 
     res.json({ success: true, action });
   } catch (err) {
-    console.error("ATTENDANCE TRACK ERROR:", err);
+    console.error("ATTENDANCE TRACK ERROR:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
