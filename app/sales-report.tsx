@@ -11,6 +11,7 @@ import {
   Dimensions,
   Modal,
 } from "react-native";
+import { PieChart } from "react-native-gifted-charts";
 import { API_URL } from "@/constants/Config";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -334,22 +335,24 @@ export default function SalesReport() {
       >
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.overlay}>
-            {/* Header / Nav */}
-            <View style={styles.header}>
-              <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-                <Ionicons name="arrow-back" size={24} color="#fff" />
-              </TouchableOpacity>
-              <View style={styles.headerTitleWrap}>
-                <Text style={styles.headerTitle}>SALES DASHBOARD</Text>
-                <Text style={styles.headerSubtitle}>Real-time performance analytics</Text>
+            {/* Header with Title and Year */}
+            <View style={styles.dashboardHeader}>
+              <View style={styles.headerContent}>
+                <Text style={styles.dashboardYear}>{new Date().getFullYear()}</Text>
+                <Text style={styles.dashboardTitle}>SALES ANALYTICS</Text>
+                <Text style={styles.dashboardSubtitle}>Comprehensive performance dashboard</Text>
               </View>
-              <TouchableOpacity
-                onPress={() => setShowFilterPanel(true)}
-                style={styles.filterMenuBtn}
-              >
-                <Ionicons name="filter-outline" size={20} color="#22c55e" />
-                <Text style={styles.filterBtnLabel}>FILTER</Text>
-              </TouchableOpacity>
+              <View style={styles.headerActions}>
+                <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+                  <Ionicons name="arrow-back" size={24} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setShowFilterPanel(true)}
+                  style={styles.filterMenuBtn}
+                >
+                  <Ionicons name="filter-outline" size={20} color="#22c55e" />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <ScrollView 
@@ -357,6 +360,7 @@ export default function SalesReport() {
               refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#22c55e" />}
               contentContainerStyle={{ paddingBottom: 40 }}
             >
+              {/* Active Badges */}
               <View style={styles.badgeRow}>
                 {activePaymentModes.length < 4 && activePaymentModes.map(m => (
                   <View key={m} style={[styles.activeBadge, { borderColor: m === "CARD" ? "#818cf8" : "#22c55e" }]}>
@@ -374,12 +378,8 @@ export default function SalesReport() {
                     </TouchableOpacity>
                   </View>
                 ))}
-                {sortOrder === "HIGHEST" && (
-                   <View style={[styles.activeBadge, { backgroundColor: "rgba(245,158,11,0.1)", borderColor: "#f59e0b" }]}>
-                     <Text style={[styles.badgeText, { color: "#f59e0b" }]}>TOP SALES</Text>
-                   </View>
-                )}
               </View>
+
               {/* Filter Toggles */}
               <View style={styles.filterBar}>
                 {(["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] as FilterType[]).map(
@@ -418,6 +418,7 @@ export default function SalesReport() {
                 </TouchableOpacity>
               </View>
 
+              {/* Key Metrics Grid - 2x2 */}
               <View style={styles.metricsGrid}>
                 {renderMetricTile(
                   "Gross Revenue",
@@ -445,53 +446,214 @@ export default function SalesReport() {
                 )}
               </View>
 
-              {/* Payment Mix Chart */}
-              <View style={styles.chartCard}>
-                <Text style={styles.cardTitle}>PAYMENT CHANNEL MIX</Text>
-                <View style={styles.progressRow}>
-                  {paymentMix.cash > 0 && <View style={[styles.progressSegment, { width: `${paymentMix.cash}%`, backgroundColor: "#22c55e" }]} />}
-                  {paymentMix.card > 0 && <View style={[styles.progressSegment, { width: `${paymentMix.card}%`, backgroundColor: "#818cf8" }]} />}
-                  {paymentMix.nets > 0 && <View style={[styles.progressSegment, { width: `${paymentMix.nets}%`, backgroundColor: "#3b82f6" }]} />}
-                  {paymentMix.paynow > 0 && <View style={[styles.progressSegment, { width: `${paymentMix.paynow}%`, backgroundColor: "#f59e0b" }]} />}
+              {/* Charts Section - Three columns like the reference */}
+              <View style={styles.chartsContainer}>
+                {/* Payment Channel Mix - Pie Chart */}
+                <View style={[styles.chartCard, styles.chartCardWide]}>
+                  <View style={styles.chartCardHeader}>
+                    <Text style={styles.cardTitle}>PAYMENT CHANNEL MIX</Text>
+                    <Ionicons name="pie-chart" size={14} color="#22c55e" />
+                  </View>
+                  <View style={styles.chartContainer}>
+                    {filteredMetrics.TotalSales > 0 ? (
+                      <View style={styles.pieChartWrapper}>
+                        <PieChart
+                          data={[
+                            {
+                              value: filteredMetrics.Cash,
+                              color: "#22c55e",
+                              text: `${paymentMix.cash.toFixed(0)}%`,
+                              label: "CASH",
+                            },
+                            {
+                              value: filteredMetrics.Card,
+                              color: "#818cf8",
+                              text: `${paymentMix.card.toFixed(0)}%`,
+                              label: "CARD",
+                            },
+                            {
+                              value: filteredMetrics.Nets,
+                              color: "#3b82f6",
+                              text: `${paymentMix.nets.toFixed(0)}%`,
+                              label: "NETS",
+                            },
+                            {
+                              value: filteredMetrics.PayNow,
+                              color: "#f59e0b",
+                              text: `${paymentMix.paynow.toFixed(0)}%`,
+                              label: "DIGITAL",
+                            },
+                          ].filter(d => d.value > 0)}
+                          donut
+                          sectionAutoFocus
+                          radius={70}
+                          innerRadius={50}
+                          focusOnPress
+                          textColor="#fff"
+                          showText
+                          textSize={11}
+                          textBackgroundRadius={26}
+                          showValuesAsLabels={false}
+                          strokeColor="#0f172a"
+                          strokeWidth={2}
+                        />
+                      </View>
+                    ) : (
+                      <View style={styles.emptyChartPlaceholder}>
+                        <Ionicons name="pie-chart-outline" size={40} color="#64748b" />
+                        <Text style={styles.emptyChartText}>No sales data</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.legendContainer}>
+                    {paymentMix.cash > 0 && (
+                      <View style={styles.legendItemSmall}>
+                        <View style={[styles.dot, { backgroundColor: "#22c55e" }]} />
+                        <Text style={styles.legendTextSmall}>CASH {paymentMix.cash.toFixed(0)}%</Text>
+                      </View>
+                    )}
+                    {paymentMix.card > 0 && (
+                      <View style={styles.legendItemSmall}>
+                        <View style={[styles.dot, { backgroundColor: "#818cf8" }]} />
+                        <Text style={styles.legendTextSmall}>CARD {paymentMix.card.toFixed(0)}%</Text>
+                      </View>
+                    )}
+                    {paymentMix.nets > 0 && (
+                      <View style={styles.legendItemSmall}>
+                        <View style={[styles.dot, { backgroundColor: "#3b82f6" }]} />
+                        <Text style={styles.legendTextSmall}>NETS {paymentMix.nets.toFixed(0)}%</Text>
+                      </View>
+                    )}
+                    {paymentMix.paynow > 0 && (
+                      <View style={styles.legendItemSmall}>
+                        <View style={[styles.dot, { backgroundColor: "#f59e0b" }]} />
+                        <Text style={styles.legendTextSmall}>DIGITAL {paymentMix.paynow.toFixed(0)}%</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
-                <View style={styles.legendRow}>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.dot, { backgroundColor: "#22c55e" }]} />
-                    <Text style={styles.legendText}>CASH ({paymentMix.cash.toFixed(0)}%)</Text>
+
+                {/* Order Type Distribution */}
+                <View style={styles.chartCard}>
+                  <View style={styles.chartCardHeader}>
+                    <Text style={styles.cardTitle}>ORDER TYPES</Text>
+                    <Ionicons name="layers-outline" size={14} color="#3b82f6" />
                   </View>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.dot, { backgroundColor: "#818cf8" }]} />
-                    <Text style={styles.legendText}>CARD ({paymentMix.card.toFixed(0)}%)</Text>
+                  <View style={styles.orderTypeStats}>
+                    {(() => {
+                      const dineIn = sales.filter(s => !s.OrderType || s.OrderType === "DINE-IN").length;
+                      const takeaway = sales.filter(s => s.OrderType === "TAKEAWAY").length;
+                      const total = dineIn + takeaway;
+                      return (
+                        <>
+                          <View style={styles.statRow}>
+                            <View style={styles.statLabel}>
+                              <Text style={styles.statIcon}>🪑</Text>
+                              <Text style={styles.statName}>Dine-In</Text>
+                            </View>
+                            <Text style={[styles.statValue, { color: "#3b82f6" }]}>
+                              {total > 0 ? ((dineIn / total) * 100).toFixed(0) : 0}%
+                            </Text>
+                          </View>
+                          <View style={styles.statRow}>
+                            <View style={styles.statLabel}>
+                              <Text style={styles.statIcon}>🛍️</Text>
+                              <Text style={styles.statName}>Takeaway</Text>
+                            </View>
+                            <Text style={[styles.statValue, { color: "#f59e0b" }]}>
+                              {total > 0 ? ((takeaway / total) * 100).toFixed(0) : 0}%
+                            </Text>
+                          </View>
+                        </>
+                      );
+                    })()}
                   </View>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.dot, { backgroundColor: "#3b82f6" }]} />
-                    <Text style={styles.legendText}>NETS ({paymentMix.nets.toFixed(0)}%)</Text>
+                </View>
+
+                {/* Performance Metrics */}
+                <View style={styles.chartCard}>
+                  <View style={styles.chartCardHeader}>
+                    <Text style={styles.cardTitle}>KEY METRICS</Text>
+                    <Ionicons name="bar-chart-outline" size={14} color="#ec4899" />
                   </View>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.dot, { backgroundColor: "#f59e0b" }]} />
-                    <Text style={styles.legendText}>DIGITAL ({paymentMix.paynow.toFixed(0)}%)</Text>
+                  <View style={styles.metricsStats}>
+                    <View style={styles.metricRow}>
+                      <Text style={styles.metricLabel}>Conversion</Text>
+                      <Text style={styles.metricValueSmall}>{filteredMetrics.TotalTransactions}</Text>
+                    </View>
+                    <View style={styles.metricRow}>
+                      <Text style={styles.metricLabel}>Avg Items</Text>
+                      <Text style={styles.metricValueSmall}>
+                        {filteredMetrics.TotalTransactions > 0 
+                          ? (filteredMetrics.TotalItems / filteredMetrics.TotalTransactions).toFixed(1) 
+                          : 0}
+                      </Text>
+                    </View>
+                    <View style={styles.metricRow}>
+                      <Text style={styles.metricLabel}>Per Item</Text>
+                      <Text style={styles.metricValueSmall}>
+                        {formatCurrency(filteredMetrics.TotalItems > 0 
+                          ? filteredMetrics.TotalSales / filteredMetrics.TotalItems 
+                          : 0)}
+                      </Text>
+                    </View>
                   </View>
                 </View>
               </View>
 
-              {/* Recent Activity */}
+              {/* Payment Method Breakdown */}
+              <View style={styles.breakdownCard}>
+                <View style={styles.chartCardHeader}>
+                  <Text style={styles.cardTitle}>PAYMENT BREAKDOWN</Text>
+                  <Ionicons name="wallet-outline" size={14} color="#22c55e" />
+                </View>
+                <View style={styles.breakdownRow}>
+                  <View style={styles.breakdownItem}>
+                    <Text style={styles.breakdownIcon}>💵</Text>
+                    <Text style={styles.breakdownLabel}>CASH</Text>
+                    <Text style={[styles.breakdownValue, { color: "#22c55e" }]}>
+                      {formatCurrency(filteredMetrics.Cash)}
+                    </Text>
+                  </View>
+                  <View style={styles.breakdownItem}>
+                    <Text style={styles.breakdownIcon}>💳</Text>
+                    <Text style={styles.breakdownLabel}>CARD</Text>
+                    <Text style={[styles.breakdownValue, { color: "#818cf8" }]}>
+                      {formatCurrency(filteredMetrics.Card)}
+                    </Text>
+                  </View>
+                  <View style={styles.breakdownItem}>
+                    <Text style={styles.breakdownIcon}>🔳</Text>
+                    <Text style={styles.breakdownLabel}>NETS</Text>
+                    <Text style={[styles.breakdownValue, { color: "#3b82f6" }]}>
+                      {formatCurrency(filteredMetrics.Nets)}
+                    </Text>
+                  </View>
+                  <View style={styles.breakdownItem}>
+                    <Text style={styles.breakdownIcon}>📱</Text>
+                    <Text style={styles.breakdownLabel}>DIGITAL</Text>
+                    <Text style={[styles.breakdownValue, { color: "#f59e0b" }]}>
+                      {formatCurrency(filteredMetrics.PayNow)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Recent Activity Section */}
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionHeaderText}>RECENT ACTIVITY</Text>
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  <TouchableOpacity onPress={() => fetchData()}>
-                    <Text style={styles.seeAllText}>REFRESH</Text>
-                  </TouchableOpacity>
-                </View>
+                <Text style={styles.sectionHeaderText}>RECENT TRANSACTIONS</Text>
+                <TouchableOpacity onPress={() => fetchData()}>
+                  <Text style={styles.seeAllText}>REFRESH</Text>
+                </TouchableOpacity>
               </View>
 
-              {filteredSales.slice(0, 30).map((item, idx) => (
+              {filteredSales.slice(0, 15).map((item, idx) => (
                 <TouchableOpacity
                   activeOpacity={0.8}
                   key={idx}
                   onPress={() => handleOrderPress(item)}
                   style={styles.transactionCard}
                 >
-
                   {/* Icon */}
                   <View style={styles.txIconWrap}>
                     <Ionicons 
@@ -743,20 +905,47 @@ export default function SalesReport() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   overlay: { flex: 1, paddingHorizontal: 16 },
-  header: {
+  
+  /* Dashboard Header */
+  dashboardHeader: {
     flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    paddingVertical: 20,
+    gap: 16,
+  },
+  headerContent: { flex: 1 },
+  dashboardYear: {
+    color: "#4ade80",
+    fontFamily: Fonts.black,
+    fontSize: 14,
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  dashboardTitle: {
+    color: "#fff",
+    fontFamily: Fonts.black,
+    fontSize: 28,
+    letterSpacing: 1.2,
+  },
+  dashboardSubtitle: {
+    color: "#94a3b8",
+    fontFamily: Fonts.semiBold,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  headerActions: {
+    flexDirection: "row",
+    gap: 10,
     alignItems: "center",
-    paddingVertical: 18,
-    gap: 12,
   },
   filterMenuBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     backgroundColor: "rgba(34,197,94,0.1)",
+    justifyContent: "center",
+    alignItems: "center",
     borderWidth: 1,
     borderColor: "rgba(34,197,94,0.2)",
   },
@@ -776,21 +965,33 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
   },
-  headerTitleWrap: { flex: 1 },
-  headerTitle: {
-    color: "#fff",
-    fontFamily: Fonts.black,
-    fontSize: 20,
-    letterSpacing: 1,
+  
+  /* Badge Row */
+  badgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 16,
   },
-  headerSubtitle: {
-    color: "#4ade80",
-    fontFamily: Fonts.semiBold,
-    fontSize: 11,
-    marginTop: 1,
-    textTransform: "uppercase",
+  activeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: "rgba(34,197,94,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.2)",
+  },
+  badgeText: {
+    color: "#22c55e",
+    fontFamily: Fonts.bold,
+    fontSize: 10,
     letterSpacing: 0.5,
   },
+  
+  /* Filter Bar */
   filterBar: {
     flexDirection: "row",
     borderRadius: 12,
@@ -818,6 +1019,8 @@ const styles = StyleSheet.create({
   activeFilterText: {
     color: "#22c55e",
   },
+  
+  /* Date Control */
   dateControl: {
     flexDirection: "row",
     alignItems: "center",
@@ -849,11 +1052,13 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.extraBold,
     fontSize: 14,
   },
+  
+  /* Metrics Grid */
   metricsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
-    marginBottom: 16,
+    marginBottom: 24,
   },
   metricTile: {
     width: (SCREEN_W - 32 - 10) / 2,
@@ -878,30 +1083,67 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.black,
     fontSize: 20,
   },
-  chartCard: {
-    padding: 20,
-    borderRadius: 18,
+  
+  /* Charts Container - Grid Layout */
+  chartsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
     marginBottom: 24,
+  },
+  chartCard: {
+    flex: 1,
+    minWidth: (SCREEN_W - 32 - 12) / 2,
+    padding: 16,
+    borderRadius: 14,
     borderWidth: 1.5,
     borderColor: "rgba(255,255,255,0.1)",
     backgroundColor: "rgba(15, 23, 42, 0.85)",
   },
+  chartCardWide: {
+    width: "100%",
+  },
+  chartCardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
   cardTitle: {
     color: "#94a3b8",
     fontFamily: Fonts.black,
-    fontSize: 12,
+    fontSize: 11,
     letterSpacing: 1,
+  },
+  chartContainer: {
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 16,
   },
-  progressRow: {
-    height: 12,
-    backgroundColor: "rgba(255,255,255,0.05)",
-    borderRadius: 6,
-    overflow: "hidden",
-    flexDirection: "row",
-    marginBottom: 16,
+  pieChartWrapper: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
   },
-  progressSegment: { height: "100%" },
+  emptyChartPlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 30,
+    gap: 12,
+  },
+  emptyChartText: {
+    color: "#64748b",
+    fontFamily: Fonts.semiBold,
+    fontSize: 12,
+  },
+  
+  /* Legend Container */
+  legendContainer: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.05)",
+    paddingTop: 12,
+    gap: 8,
+  },
   legendRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -909,14 +1151,119 @@ const styles = StyleSheet.create({
   legendItem: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 10,
+    paddingVertical: 6,
+  },
+  legendItemSmall: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
   },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  legendText: {
+  legendTextSmall: {
     color: "#94a3b8",
-    fontFamily: Fonts.bold,
+    fontFamily: Fonts.semiBold,
     fontSize: 10,
   },
+  legendText: {
+    color: "#94a3b8",
+    fontFamily: Fonts.semiBold,
+    fontSize: 12,
+  },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  
+  /* Order Type Stats */
+  orderTypeStats: {
+    gap: 12,
+  },
+  statRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.05)",
+  },
+  statLabel: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  statIcon: {
+    fontSize: 18,
+  },
+  statName: {
+    color: "#e2e8f0",
+    fontFamily: Fonts.semiBold,
+    fontSize: 12,
+  },
+  statValue: {
+    fontFamily: Fonts.black,
+    fontSize: 16,
+  },
+  
+  /* Metrics Stats */
+  metricsStats: {
+    gap: 10,
+  },
+  metricRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.05)",
+  },
+  metricLabel: {
+    color: "#64748b",
+    fontFamily: Fonts.semiBold,
+    fontSize: 11,
+  },
+  metricValueSmall: {
+    color: "#fff",
+    fontFamily: Fonts.black,
+    fontSize: 14,
+  },
+  
+  /* Breakdown Card */
+  breakdownCard: {
+    padding: 16,
+    borderRadius: 14,
+    marginBottom: 24,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(15, 23, 42, 0.85)",
+  },
+  breakdownRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  breakdownItem: {
+    flex: 1,
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.05)",
+  },
+  breakdownIcon: {
+    fontSize: 24,
+  },
+  breakdownLabel: {
+    color: "#64748b",
+    fontFamily: Fonts.bold,
+    fontSize: 9,
+    letterSpacing: 0.5,
+  },
+  breakdownValue: {
+    fontFamily: Fonts.black,
+    fontSize: 11,
+  },
+  
+  /* Section Header */
   sectionHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -935,6 +1282,8 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     fontSize: 12,
   },
+  
+  /* Transaction Card */
   transactionCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -1428,18 +1777,4 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   resetText: { color: "#64748b", fontFamily: Fonts.bold, fontSize: 12 },
-
-  badgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 16 },
-  activeBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.1)",
-  },
-  badgeText: { color: "#22c55e", fontFamily: Fonts.black, fontSize: 9, letterSpacing: 0.5 },
 });

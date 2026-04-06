@@ -12,7 +12,12 @@ const dbConfig = {
     encrypt: false,
     trustServerCertificate: true,
     enableArithAbort: true,
+    connectTimeout: 30000, // 30 seconds
+    requestTimeout: 30000, // 30 seconds
+    appName: "POS_System"
   },
+  connectionTimeout: 30000,
+  requestTimeout: 30000,
 };
 
 // Log configuration for debugging (mask password)
@@ -21,22 +26,29 @@ console.log(`   Server: ${dbConfig.server || "NOT SET"}`);
 console.log(`   Port: ${dbConfig.port || "NOT SET"}`);
 console.log(`   Database: ${dbConfig.database || "NOT SET"}`);
 console.log(`   User: ${dbConfig.user || "NOT SET"}`);
+console.log(`   Connection Timeout: ${dbConfig.connectionTimeout}ms`);
+
+let poolInstance = null;
 
 const poolPromise = new sql.ConnectionPool(dbConfig)
   .connect()
   .then((pool) => {
     console.log("✅ Connected to MSSQL Successfully");
+    poolInstance = pool;
     return pool;
   })
   .catch((err) => {
     console.error("❌ Database Connection Failed:", err.message);
+    console.error("   Error Code:", err.code);
     console.error("   Please verify your .env file contains:");
-    console.error("   - DB_SERVER");
-    console.error("   - DB_PORT");
-    console.error("   - DB_NAME");
-    console.error("   - DB_USER");
-    console.error("   - DB_PASSWORD");
-    throw err;
+    console.error("   - DB_SERVER: " + dbConfig.server);
+    console.error("   - DB_PORT: " + dbConfig.port);
+    console.error("   - DB_NAME: " + dbConfig.database);
+    console.error("   - DB_USER: " + dbConfig.user);
+    console.error("   - DB_PASSWORD: (hidden)");
+    
+    // Return null instead of throwing to allow server to start
+    return null;
   });
 
-module.exports = { sql, poolPromise };
+module.exports = { sql, poolPromise, dbConfig };
