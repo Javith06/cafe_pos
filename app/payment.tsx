@@ -29,6 +29,7 @@ import {
   getOrderContext,
 } from "../stores/orderContextStore";
 import { useTableStatusStore } from "../stores/tableStatusStore";
+import { useGstStore } from "../stores/gstStore"; 
 
 export default function PaymentScreen() {
   const closeActiveOrder = useActiveOrdersStore((s) => s.closeActiveOrder);
@@ -55,6 +56,11 @@ export default function PaymentScreen() {
   const [cashInput, setCashInput] = useState("");
   const [processing, setProcessing] = useState(false);
   const [time, setTime] = useState(new Date());
+  const { enabled: gstEnabled, percentage: gstPercentage, registrationNumber: gstRegNo, loadSettings: loadGst } = useGstStore();
+
+  useEffect(() => {
+    loadGst();
+  }, []);
 
   /* ================= CALCULATIONS ================= */
 
@@ -63,21 +69,15 @@ export default function PaymentScreen() {
     [cart],
   );
 
-  const GST_RATE = 0.09;
-
   const discountAmount = useMemo(() => {
     if (!discount?.applied) return 0;
-
-    if (discount.type === "percentage") {
-      return (subtotal * discount.value) / 100;
-    } else {
-      return discount.value;
-    }
+    if (discount.type === "percentage") return (subtotal * discount.value) / 100;
+    return discount.value;
   }, [discount, subtotal]);
 
-  const discountedSubtotal = subtotal - discountAmount;
-  const tax = discountedSubtotal * GST_RATE;
-  const total = discountedSubtotal + tax;
+  const discSubtotal = Math.max(0, subtotal - discountAmount);
+  const tax = gstEnabled ? parseFloat((discSubtotal * (gstPercentage / 100)).toFixed(2)) : 0;
+  const total = discSubtotal + tax;
 
   const paidNum = parseFloat(cashInput) || 0;
   const change = Math.max(0, paidNum - total);
@@ -295,6 +295,7 @@ export default function PaymentScreen() {
                 <div class="title">SMART CAFE POS</div>
                 <div>123 Coffee Street</div>
                 <div>Tel: +65 1234 5678</div>
+                ${gstRegNo ? `<div>GST Reg No: ${gstRegNo}</div>` : ''}
               </div>
               
               <div class="divider"></div>
@@ -309,11 +310,11 @@ export default function PaymentScreen() {
               
               ${itemsHtml}
               
-              <div class="divider"></div>
+                <div class="divider"></div>
               
               <div class="flex-row"><span>Subtotal:</span><span>$${subtotal.toFixed(2)}</span></div>
               ${discountAmount > 0 ? `<div class="flex-row"><span>Discount:</span><span>-$${discountAmount.toFixed(2)}</span></div>` : ''}
-              <div class="flex-row"><span>Tax (9%):</span><span>$${tax.toFixed(2)}</span></div>
+              ${gstEnabled ? `<div class="flex-row"><span>GST (${gstPercentage}%):</span><span>$${tax.toFixed(2)}</span></div>` : ''}
               <div class="flex-row bold" style="font-size: 14px; margin-top: 5px;"><span>TOTAL:</span><span>$${total.toFixed(2)}</span></div>
               
               <div class="divider"></div>
@@ -470,7 +471,7 @@ export default function PaymentScreen() {
                 )}
 
                 <View style={styles.breakRow}>
-                  <Text style={styles.breakLabel}>Tax (9%)</Text>
+                  <Text style={styles.breakLabel}>GST ({gstPercentage}%)</Text>
                   <Text style={styles.breakValue}>${tax.toFixed(2)}</Text>
                 </View>
               </View>

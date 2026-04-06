@@ -23,8 +23,10 @@ import { useToast } from "../components/Toast";
 import { API_URL } from "@/constants/Config";
 
 import DiscountModal from "../components/DiscountModal";
+import GstSettingsModal from "../components/GstSettingsModal";
 import { findActiveOrder, useActiveOrdersStore } from "../stores/activeOrdersStore";
 import { useCartStore } from "../stores/cartStore";
+import { useGstStore } from "../stores/gstStore"; 
 import { getOrderContext } from "../stores/orderContextStore";
 import { useTableStatusStore } from "../stores/tableStatusStore";
 
@@ -36,12 +38,19 @@ export default function SummaryScreen() {
   const activeOrder = context ? findActiveOrder(context) : undefined;
 
   const [showDiscount, setShowDiscount] = useState(false);
+  const [showGstModal, setShowGstModal] = useState(false); 
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReasons, setCancelReasons] = useState<Array<{ CRCode: string; CRName: string }>>([]);
   const [selectedCancelReason, setSelectedCancelReason] = useState<string | null>(null);
   const [customCancelReason, setCustomCancelReason] = useState("");
   const [isCancellingOrder, setIsCancellingOrder] = useState(false);
   const [loadingReasons, setLoadingReasons] = useState(false);
+
+  const { enabled: gstEnabled, percentage: gstPercentage, isConfigured: gstConfigured, setEnabled: setGstEnabled, loadSettings: loadGst } = useGstStore();
+
+  useEffect(() => {
+    loadGst();
+  }, []);
 
   const cart = useMemo(() => {
     return activeOrder ? activeOrder.items : [];
@@ -145,24 +154,15 @@ export default function SummaryScreen() {
     [cart],
   );
 
-  const GST_RATE = 0.09;
-
-  /* 🔥 DISCOUNT LOGIC (CORRECT) */
   const discountAmount = useMemo(() => {
     if (!discountInfo?.applied) return 0;
-
-    if (discountInfo.type === "percentage") {
-      return (subtotal * discountInfo.value) / 100;
-    } else {
-      return discountInfo.value;
-    }
+    if (discountInfo.type === "percentage") return (subtotal * discountInfo.value) / 100;
+    return discountInfo.value;
   }, [discountInfo, subtotal]);
 
-  const discountedSubtotal = subtotal - discountAmount;
-
-  const gst = discountedSubtotal * GST_RATE;
-
-  const grandTotal = discountedSubtotal + gst;
+  const discSubtotal = Math.max(0, subtotal - discountAmount);
+  const gstAmount = gstEnabled ? parseFloat((discSubtotal * (gstPercentage / 100)).toFixed(2)) : 0;
+  const grandTotal = discSubtotal + gstAmount;
 
   /* ================= GUARD ================= */
 
@@ -322,25 +322,32 @@ export default function SummaryScreen() {
                     <Text style={styles.summaryValue}>${subtotal.toFixed(2)}</Text>
                   </View>
 
-                  {/* Discount row — styled as a badge */}
                   {discountInfo?.applied && (
-                    <View style={styles.discountRow}>
-                      <View style={styles.discountBadge}>
-                        <Ionicons name="pricetag" size={12} color="#f87171" />
-                        <Text style={styles.discountBadgeText}>
-                          {discountInfo.type === "percentage"
-                            ? `${discountInfo.value}% OFF`
-                            : `$${discountInfo.value} OFF`}
-                        </Text>
-                      </View>
-                      <Text style={styles.discountValue}>-${discountAmount.toFixed(2)}</Text>
+                    <View style={styles.summaryRow}>
+                      <Text style={[styles.summaryLabel, { color: "#f87171" }]}>Discount</Text>
+                      <Text style={[styles.summaryValue, { color: "#f87171" }]}>-${discountAmount.toFixed(2)}</Text>
                     </View>
                   )}
 
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>GST (9%)</Text>
-                    <Text style={styles.summaryValue}>${gst.toFixed(2)}</Text>
-                  </View>
+                  {gstEnabled ? (
+                    <View style={styles.summaryRow}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Text style={styles.summaryLabel}>GST ({gstPercentage}%)</Text>
+                        <TouchableOpacity onPress={() => setShowGstModal(true)}>
+                          <Ionicons name="settings-outline" size={12} color="#888" />
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={styles.summaryValue}>${gstAmount.toFixed(2)}</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity 
+                      style={styles.gstBtn} 
+                      onPress={() => gstConfigured ? setGstEnabled(true) : setShowGstModal(true)}
+                    >
+                      <Ionicons name="add-circle-outline" size={14} color="#4ade80" />
+                      <Text style={styles.gstBtnText}>Enable GST</Text>
+                    </TouchableOpacity>
+                  )}
 
                   {/* Dashed divider */}
                   <View style={styles.dashedDivider}>
@@ -373,7 +380,12 @@ export default function SummaryScreen() {
         </SafeAreaView>
       </ImageBackground>
 
-      {/* DISCOUNT MODAL */}
+      <GstSettingsModal
+        visible={showGstModal}
+        onClose={() => setShowGstModal(false)}
+        previewSubtotal={subtotal}
+      />
+
       <DiscountModal
         visible={showDiscount}
         onClose={() => setShowDiscount(false)}
@@ -762,6 +774,8 @@ const styles = StyleSheet.create({
     fontSize: 34,
     letterSpacing: -0.5,
   },
+  gstBtn: { flexDirection: "row", alignItems: "center", gap: 5, alignSelf: "flex-end", paddingVertical: 8, paddingHorizontal: 12, backgroundColor: "rgba(74,222,128,0.1)", borderRadius: 8, marginBottom: 10 },
+  gstBtnText: { color: "#4ade80", fontSize: 13, fontFamily: Fonts.bold },
 
   proceedBtn: {
     flexDirection: "row",

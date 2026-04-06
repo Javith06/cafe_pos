@@ -3,6 +3,7 @@
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { Alert } from "react-native";
+import { useGstStore } from "../stores/gstStore"; 
 
 class UniversalPrinter {
   // 🖨️ MAIN PRINT FUNCTION
@@ -48,14 +49,18 @@ class UniversalPrinter {
     const date = new Date();
 
     const items = saleData.items || [];
-    const total = saleData.total || 0;
+    const subtotal = saleData.subTotal || saleData.subtotal || 0;
+    const discountAmount = saleData.discountAmount || 0;
+    
+    // Fetch GST settings
+    const { enabled: gstEnabled, percentage: gstPercentage, registrationNumber: gstRegNo } = useGstStore.getState();
 
-    // 🇸🇬 GST (INCLUSIVE)
-    const gstRate = 9;
-    const gstAmount = total * (gstRate / (100 + gstRate));
+    const taxableAmount = Math.max(0, subtotal - discountAmount);
+    const gstAmount = gstEnabled ? parseFloat((taxableAmount * (gstPercentage / 100)).toFixed(2)) : 0;
+    const total = taxableAmount + gstAmount;
 
     const totalQty = items.reduce(
-      (sum: number, i: any) => sum + (i.quantity || 1),
+      (sum: number, i: any) => sum + (i.quantity || i.qty || 1),
       0,
     );
 
@@ -98,9 +103,9 @@ class UniversalPrinter {
     <body>
 
       <!-- HEADER -->
-      <div class="center bold">UNIPRO CAFE</div>
+      <div class="center bold">SMART CAFE POS</div>
       <div class="center">Singapore</div>
-      <div class="center">GST Reg No: XXXXXXXX</div>
+      ${gstRegNo ? `<div class="center">GST Reg No: ${gstRegNo}</div>` : ''}
 
       <div class="line"></div>
 
@@ -153,17 +158,26 @@ class UniversalPrinter {
       </div>
 
       <div class="row">
-        <span>Total Amount</span>
-        <span>${symbol}${total.toFixed(2)}</span>
+        <span>Subtotal</span>
+        <span>${symbol}${subtotal.toFixed(2)}</span>
       </div>
 
+      ${discountAmount > 0 ? `
       <div class="row">
-        <span>GST (Inclusive) 9%</span>
+        <span>Discount</span>
+        <span>-${symbol}${discountAmount.toFixed(2)}</span>
+      </div>
+      ` : ''}
+
+      ${gstEnabled ? `
+      <div class="row">
+        <span>GST (${gstPercentage}%)</span>
         <span>${symbol}${gstAmount.toFixed(2)}</span>
       </div>
+      ` : ''}
 
       <div class="row bold">
-        <span>Net Amount</span>
+        <span>Grand Total</span>
         <span>${symbol}${total.toFixed(2)}</span>
       </div>
 
