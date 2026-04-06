@@ -1,23 +1,23 @@
+import { API_URL } from "@/constants/Config";
+import { Ionicons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
+import { useFocusEffect, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
   ActivityIndicator,
   Alert,
-  ImageBackground,
   Dimensions,
+  FlatList,
+  ImageBackground,
   Modal,
-  TextInput,
   ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
-import { useRouter, useFocusEffect } from "expo-router";
-import { BlurView } from "expo-blur";
-import { API_URL } from "@/constants/Config";
 import { Fonts } from "../constants/Fonts";
 import { setOrderContext } from "../stores/orderContextStore";
 
@@ -30,11 +30,12 @@ type TableType = {
   diningSection?: number;
 };
 
-const SECTIONS = ["SECTION_1", "SECTION_2", "SECTION_3"];
+const SECTIONS = ["SECTION_1", "SECTION_2", "SECTION_3", "TAKEAWAY"];
 const SECTION_LABELS: Record<string, string> = {
   SECTION_1: "Section 1",
   SECTION_2: "Section 2",
   SECTION_3: "Section 3",
+  TAKEAWAY: "Takeaway",
 };
 
 export default function LockedTablesScreen() {
@@ -57,46 +58,85 @@ export default function LockedTablesScreen() {
     React.useCallback(() => {
       // Refresh locked tables when screen comes back into focus
       fetchData();
-    }, [])
+    }, []),
   );
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      
+
+      console.log(`🔄 Fetching tables from ${API_URL}/tables...`);
+
       // Fetch all tables from database
       const tablesRes = await fetch(`${API_URL}/tables`);
+      if (!tablesRes.ok) {
+        throw new Error(`HTTP ${tablesRes.status}: Failed to fetch tables`);
+      }
       const tablesData = await tablesRes.json();
-      
+      console.log(
+        `📦 Tables response: ${Array.isArray(tablesData) ? tablesData.length : 0} tables`,
+      );
+
       // Fetch locked tables
       const lockedRes = await fetch(`${API_URL}/api/tables/locked`);
+      if (!lockedRes.ok) {
+        throw new Error(
+          `HTTP ${lockedRes.status}: Failed to fetch locked tables`,
+        );
+      }
       const lockedData = await lockedRes.json();
       const locked = Array.isArray(lockedData) ? lockedData : [];
-      
+      console.log(`🔒 Locked tables response: ${locked.length} locked tables`);
+
       setLockedTables(locked);
 
       // Convert all tables from API response
       const availableTables: TableType[] = Array.isArray(tablesData)
-        ? tablesData.map((table: any) => ({
-            tableId: table.id || table.TableId,
-            tableNumber: table.label || table.TableNumber,
-            diningSection: Number(table.DiningSection) || 1,
-            isLocked: locked.some(
-              (t: any) => (t.tableNumber || t.TableNumber) === (table.label || table.TableNumber)
-            ),
-          }))
+        ? tablesData.map((table: any) => {
+            const tId = table.id || table.TableId;
+            const tNum = table.label || table.TableNumber;
+            const isLocked = locked.some((t: any) => {
+              const lockedId = t.tableId || t.TableId;
+              const lockedNum = String(t.tableNumber || t.TableNumber || "");
+              // Match by ID first (most reliable), then by table number
+              return (
+                String(lockedId) === String(tId) || lockedNum === String(tNum)
+              );
+            });
+
+            console.log(
+              `Table ${tNum} (ID: ${tId}): ${isLocked ? "LOCKED" : "AVAILABLE"}`,
+            );
+
+            return {
+              tableId: tId,
+              tableNumber: tNum,
+              diningSection: Number(table.DiningSection) || 1,
+              isLocked,
+            };
+          })
         : [];
 
       console.log(`✅ Loaded ${availableTables.length} tables from database`);
       console.log("📊 Tables by section:", {
-        SECTION_1: availableTables.filter(t => getSectionFromDiningSection(t.diningSection) === "SECTION_1").length,
-        SECTION_2: availableTables.filter(t => getSectionFromDiningSection(t.diningSection) === "SECTION_2").length,
-        SECTION_3: availableTables.filter(t => getSectionFromDiningSection(t.diningSection) === "SECTION_3").length,
+        SECTION_1: availableTables.filter(
+          (t) => getSectionFromDiningSection(t.diningSection) === "SECTION_1",
+        ).length,
+        SECTION_2: availableTables.filter(
+          (t) => getSectionFromDiningSection(t.diningSection) === "SECTION_2",
+        ).length,
+        SECTION_3: availableTables.filter(
+          (t) => getSectionFromDiningSection(t.diningSection) === "SECTION_3",
+        ).length,
       });
       setAllTables(availableTables);
     } catch (err) {
-      console.log("Error fetching tables:", err);
-      Alert.alert("Error", "Failed to fetch tables");
+      console.error("❌ Error fetching tables:", err);
+      Alert.alert(
+        "Error",
+        "Failed to fetch tables: " +
+          (err instanceof Error ? err.message : String(err)),
+      );
     } finally {
       setLoading(false);
     }
@@ -111,6 +151,8 @@ export default function LockedTablesScreen() {
         return "SECTION_2";
       case 3:
         return "SECTION_3";
+      case 4:
+        return "TAKEAWAY";
       default:
         return "SECTION_1";
     }
@@ -127,6 +169,7 @@ export default function LockedTablesScreen() {
   };
 
   const lockTable = (tableId: string, tableNumber: string) => {
+    console.log(`🔐 Initiating lock for Table ${tableNumber} (ID: ${tableId})`);
     setLockingTableId(tableId);
     setLockingTableNumber(tableNumber);
     setLockModalName("");
@@ -136,43 +179,69 @@ export default function LockedTablesScreen() {
   const confirmLockTable = async () => {
     try {
       setLockingLoading(true);
-      
+
       const payload = {
         tableId: lockingTableId,
         lockedByName: lockModalName.trim(),
       };
-      
-      console.log("🔒 Lock request:", payload);
-      
+
+      console.log("🔒 Lock request payload:", payload);
+
       const res = await fetch(`${API_URL}/api/tables/lock-persistent`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      
+
       const data = await res.json();
-      console.log("Lock response:", { status: res.status, data });
-      
+      console.log("📥 Lock response:", { status: res.status, data });
+
       if (res.ok) {
         setLockModalVisible(false);
         setLockingLoading(false);
-        fetchData();
-        Alert.alert("Success", `Table locked${lockModalName ? ` for ${lockModalName}` : ""}`);
+        Alert.alert(
+          "Success",
+          `Table ${lockingTableNumber} locked${lockModalName ? ` for ${lockModalName}` : ""}`,
+          [{ text: "OK", onPress: () => fetchData() }],
+        );
       } else {
         setLockingLoading(false);
         Alert.alert("Error", data.error || "Failed to lock table");
       }
     } catch (err) {
       setLockingLoading(false);
-      console.error("Lock error:", err);
-      Alert.alert("Error", err instanceof Error ? err.message : "Failed to lock table");
+      console.error("❌ Lock error:", err);
+      Alert.alert(
+        "Error",
+        err instanceof Error ? err.message : "Failed to lock table",
+      );
     }
   };
 
   const unlockTable = async (tableId: string, tableNumber: string) => {
+    console.log(`🔓 UNLOCK REQUEST: Table ${tableNumber} (ID: ${tableId})`);
+
+    if (!tableId) {
+      console.error("❌ Table ID is missing!");
+      Alert.alert("Error", "Table ID is missing. Cannot unlock.");
+      return;
+    }
+
+    // Validate GUID format
+    const guidPattern =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!guidPattern.test(tableId)) {
+      console.error("❌ Invalid table ID format:", tableId);
+      Alert.alert(
+        "Error",
+        "Invalid table ID format. Please refresh and try again.",
+      );
+      return;
+    }
+
     Alert.alert(
       "Unlock Table",
-      `Unlock Table ${tableNumber}?`,
+      `Are you sure you want to unlock Table ${tableNumber}?`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -180,36 +249,58 @@ export default function LockedTablesScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              console.log("🔓 Unlocking table:", { tableId, tableNumber });
-              
-              const res = await fetch(`${API_URL}/api/tables/unlock-persistent`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ tableId }),
-              });
-              
-              console.log("Unlock response status:", res.status);
-              
+              console.log("🚀 Sending unlock request to server...");
+              console.log("📤 Payload:", { tableId });
+
+              const res = await fetch(
+                `${API_URL}/api/tables/unlock-persistent`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ tableId }),
+                },
+              );
+
+              console.log("📥 Unlock response status:", res.status);
+
+              let responseData: any = null;
               let errorMessage = "";
+
               try {
-                const responseData = await res.json();
-                console.log("Unlock response data:", responseData);
+                responseData = await res.json();
+                console.log("📥 Unlock response data:", responseData);
                 if (responseData.error) {
                   errorMessage = responseData.error;
                 }
-              } catch (e) {
+              } catch (parseErr) {
+                console.error("Failed to parse response as JSON:", parseErr);
                 const responseText = await res.text();
-                console.log("Unlock response text:", responseText);
+                console.log("📥 Unlock response text:", responseText);
                 errorMessage = responseText;
               }
-              
-              if (res.ok) {
-                fetchData();
-                Alert.alert("Success", `Table ${tableNumber} unlocked`);
+
+              if (res.ok && responseData?.success) {
+                console.log(`✅ Table ${tableNumber} unlocked successfully!`);
+                console.log(`🔄 Refreshing table data...`);
+
+                // Refresh the data to show updated state
+                await fetchData();
+
+                Alert.alert(
+                  "Success",
+                  `Table ${tableNumber} has been unlocked`,
+                  [{ text: "OK" }],
+                );
               } else {
                 const fullError = errorMessage || `HTTP ${res.status}`;
-                console.error("Unlock failed:", { status: res.status, error: fullError });
-                Alert.alert("Error", `Failed to unlock table: ${fullError}`);
+                console.error("❌ Unlock failed:", {
+                  status: res.status,
+                  error: fullError,
+                });
+                Alert.alert(
+                  "Unlock Failed",
+                  `Failed to unlock table: ${fullError}`,
+                );
               }
             } catch (err) {
               const errorMsg = err instanceof Error ? err.message : String(err);
@@ -218,7 +309,7 @@ export default function LockedTablesScreen() {
             }
           },
         },
-      ]
+      ],
     );
   };
 
@@ -227,16 +318,38 @@ export default function LockedTablesScreen() {
       const mappedSection = getSectionFromDiningSection(t.diningSection);
       return mappedSection === activeSection;
     });
-    console.log(`📋 Section ${activeSection}: ${filtered.length} tables`);
+    console.log(
+      `📋 Section ${activeSection}: ${filtered.length} tables, ${filtered.filter((t) => t.isLocked).length} locked`,
+    );
     return filtered;
   }, [allTables, activeSection]);
 
   const renderTableItem = ({ item }: { item: TableType }) => (
     <View style={[styles.tableCard, item.isLocked && styles.lockedCard]}>
+      {/* Top bar: unlock button */}
+      {item.isLocked && (
+        <TouchableOpacity
+          style={styles.unlockBtn}
+          onPress={() => {
+            console.log(
+              `👉 [TOUCH] "X" Button Pressed for Table ${item.tableNumber}`,
+            );
+            console.log(`📋 Table Details:`, {
+              tableId: item.tableId,
+              tableNumber: item.tableNumber,
+              isLocked: item.isLocked,
+            });
+            unlockTable(item.tableId, item.tableNumber);
+          }}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="close-circle" size={22} color="#f87171" />
+        </TouchableOpacity>
+      )}
+      {/* Main card content */}
       <TouchableOpacity
         style={styles.tableContent}
         onPress={() => {
-          console.log("📍 Table clicked:", { tableId: item.tableId, tableNumber: item.tableNumber, diningSection: item.diningSection });
           if (item.isLocked) {
             Alert.alert(
               "Locked Table",
@@ -245,9 +358,10 @@ export default function LockedTablesScreen() {
                 { text: "Cancel", style: "cancel" },
                 {
                   text: "Continue Order",
-                  onPress: () => continueWithOrder(item.tableNumber, item.diningSection),
+                  onPress: () =>
+                    continueWithOrder(item.tableNumber, item.diningSection),
                 },
-              ]
+              ],
             );
           } else {
             lockTable(item.tableId, item.tableNumber);
@@ -262,19 +376,12 @@ export default function LockedTablesScreen() {
           />
         </View>
         <Text style={styles.tableNumber}>{item.tableNumber}</Text>
-        <Text style={[styles.tableStatus, item.isLocked && styles.lockedStatus]}>
+        <Text
+          style={[styles.tableStatus, item.isLocked && styles.lockedStatus]}
+        >
           {item.isLocked ? "LOCKED" : "AVAILABLE"}
         </Text>
       </TouchableOpacity>
-
-      {item.isLocked && (
-        <TouchableOpacity
-          style={styles.unlockBtn}
-          onPress={() => unlockTable(item.tableId, item.tableNumber)}
-        >
-          <Ionicons name="close" size={14} color="#f87171" />
-        </TouchableOpacity>
-      )}
     </View>
   );
 
@@ -288,7 +395,10 @@ export default function LockedTablesScreen() {
       <SafeAreaView style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backBtn}
+          >
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
           <View>
@@ -303,16 +413,23 @@ export default function LockedTablesScreen() {
         {/* Locked Tables Preview */}
         {lockedTables.length > 0 && (
           <View style={styles.lockedPreviewContainer}>
-            <Text style={styles.lockedPreviewTitle}>🔒 RESERVED TABLES ({lockedTables.length})</Text>
-            <ScrollView 
-              horizontal 
+            <Text style={styles.lockedPreviewTitle}>
+              🔒 RESERVED TABLES ({lockedTables.length})
+            </Text>
+            <ScrollView
+              horizontal
               showsHorizontalScrollIndicator={false}
               style={styles.lockedTablesScroll}
             >
-              {lockedTables.map((table) => (
-                <View key={table.tableId} style={styles.lockedTablePreview}>
+              {lockedTables.map((table, index) => (
+                <View
+                  key={`${table.tableId}-${index}`}
+                  style={styles.lockedTablePreview}
+                >
                   <Ionicons name="lock-closed" size={16} color="#fbbf24" />
-                  <Text style={styles.lockedTablePreviewNo}>Table {table.tableNumber}</Text>
+                  <Text style={styles.lockedTablePreviewNo}>
+                    Table {table.tableNumber}
+                  </Text>
                 </View>
               ))}
             </ScrollView>
@@ -324,7 +441,10 @@ export default function LockedTablesScreen() {
           {SECTIONS.map((section) => (
             <TouchableOpacity
               key={section}
-              style={[styles.sectionTab, activeSection === section && styles.activeSectionTab]}
+              style={[
+                styles.sectionTab,
+                activeSection === section && styles.activeSectionTab,
+              ]}
               onPress={() => setActiveSection(section)}
             >
               <Text
@@ -342,7 +462,13 @@ export default function LockedTablesScreen() {
                 ]}
               >
                 <Text style={styles.sectionTabBadgeText}>
-                  {sectionTables.filter((t) => t.isLocked).length}
+                  {
+                    allTables.filter(
+                      (t) =>
+                        getSectionFromDiningSection(t.diningSection) ===
+                          section && t.isLocked,
+                    ).length
+                  }
                 </Text>
               </View>
             </TouchableOpacity>
@@ -365,7 +491,11 @@ export default function LockedTablesScreen() {
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
-                <Ionicons name="grid-outline" size={48} color="rgba(255,255,255,0.1)" />
+                <Ionicons
+                  name="grid-outline"
+                  size={48}
+                  color="rgba(255,255,255,0.1)"
+                />
                 <Text style={styles.emptyText}>No tables in this section</Text>
               </View>
             }
@@ -377,11 +507,15 @@ export default function LockedTablesScreen() {
           <View style={styles.infoRow}>
             <View style={styles.infoBadge}>
               <View style={styles.lockedDot} />
-              <Text style={styles.infoText}>Tap to lock table for reservation</Text>
+              <Text style={styles.infoText}>
+                Tap to lock table for reservation
+              </Text>
             </View>
             <View style={styles.infoBadge}>
               <View style={styles.availableDot} />
-              <Text style={styles.infoText}>Tap locked table to continue order</Text>
+              <Text style={styles.infoText}>
+                Tap locked table to continue order
+              </Text>
             </View>
           </View>
         </BlurView>
@@ -395,9 +529,13 @@ export default function LockedTablesScreen() {
         >
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Lock Table {lockingTableNumber}</Text>
-              <Text style={styles.modalSubtitle}>Enter customer or person name (optional)</Text>
-              
+              <Text style={styles.modalTitle}>
+                Lock Table {lockingTableNumber}
+              </Text>
+              <Text style={styles.modalSubtitle}>
+                Enter customer or person name (optional)
+              </Text>
+
               <TextInput
                 style={styles.nameInput}
                 placeholder="Customer Name"
@@ -416,7 +554,11 @@ export default function LockedTablesScreen() {
                   <Text style={styles.cancelBtnText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.modalBtn, styles.confirmBtn, lockingLoading && styles.confirmBtnDisabled]}
+                  style={[
+                    styles.modalBtn,
+                    styles.confirmBtn,
+                    lockingLoading && styles.confirmBtnDisabled,
+                  ]}
                   onPress={confirmLockTable}
                   disabled={lockingLoading}
                 >
@@ -539,6 +681,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 12,
   },
+  gridItemContainer: {
+    flex: 1,
+    margin: 5,
+    position: "relative",
+  },
   gridContent: {
     paddingHorizontal: 12,
     paddingVertical: 12,
@@ -550,11 +697,11 @@ const styles = StyleSheet.create({
   },
   tableCard: {
     flex: 1,
+    position: "relative",
     borderRadius: 14,
     backgroundColor: "rgba(15, 23, 42, 0.7)",
     borderWidth: 1.5,
     borderColor: "rgba(255,255,255,0.08)",
-    overflow: "hidden",
     minHeight: 120,
   },
   lockedCard: {
@@ -603,14 +750,16 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 6,
     right: 6,
-    width: 26,
-    height: 26,
+    width: 28,
+    height: 28,
     borderRadius: 8,
     backgroundColor: "rgba(248, 113, 113, 0.15)",
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "rgba(248, 113, 113, 0.3)",
+    borderWidth: 1.5,
+    borderColor: "rgba(248, 113, 113, 0.4)",
+    zIndex: 999,
+    elevation: 20,
   },
   footer: {
     position: "absolute",
@@ -695,18 +844,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bold,
     marginTop: 4,
     letterSpacing: 1,
-  },
-  emptyBox: {
-    flex: 1,
-    marginTop: 100,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  emptyText: {
-    color: "rgba(255,255,255,0.3)",
-    fontSize: 16,
-    fontFamily: Fonts.medium,
-    marginTop: 20,
   },
   pagination: {
     flexDirection: "row",

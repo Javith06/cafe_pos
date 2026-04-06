@@ -62,7 +62,7 @@ export default function Category() {
 
   const tables = useTableStatusStore((s) => s.tables);
   const getLockedName = useTableStatusStore((s) => s.getLockedName);
-  const setLockedName = useTableStatusStore((s) => s.setLockedName);
+  const syncLockedTables = useTableStatusStore((s) => s.syncLockedTables);
   const activeOrders = useActiveOrdersStore((s) => s.activeOrders);
   const carts = useCartStore((s) => s.carts);
 
@@ -86,13 +86,21 @@ export default function Category() {
       const lockedTables = await response.json();
       
       if (Array.isArray(lockedTables)) {
-        lockedTables.forEach((table: any) => {
-          const tableNo = table.tableNumber || table.TableNumber;
-          const lockedName = table.lockedByName || "";
-          if (tableNo) {
-            setLockedName(tableNo, lockedName);
-          }
+        const syncList = lockedTables.map((t: any) => {
+          const ds = Number(t.DiningSection);
+          let section = "SECTION_1";
+          if (ds === 1) section = "SECTION_1";
+          else if (ds === 2) section = "SECTION_2";
+          else if (ds === 3) section = "SECTION_3";
+          else if (ds === 4) section = "TAKEAWAY";
+
+          return {
+            tableNo: t.tableNumber || t.TableNumber,
+            section,
+            lockedByName: t.lockedByName || "",
+          };
         });
+        syncLockedTables(syncList);
       }
     } catch (error) {
       console.error("Failed to fetch locked tables:", error);
@@ -263,7 +271,7 @@ export default function Category() {
 
       switch (tableData.status) {
         case "LOCKED":
-          bgColor = "rgba(251, 191, 36, 0.3)";
+          bgColor = "rgba(251, 191, 36, 0.45)"; // Deep Amber
           borderColor = "#fbbf24";
           timeText = "RESERVED";
           break;

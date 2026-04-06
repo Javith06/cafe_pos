@@ -1,9 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 
-/* ================= TYPES ================= */
-
-export type GstTaxMode = "none" | "exclusive" | "inclusive";
+export type GstTaxMode = "exclusive" | "inclusive";
 
 interface GstState {
   enabled: boolean;
@@ -12,35 +10,31 @@ interface GstState {
   isConfigured: boolean;
   taxMode: GstTaxMode;
 
-  // Actions
   loadSettings: () => Promise<void>;
   updateSettings: (
     percentage: number,
     regNo: string,
     taxMode: GstTaxMode,
+    enabled?: boolean,
   ) => Promise<void>;
   setEnabled: (enabled: boolean) => Promise<void>;
 }
 
-const STORAGE_KEY = "gst-settings-v5";
-
-/* ================= STORE ================= */
-
 export const useGstStore = create<GstState>((set, get) => ({
   enabled: false,
-  percentage: 9,
+  percentage: 2.15,
   registrationNumber: "",
   isConfigured: false,
   taxMode: "exclusive",
 
   loadSettings: async () => {
     try {
-      const data = await AsyncStorage.getItem(STORAGE_KEY);
+      const data = await AsyncStorage.getItem("gst-settings-v5");
       if (data) {
         const parsed = JSON.parse(data);
         set({
           enabled: parsed.enabled ?? false,
-          percentage: parsed.percentage ?? 9,
+          percentage: parsed.percentage ?? 2.15,
           registrationNumber: parsed.registrationNumber ?? "",
           isConfigured: parsed.isConfigured ?? false,
           taxMode: parsed.taxMode ?? "exclusive",
@@ -51,18 +45,18 @@ export const useGstStore = create<GstState>((set, get) => ({
     }
   },
 
-  updateSettings: async (percentage, regNo, taxMode) => {
+  updateSettings: async (percentage, regNo, taxMode, enabled = true) => {
     const newState = {
       percentage,
       registrationNumber: regNo,
       taxMode,
       isConfigured: true,
-      enabled: taxMode !== "none",
+      enabled,
     };
     set(newState);
     try {
       await AsyncStorage.setItem(
-        STORAGE_KEY,
+        "gst-settings-v5",
         JSON.stringify({ ...get(), ...newState }),
       );
     } catch (e) {
@@ -74,7 +68,7 @@ export const useGstStore = create<GstState>((set, get) => ({
     set({ enabled });
     try {
       await AsyncStorage.setItem(
-        STORAGE_KEY,
+        "gst-settings-v5",
         JSON.stringify({ ...get(), enabled }),
       );
     } catch (e) {

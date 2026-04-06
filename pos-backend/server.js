@@ -19,7 +19,7 @@ const initDB = async (maxRetries = 3, retryDelay = 3000) => {
     try {
       console.log(`🔄 Database Connection Attempt ${attempt}/${maxRetries}...`);
       pool = await poolPromise;
-      
+
       if (!pool) {
         throw new Error("Pool connection failed - pool is undefined");
       }
@@ -61,16 +61,20 @@ const initDB = async (maxRetries = 3, retryDelay = 3000) => {
       `);
 
       // 1. Check if we need to migrate MemberId from INT to UNIQUEIDENTIFIER (if empty)
-      const mmCount = await pool.request().query("SELECT COUNT(*) as cnt FROM MemberMaster");
+      const mmCount = await pool
+        .request()
+        .query("SELECT COUNT(*) as cnt FROM MemberMaster");
       const isMMEmpty = mmCount.recordset[0].cnt === 0;
-      
+
       const idType = await pool.request().query(`
         SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS 
         WHERE TABLE_NAME = 'MemberMaster' AND COLUMN_NAME = 'MemberId'
       `);
-      
-      if (isMMEmpty && idType.recordset[0]?.DATA_TYPE === 'int') {
-        console.log("🔄 Migrating MemberMaster schema (Type: int -> UNIQUEIDENTIFIER)...");
+
+      if (isMMEmpty && idType.recordset[0]?.DATA_TYPE === "int") {
+        console.log(
+          "🔄 Migrating MemberMaster schema (Type: int -> UNIQUEIDENTIFIER)...",
+        );
         await pool.request().query(`
           DROP TABLE MemberMaster;
           CREATE TABLE MemberMaster (
@@ -92,7 +96,7 @@ const initDB = async (maxRetries = 3, retryDelay = 3000) => {
         { name: "CreatedAt", type: "DATETIME DEFAULT GETDATE()" },
         { name: "CreditLimit", type: "DECIMAL(18,2) DEFAULT 1000" },
         { name: "CurrentBalance", type: "DECIMAL(18,2) DEFAULT 0" },
-        { name: "Balance", type: "DECIMAL(18,2) DEFAULT 0" }
+        { name: "Balance", type: "DECIMAL(18,2) DEFAULT 0" },
       ];
 
       for (const col of columnsToAdd) {
@@ -217,25 +221,34 @@ const initDB = async (maxRetries = 3, retryDelay = 3000) => {
         )
       `);
 
-      console.log("✅ Database initialized: SettlementItemDetail, MemberMaster/MemberTimeLog, cancellation tracking, discount type, and DailyAttendance table ready.");
+      console.log(
+        "✅ Database initialized: SettlementItemDetail, MemberMaster/MemberTimeLog, cancellation tracking, discount type, and DailyAttendance table ready.",
+      );
       return; // Success - exit
     } catch (err) {
-      console.error(`❌ DB Initialization Error (Attempt ${attempt}/${maxRetries}):`, err.message);
-      
+      console.error(
+        `❌ DB Initialization Error (Attempt ${attempt}/${maxRetries}):`,
+        err.message,
+      );
+
       if (attempt < maxRetries) {
         console.log(`⏳ Retrying in ${retryDelay / 1000} seconds...`);
-        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
       } else {
         console.error("\n⚠️  Database connection failed after all retries.");
         console.error("   Please verify your database configuration:");
         console.error("   - Check that MSSQL Server is running and accessible");
-        console.error("   - Verify network connectivity to the database server");
+        console.error(
+          "   - Verify network connectivity to the database server",
+        );
         console.error("   - Check credentials in the .env file:");
         console.error(`     DB_SERVER: ${process.env.DB_SERVER}`);
         console.error(`     DB_PORT: ${process.env.DB_PORT}`);
         console.error(`     DB_NAME: ${process.env.DB_NAME}`);
         console.error(`     DB_USER: ${process.env.DB_USER}`);
-        console.error("\n   The server will continue running, but database operations will fail.");
+        console.error(
+          "\n   The server will continue running, but database operations will fail.",
+        );
       }
     }
   }
@@ -257,7 +270,7 @@ app.use(
     origin: "*",
     methods: ["GET", "POST"],
     allowedHeaders: ["Content-Type"],
-  })
+  }),
 );
 
 app.use(express.json());
@@ -268,15 +281,16 @@ app.use((req, res, next) => {
   if (req.path === "/" || req.path === "/test") {
     return next();
   }
-  
+
   if (!pool) {
     return res.status(503).json({
       error: "Database Connection Unavailable",
-      message: "The server is currently unable to connect to the database. Please try again in a few moments.",
+      message:
+        "The server is currently unable to connect to the database. Please try again in a few moments.",
       timestamp: new Date().toISOString(),
     });
   }
-  
+
   next();
 });
 
@@ -307,11 +321,16 @@ setInterval(() => {
 // Get a lock on a table
 app.post("/api/tables/lock", (req, res) => {
   const { tableId, userId } = req.body;
-  if (!tableId || !userId) return res.status(400).json({ error: "Missing parameters" });
+  if (!tableId || !userId)
+    return res.status(400).json({ error: "Missing parameters" });
 
   const existingLock = tableLocks.get(tableId);
   if (existingLock && existingLock.lockedBy !== userId) {
-    return res.status(409).json({ success: false, message: "Table is heavily occupied by another user.", lockedBy: existingLock.lockedBy });
+    return res.status(409).json({
+      success: false,
+      message: "Table is heavily occupied by another user.",
+      lockedBy: existingLock.lockedBy,
+    });
   }
 
   tableLocks.set(tableId, { lockedBy: userId, lockedAt: Date.now() });
@@ -394,7 +413,9 @@ app.get("/tables", async (req, res) => {
     query += ` ORDER BY SortCode`;
 
     const result = await request.query(query);
-    console.log(`✅ /tables endpoint: Found ${result.recordset?.length || 0} tables`);
+    console.log(
+      `✅ /tables endpoint: Found ${result.recordset?.length || 0} tables`,
+    );
     res.json(result.recordset || []);
   } catch (err) {
     console.error("TABLES ERROR:", err);
@@ -407,7 +428,7 @@ app.get("/api/tables/locked", async (req, res) => {
   try {
     const pool = await poolPromise;
     const result = await pool.request().query(`
-      SELECT TableId as tableId, TableNumber as tableNumber
+      SELECT TableId as tableId, TableNumber as tableNumber, DiningSection
       FROM TableMaster 
       WHERE Status = 1
     `);
@@ -423,34 +444,37 @@ app.post("/api/tables/lock-persistent", async (req, res) => {
   try {
     const pool = await poolPromise;
     const { tableId, lockedByName } = req.body;
-    
+
     console.log("🔒 Locking table:", { tableId, lockedByName });
-    
+
     if (!tableId) {
       return res.status(400).json({ error: "tableId is required" });
     }
-    
+
     // TableId is a GUID string - validate it looks like a UUID
-    const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const guidPattern =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!guidPattern.test(tableId)) {
-      return res.status(400).json({ error: "Invalid tableId format (must be GUID)" });
+      return res
+        .status(400)
+        .json({ error: "Invalid tableId format (must be GUID)" });
     }
-    
+
     const request = pool.request();
     request.input("tableId", sql.VarChar, tableId);
-    
+
     const result = await request.query(`
       UPDATE TableMaster 
       SET Status = 1 
       WHERE CAST(TableId AS VARCHAR(36)) = @tableId
     `);
-    
+
     console.log("✅ Lock result:", { rowsAffected: result.rowsAffected[0] });
-    
+
     if ((result.rowsAffected[0] || 0) === 0) {
       return res.status(404).json({ error: "Table not found" });
     }
-    
+
     res.json({ success: true, rowsAffected: result.rowsAffected[0] || 0 });
   } catch (err) {
     console.error("❌ Lock error:", err);
@@ -458,39 +482,45 @@ app.post("/api/tables/lock-persistent", async (req, res) => {
   }
 });
 
-// Unlock Table (Persistent)
+// Unlock Table (Persistent) - FIXED VERSION
 app.post("/api/tables/unlock-persistent", async (req, res) => {
   try {
     const pool = await poolPromise;
     const { tableId } = req.body;
-    
+
     console.log("🔓 Unlocking table:", tableId);
-    
+
     if (!tableId) {
       return res.status(400).json({ error: "tableId is required" });
     }
-    
+
     // TableId is a GUID string - validate it looks like a UUID
-    const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const guidPattern =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!guidPattern.test(tableId)) {
-      return res.status(400).json({ error: "Invalid tableId format (must be GUID)" });
+      console.error("❌ Invalid tableId format:", tableId);
+      return res
+        .status(400)
+        .json({ error: "Invalid tableId format (must be GUID)" });
     }
-    
+
     const request = pool.request();
+    // FIX: Use sql.VarChar instead of sql.UniqueIdentifier (same as lock endpoint)
     request.input("tableId", sql.VarChar, tableId);
-    
+
     const result = await request.query(`
       UPDATE TableMaster 
       SET Status = 0 
       WHERE CAST(TableId AS VARCHAR(36)) = @tableId
     `);
-    
+
     console.log("✅ Unlock result:", { rowsAffected: result.rowsAffected[0] });
-    
+
     if ((result.rowsAffected[0] || 0) === 0) {
+      console.error("❌ Table not found in database for tableId:", tableId);
       return res.status(404).json({ error: "Table not found" });
     }
-    
+
     res.json({ success: true, rowsAffected: result.rowsAffected[0] || 0 });
   } catch (err) {
     console.error("❌ Unlock error:", err);
@@ -535,8 +565,7 @@ app.post("/api/members/add", async (req, res) => {
       .input("Phone", sql.NVarChar, phone)
       .input("Email", sql.NVarChar, email || null)
       .input("CreditLimit", sql.Decimal(18, 2), credit)
-      .input("Bal", sql.Decimal(18, 2), bal)
-      .query(`
+      .input("Bal", sql.Decimal(18, 2), bal).query(`
         INSERT INTO MemberMaster (Name, Phone, Email, CreditLimit, CurrentBalance, Balance)
         VALUES (@Name, @Phone, @Email, @CreditLimit, @Bal, @Bal)
       `);
@@ -550,12 +579,25 @@ app.post("/api/members/add", async (req, res) => {
 app.post("/api/members/update", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const { memberId, name, phone, email, creditLimit, currentBalance, balance } = req.body;
-    
-    if (!memberId) return res.status(400).json({ error: "Missing memberId in request body" });
-    
-    console.log(`[MEMBER UPDATE] ID: "${memberId}" - Body:`, JSON.stringify(req.body));
-    
+    const {
+      memberId,
+      name,
+      phone,
+      email,
+      creditLimit,
+      currentBalance,
+      balance,
+    } = req.body;
+
+    if (!memberId)
+      return res
+        .status(400)
+        .json({ error: "Missing memberId in request body" });
+
+    console.log(
+      `[MEMBER UPDATE] ID: "${memberId}" - Body:`,
+      JSON.stringify(req.body),
+    );
     const result = await pool
       .request()
       .input("IdParam", sql.UniqueIdentifier, memberId)
@@ -563,9 +605,12 @@ app.post("/api/members/update", async (req, res) => {
       .input("Phone", sql.NVarChar, phone)
       .input("Email", sql.NVarChar, email || null)
       .input("CreditLimit", sql.Decimal(18, 2), parseFloat(creditLimit) || 0)
-      .input("CurrentBalance", sql.Decimal(18, 2), parseFloat(currentBalance) || 0)
-      .input("Balance", sql.Decimal(18, 2), parseFloat(balance) || 0)
-      .query(`
+      .input(
+        "CurrentBalance",
+        sql.Decimal(18, 2),
+        parseFloat(currentBalance) || 0,
+      )
+      .input("Balance", sql.Decimal(18, 2), parseFloat(balance) || 0).query(`
         UPDATE MemberMaster 
         SET Name = @Name, 
             Phone = @Phone, 
@@ -575,11 +620,15 @@ app.post("/api/members/update", async (req, res) => {
             Balance = @Balance
         WHERE MemberId = @IdParam
       `);
-    
-    console.log(`[MEMBER UPDATE] Success. Rows affected:`, result.rowsAffected[0]);
-    
+    console.log(
+      `[MEMBER UPDATE] Success. Rows affected:`,
+      result.rowsAffected[0],
+    );
+
     if (result.rowsAffected[0] === 0) {
-      return res.status(404).json({ error: `Member record not found for ID: ${memberId}` });
+      return res
+        .status(404)
+        .json({ error: `Member record not found for ID: ${memberId}` });
     }
 
     res.json({ success: true });
@@ -594,28 +643,29 @@ app.post("/api/members/delete", async (req, res) => {
   try {
     const pool = await poolPromise;
     const { memberId } = req.body;
-    
+
     if (!memberId) return res.status(400).json({ error: "Missing memberId" });
-    
+
     console.log(`[MEMBER DELETE] Single-step request for: "${memberId}"`);
 
     const result = await pool
       .request()
-      .input("IdParam", sql.UniqueIdentifier, memberId)
-      .query(`
+      .input("IdParam", sql.UniqueIdentifier, memberId).query(`
         BEGIN TRANSACTION;
         DELETE FROM MemberTimeLog WHERE MemberId = @IdParam;
         DELETE FROM MemberMaster WHERE MemberId = @IdParam;
         COMMIT TRANSACTION;
       `);
-    
+
     const count = result.rowsAffected.reduce((a, b) => a + b, 0);
     console.log(`[DATABASE DELETE] Success. Total Rows Affected: ${count}`);
 
     res.json({ success: true, totalDeleted: count });
   } catch (err) {
     console.error("[MEMBER DELETE] FINAL ERROR:", err);
-    res.status(500).json({ error: "Database connection lost. Please try again." });
+    res
+      .status(500)
+      .json({ error: "Database connection lost. Please try again." });
   }
 });
 
@@ -643,8 +693,7 @@ app.get("/dishgroups/:CategoryId", async (req, res) => {
     const pool = await poolPromise;
     const result = await pool
       .request()
-      .input("CategoryId", req.params.CategoryId)
-      .query(`
+      .input("CategoryId", req.params.CategoryId).query(`
         SELECT 
           a.DishGroupId,
           a.DishGroupName
@@ -669,8 +718,7 @@ app.get("/dishes/:DishGroupId", async (req, res) => {
     // Images will be fetched separately if needed
     const result = await pool
       .request()
-      .input("DishGroupId", req.params.DishGroupId)
-      .query(`
+      .input("DishGroupId", req.params.DishGroupId).query(`
         SELECT
           d.DishId,
           d.Name,
@@ -698,16 +746,14 @@ app.get("/dishes/:DishGroupId", async (req, res) => {
 app.get("/image/:imageId", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const result = await pool
-      .request()
-      .input("Imageid", req.params.imageId)
+    const result = await pool.request().input("Imageid", req.params.imageId)
       .query(`
         SELECT ImageData FROM ImageList WHERE Imageid = @Imageid
       `);
-    
+
     if (result.recordset.length > 0 && result.recordset[0].ImageData) {
-      const base64 = result.recordset[0].ImageData.toString('base64');
-      res.json({ imageBase64: 'data:image/jpeg;base64,' + base64 });
+      const base64 = result.recordset[0].ImageData.toString("base64");
+      res.json({ imageBase64: "data:image/jpeg;base64," + base64 });
     } else {
       res.json({ imageBase64: null });
     }
@@ -721,9 +767,7 @@ app.get("/image/:imageId", async (req, res) => {
 app.get("/modifiers/:dishId", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const result = await pool
-      .request()
-      .input("dishId", req.params.dishId)
+    const result = await pool.request().input("dishId", req.params.dishId)
       .query(`
         SELECT 
           dm.DishId,
@@ -737,7 +781,9 @@ app.get("/modifiers/:dishId", async (req, res) => {
         WHERE dm.DishId = @dishId
         ORDER BY m.ModifierName ASC
       `);
-    console.log(`✅ Modifiers for dish ${req.params.dishId}: ${result.recordset.length} found`);
+    console.log(
+      `✅ Modifiers for dish ${req.params.dishId}: ${result.recordset.length} found`,
+    );
     res.json(result.recordset);
   } catch (err) {
     console.error("MODIFIER ERROR:", err);
@@ -788,10 +834,10 @@ app.get("/api/sales/daily/:date", async (req, res) => {
     const startOfDay = `${date} 00:00:00`;
     const endOfDay = `${date} 23:59:59`;
 
-    const result = await pool.request()
+    const result = await pool
+      .request()
       .input("StartOfDay", sql.DateTime, startOfDay)
-      .input("EndOfDay", sql.DateTime, endOfDay)
-      .query(`
+      .input("EndOfDay", sql.DateTime, endOfDay).query(`
         SELECT 
           COUNT(DISTINCT sh.SettlementID) as TotalTransactions,
           ISNULL(SUM(sts.SysAmount), 0) as TotalSales,
@@ -822,15 +868,24 @@ app.get("/api/orders/check/:orderId", async (req, res) => {
 
     // Validate format: #XXXXXX
     if (!/^#[A-Z0-9]{6}$/.test(orderId)) {
-      return res.status(400).json({ valid: false, message: "Invalid Order ID format" });
+      return res
+        .status(400)
+        .json({ valid: false, message: "Invalid Order ID format" });
     }
 
-    const result = await pool.request()
+    const result = await pool
+      .request()
       .input("OrderId", orderId)
-      .query(`SELECT SettlementID FROM SettlementHeader WHERE OrderId = @OrderId`);
+      .query(
+        `SELECT SettlementID FROM SettlementHeader WHERE OrderId = @OrderId`,
+      );
 
     if (result.recordset.length > 0) {
-      return res.status(409).json({ valid: false, message: "Order ID already exists", exists: true });
+      return res.status(409).json({
+        valid: false,
+        message: "Order ID already exists",
+        exists: true,
+      });
     }
 
     res.json({ valid: true, message: "Order ID is unique", exists: false });
@@ -846,15 +901,21 @@ app.post("/api/orders/validate-cancel", async (req, res) => {
     const { settlementId, cancellationReason, cancelledBy } = req.body;
 
     if (!settlementId) {
-      return res.status(400).json({ valid: false, message: "Settlement ID is required" });
+      return res
+        .status(400)
+        .json({ valid: false, message: "Settlement ID is required" });
     }
 
     if (!cancellationReason || !cancellationReason.trim()) {
-      return res.status(400).json({ valid: false, message: "Cancellation reason is required" });
+      return res
+        .status(400)
+        .json({ valid: false, message: "Cancellation reason is required" });
     }
 
     if (!cancelledBy || !cancelledBy.trim()) {
-      return res.status(400).json({ valid: false, message: "Cancelled by is required" });
+      return res
+        .status(400)
+        .json({ valid: false, message: "Cancelled by is required" });
     }
 
     res.json({ valid: true, message: "Cancellation data is valid" });
@@ -870,7 +931,9 @@ app.post("/api/modifiers/validate", async (req, res) => {
     const { dishId, modifierIds } = req.body;
 
     if (!dishId) {
-      return res.status(400).json({ valid: false, message: "Dish ID is required" });
+      return res
+        .status(400)
+        .json({ valid: false, message: "Dish ID is required" });
     }
 
     // modifierIds is optional - user can add dish without modifiers
@@ -898,23 +961,37 @@ app.post("/api/sales/save", async (req, res) => {
       tableNo,
       section,
       cashierId,
-      memberId
+      memberId,
     } = req.body;
 
     // Validate Order ID format (#XXXXXX)
     if (!orderId || !/^#[A-Z0-9]{6}$/.test(orderId)) {
-      return res.status(400).json({ error: "Invalid Order ID format. Expected: #XXXXXX" });
+      return res
+        .status(400)
+        .json({ error: "Invalid Order ID format. Expected: #XXXXXX" });
     }
 
-    console.log("Saving sale for Order:", orderId, "Type:", orderType, "Payment:", paymentMethod);
+    console.log(
+      "Saving sale for Order:",
+      orderId,
+      "Type:",
+      orderType,
+      "Payment:",
+      paymentMethod,
+    );
 
     // Check if Order ID is unique before transaction
-    const existingOrder = await pool.request()
+    const existingOrder = await pool
+      .request()
       .input("OrderId", orderId)
-      .query(`SELECT SettlementID FROM SettlementHeader WHERE OrderId = @OrderId`);
-    
+      .query(
+        `SELECT SettlementID FROM SettlementHeader WHERE OrderId = @OrderId`,
+      );
+
     if (existingOrder.recordset.length > 0) {
-      return res.status(409).json({ error: "Order ID already exists. Please try creating a new order." });
+      return res.status(409).json({
+        error: "Order ID already exists. Please try creating a new order.",
+      });
     }
 
     const transaction = new sql.Transaction(pool);
@@ -922,14 +999,19 @@ app.post("/api/sales/save", async (req, res) => {
 
     try {
       // 1. Generate Settlement ID and Random Bill No
-      const settlementIdResult = await transaction.request().query(`SELECT NEWID() AS id`);
+      const settlementIdResult = await transaction
+        .request()
+        .query(`SELECT NEWID() AS id`);
       const settlementId = settlementIdResult.recordset[0].id;
       const billNo = generateRandomBillId();
 
-      console.log(`📝 Processing Sale: Bill #${billNo} (ID: ${settlementId}, OrderID: ${orderId})`);
+      console.log(
+        `📝 Processing Sale: Bill #${billNo} (ID: ${settlementId}, OrderID: ${orderId})`,
+      );
 
       // 2. Insert into SettlementHeader with all order details
-      await transaction.request()
+      await transaction
+        .request()
         .input("SettlementID", settlementId)
         .input("LastSettlementDate", new Date())
         .input("SubTotal", subTotal || 0)
@@ -941,22 +1023,21 @@ app.post("/api/sales/save", async (req, res) => {
         .input("OrderType", orderType || "DINE-IN")
         .input("TableNo", tableNo || null)
         .input("Section", section || null)
-        .input("MemberId", memberId || null)
-        .query(`
+        .input("MemberId", memberId || null).query(`
           INSERT INTO SettlementHeader (SettlementID, LastSettlementDate, SubTotal, TotalTax, DiscountAmount, DiscountType, BillNo, OrderId, OrderType, TableNo, Section, MemberId)
           VALUES (@SettlementID, @LastSettlementDate, @SubTotal, @TotalTax, @DiscountAmount, @DiscountType, @BillNo, @OrderId, @OrderType, @TableNo, @Section, @MemberId)
         `);
 
       // 3. Insert into SettlementTotalSales
       const itemCount = items ? items.length : 0;
-      await transaction.request()
+      await transaction
+        .request()
         .input("SettlementID", settlementId)
-        .input("PayMode", (paymentMethod || 'CASH').toUpperCase())
+        .input("PayMode", (paymentMethod || "CASH").toUpperCase())
         .input("SysAmount", totalAmount || 0)
         .input("ManualAmount", totalAmount || 0)
         .input("AmountDiff", 0)
-        .input("ReceiptCount", itemCount)
-        .query(`
+        .input("ReceiptCount", itemCount).query(`
           INSERT INTO SettlementTotalSales (SettlementID, PayMode, SysAmount, ManualAmount, AmountDiff, ReceiptCount)
           VALUES (@SettlementID, @PayMode, @SysAmount, @ManualAmount, @AmountDiff, @ReceiptCount)
         `);
@@ -964,16 +1045,17 @@ app.post("/api/sales/save", async (req, res) => {
       // 4. Insert individual dishes into SettlementItemDetail
       if (items && Array.isArray(items)) {
         for (const item of items) {
-          const name = item.dish_name || item.DishName || item.name || "Unknown Item";
+          const name =
+            item.dish_name || item.DishName || item.name || "Unknown Item";
           const qty = item.qty || item.Qty || item.quantity || 1;
           const price = item.price || item.Price || 0;
 
-          await transaction.request()
+          await transaction
+            .request()
             .input("SettlementID", settlementId)
             .input("DishName", name)
             .input("Qty", qty)
-            .input("Price", price)
-            .query(`
+            .input("Price", price).query(`
               INSERT INTO SettlementItemDetail (SettlementID, DishName, Qty, Price)
               VALUES (@SettlementID, @DishName, @Qty, @Price)
             `);
@@ -981,11 +1063,11 @@ app.post("/api/sales/save", async (req, res) => {
       }
 
       // 5. Update Member Balance if it was a Credit sale
-      if (memberId && (paymentMethod || '').toUpperCase() === 'CREDIT') {
-        await transaction.request()
+      if (memberId && (paymentMethod || "").toUpperCase() === "CREDIT") {
+        await transaction
+          .request()
           .input("MemberId", memberId)
-          .input("Amount", totalAmount || 0)
-          .query(`
+          .input("Amount", totalAmount || 0).query(`
             UPDATE MemberMaster 
             SET CurrentBalance = CurrentBalance + @Amount 
             WHERE MemberId = @MemberId
@@ -999,7 +1081,12 @@ app.post("/api/sales/save", async (req, res) => {
         tableLocks.delete(orderId);
       }
 
-      console.log("✅ Sale saved successfully:", settlementId, "Bill No:", billNo);
+      console.log(
+        "✅ Sale saved successfully:",
+        settlementId,
+        "Bill No:",
+        billNo,
+      );
       res.json({ success: true, settlementId, billNo });
     } catch (err) {
       if (transaction) await transaction.rollback();
@@ -1018,13 +1105,15 @@ app.get("/api/sales/transactions", async (req, res) => {
     const { startDate, endDate } = req.query;
 
     if (!startDate || !endDate) {
-      return res.status(400).json({ error: "startDate and endDate are required" });
+      return res
+        .status(400)
+        .json({ error: "startDate and endDate are required" });
     }
 
-    const result = await pool.request()
-  .input("StartDate", sql.DateTime, new Date(startDate))
-  .input("EndDate", sql.DateTime, new Date(endDate))
-  .query(`
+    const result = await pool
+      .request()
+      .input("StartDate", sql.DateTime, new Date(startDate))
+      .input("EndDate", sql.DateTime, new Date(endDate)).query(`
     SELECT
       sh.SettlementID,
       sh.LastSettlementDate AS SettlementDate,
@@ -1047,7 +1136,9 @@ app.get("/api/sales/transactions", async (req, res) => {
     ORDER BY sh.LastSettlementDate DESC
   `);
 
-    console.log(`✅ Transactions: ${result.recordset.length} rows for ${startDate} → ${endDate}`);
+    console.log(
+      `✅ Transactions: ${result.recordset.length} rows for ${startDate} → ${endDate}`,
+    );
     res.json(result.recordset);
   } catch (err) {
     console.error("TRANSACTIONS ERROR:", err);
@@ -1061,10 +1152,10 @@ app.get("/api/sales/range", async (req, res) => {
     const pool = await poolPromise;
     const { startDate, endDate } = req.query;
 
-    const result = await pool.request()
+    const result = await pool
+      .request()
       .input("StartDate", sql.DateTime, `${startDate} 00:00:00`)
-      .input("EndDate", sql.DateTime, `${endDate} 23:59:59`)
-      .query(`
+      .input("EndDate", sql.DateTime, `${endDate} 23:59:59`).query(`
         SELECT 
           CAST(sh.LastSettlementDate AS DATE) as SaleDate,
           COUNT(DISTINCT sh.SettlementID) as TotalTransactions,
@@ -1093,8 +1184,7 @@ app.get("/api/sales/detail/:id", async (req, res) => {
     const pool = await poolPromise;
     const { id } = req.params;
 
-    const result = await pool.request()
-      .input("Id", sql.UniqueIdentifier, id)
+    const result = await pool.request().input("Id", sql.UniqueIdentifier, id)
       .query(`
         SELECT 
           DishName,
@@ -1132,16 +1222,18 @@ app.post("/api/orders/cancel", async (req, res) => {
     const { settlementId, cancellationReason, cancelledBy } = req.body;
 
     if (!settlementId || !cancellationReason) {
-      return res.status(400).json({ error: "Missing settlementId or cancellationReason" });
+      return res
+        .status(400)
+        .json({ error: "Missing settlementId or cancellationReason" });
     }
 
-    await pool.request()
+    await pool
+      .request()
       .input("SettlementID", settlementId)
       .input("IsCancelled", true)
       .input("CancellationReason", cancellationReason)
       .input("CancelledBy", cancelledBy || "System")
-      .input("CancelledDate", new Date())
-      .query(`
+      .input("CancelledDate", new Date()).query(`
         UPDATE SettlementHeader 
         SET IsCancelled = @IsCancelled, 
             CancellationReason = @CancellationReason,
@@ -1150,7 +1242,9 @@ app.post("/api/orders/cancel", async (req, res) => {
         WHERE SettlementID = @SettlementID
       `);
 
-    console.log(`✅ Order cancelled: ${settlementId}, Reason: ${cancellationReason}`);
+    console.log(
+      `✅ Order cancelled: ${settlementId}, Reason: ${cancellationReason}`,
+    );
     res.json({ success: true, settlementId });
   } catch (err) {
     console.error("CANCEL ORDER ERROR:", err);
@@ -1188,17 +1282,19 @@ app.post("/api/discounts/apply", async (req, res) => {
       return res.status(400).json({ error: "Missing settlementId" });
     }
 
-    await pool.request()
+    await pool
+      .request()
       .input("SettlementID", settlementId)
       .input("DiscountAmount", discountAmount || 0)
-      .input("DiscountType", discountType || "fixed")
-      .query(`
+      .input("DiscountType", discountType || "fixed").query(`
         UPDATE SettlementHeader 
         SET DiscountAmount = @DiscountAmount, DiscountType = @DiscountType
         WHERE SettlementID = @SettlementID
       `);
 
-    console.log(`✅ Discount applied: ${settlementId}, Amount: ${discountAmount}, Type: ${discountType}`);
+    console.log(
+      `✅ Discount applied: ${settlementId}, Amount: ${discountAmount}, Type: ${discountType}`,
+    );
     res.json({ success: true, settlementId });
   } catch (err) {
     console.error("APPLY DISCOUNT ERROR:", err);
@@ -1210,13 +1306,13 @@ app.post("/api/discounts/apply", async (req, res) => {
 app.post("/api/attendance/track", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const { 
-      employeeId, 
-      employeeName, 
+    const {
+      employeeId,
+      employeeName,
       action, // "START", "BREAK_IN", "BREAK_OUT", "END"
       timestamp,
       businessUnitId,
-      userId
+      userId,
     } = req.body;
 
     if (!employeeId || !action) {
@@ -1227,10 +1323,10 @@ app.post("/api/attendance/track", async (req, res) => {
     today.setHours(0, 0, 0, 0);
 
     // Check if attendance record exists for today
-    const result = await pool.request()
+    const result = await pool
+      .request()
       .input("EmployeeId", employeeId)
-      .input("TodayDate", today)
-      .query(`
+      .input("TodayDate", today).query(`
         SELECT TOP 1 AttendanceId, StartDateTime, BreakInTime, BreakOutTime, EndDateTime
         FROM DailyAttendance
         WHERE DeliveryPersonId = @EmployeeId 
@@ -1244,22 +1340,24 @@ app.post("/api/attendance/track", async (req, res) => {
       // Create new record or update START if not exists
       if (!existingRecord) {
         // Convert employeeId string to a consistent UUID format
-        const crypto = require('crypto');
-        const hash = crypto.createHash('md5').update(employeeId).digest('hex');
+        const crypto = require("crypto");
+        const hash = crypto.createHash("md5").update(employeeId).digest("hex");
         const formattedUUID = [
           hash.substring(0, 8),
           hash.substring(8, 12),
           hash.substring(12, 16),
           hash.substring(16, 20),
-          hash.substring(20, 32)
-        ].join('-');
-        
-        const businessUUID = businessUnitId || '00000000-0000-0000-0000-000000000000';
-        const createdByUUID = userId || '00000000-0000-0000-0000-000000000000';
-        const endTime = new Date(currentTime.getTime() + 8*60*60*1000);
-        
+          hash.substring(20, 32),
+        ].join("-");
+
+        const businessUUID =
+          businessUnitId || "00000000-0000-0000-0000-000000000000";
+        const createdByUUID = userId || "00000000-0000-0000-0000-000000000000";
+        const endTime = new Date(currentTime.getTime() + 8 * 60 * 60 * 1000);
+
         try {
-          await pool.request()
+          await pool
+            .request()
             .input("DeliveryPersonId", formattedUUID)
             .input("StartDateTime", currentTime)
             .input("EndDateTime", endTime)
@@ -1269,8 +1367,7 @@ app.post("/api/attendance/track", async (req, res) => {
             .input("IsPaid", 0)
             .input("BusinessUnitId", businessUUID)
             .input("CreatedBy", createdByUUID)
-            .input("CreatedOn", new Date())
-            .query(`
+            .input("CreatedOn", new Date()).query(`
               INSERT INTO DailyAttendance (DeliveryPersonId, StartDateTime, EndDateTime, NoofHours, NoofTrips, TotalAmount, IsPaid, BusinessUnitId, CreatedBy, CreatedOn)
               VALUES (@DeliveryPersonId, @StartDateTime, @EndDateTime, @NoofHours, @NoofTrips, @TotalAmount, @IsPaid, @BusinessUnitId, @CreatedBy, @CreatedOn)
             `);
@@ -1288,28 +1385,28 @@ app.post("/api/attendance/track", async (req, res) => {
       if (existingRecord && !existingRecord.EndDateTime) {
         const startTime = new Date(existingRecord.StartDateTime);
         const totalHours = (currentTime - startTime) / (1000 * 60 * 60);
-        
-        const crypto = require('crypto');
-        const hash = crypto.createHash('md5').update(employeeId).digest('hex');
+
+        const crypto = require("crypto");
+        const hash = crypto.createHash("md5").update(employeeId).digest("hex");
         const formattedUUID = [
           hash.substring(0, 8),
           hash.substring(8, 12),
           hash.substring(12, 16),
           hash.substring(16, 20),
-          hash.substring(20, 32)
-        ].join('-');
-        
-        const modifiedByUUID = userId || '00000000-0000-0000-0000-000000000000';
+          hash.substring(20, 32),
+        ].join("-");
+
+        const modifiedByUUID = userId || "00000000-0000-0000-0000-000000000000";
         const hours = Math.max(0, Math.round(totalHours * 100) / 100);
 
         try {
-          await pool.request()
+          await pool
+            .request()
             .input("EndDateTime", currentTime)
             .input("NoofHours", hours)
             .input("ModifiedBy", modifiedByUUID)
             .input("ModifiedOn", new Date())
-            .input("DeliveryPersonId", formattedUUID)
-            .query(`
+            .input("DeliveryPersonId", formattedUUID).query(`
               UPDATE DailyAttendance
               SET EndDateTime = @EndDateTime, 
                   NoofHours = @NoofHours,
@@ -1339,10 +1436,10 @@ app.get("/api/attendance/today/:employeeId", async (req, res) => {
     const pool = await poolPromise;
     const { employeeId } = req.params;
 
-    const result = await pool.request()
+    const result = await pool
+      .request()
       .input("EmployeeId", employeeId)
-      .input("TodayDate", new Date())
-      .query(`
+      .input("TodayDate", new Date()).query(`
         SELECT TOP 1 
           AttendanceId, DeliveryPersonId, EmployeeName, StartDateTime, 
           BreakInTime, BreakOutTime, EndDateTime, NoofHours, CreatedOn

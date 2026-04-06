@@ -29,6 +29,7 @@ type TableStatusState = {
   isTableLocked: (tableId: string) => boolean;
   getLockedName: (tableNo: string) => string | undefined;
   setLockedName: (tableNo: string, name: string) => void;
+  syncLockedTables: (lockedTables: Array<{ tableNo: string; section: string; lockedByName?: string }>) => void;
   getTables: () => TableStatus[];
 };
 
@@ -95,7 +96,7 @@ export const useTableStatusStore = create<TableStatusState>((set, get) => ({
   lockTable: (tableId, lockedByName) => {
     set((state) => {
       if (!state.lockedTables.includes(tableId)) {
-        const newState = { lockedTables: [...state.lockedTables, tableId] };
+        const newState: any = { lockedTables: [...state.lockedTables, tableId] };
         if (lockedByName) {
           newState.lockedTableNames = { ...state.lockedTableNames, [tableId]: lockedByName };
         }
@@ -127,6 +128,52 @@ export const useTableStatusStore = create<TableStatusState>((set, get) => ({
     set((state) => ({
       lockedTableNames: { ...state.lockedTableNames, [tableNo]: name },
     }));
+  },
+
+  syncLockedTables: (lockedList) => {
+    set((state) => {
+      const lockedMap: Record<string, { name: string; section: string }> = {};
+      lockedList.forEach((t) => {
+        lockedMap[t.tableNo] = { name: t.lockedByName || "", section: t.section };
+      });
+
+      // 1. Update existing tables in state
+      const updatedTables = state.tables.map((t) => {
+        const lockedData = lockedMap[t.tableNo];
+        if (lockedData !== undefined) {
+          return { ...t, status: "LOCKED" as TableStatusType, lockedByName: lockedData.name };
+        } else if (t.status === "LOCKED") {
+          return { ...t, status: "EMPTY" as TableStatusType, lockedByName: undefined };
+        }
+        return t;
+      });
+
+      // 2. Add tables that are locked but were not in the store (they were "empty")
+      lockedList.forEach((lockedItem) => {
+        const exists = updatedTables.find(t => t.tableNo === lockedItem.tableNo && t.section === lockedItem.section);
+        if (!exists) {
+          updatedTables.push({
+            section: lockedItem.section,
+            tableNo: lockedItem.tableNo,
+            orderId: "RESERVED",
+            startTime: Date.now(),
+            status: "LOCKED",
+            lockedByName: lockedItem.lockedByName
+          });
+        }
+      });
+
+      // Cleanup: Remove any "EMPTY" tables from the store to keep it clean (only active ones stay)
+      const finalTables = updatedTables.filter(t => t.status !== 'EMPTY');
+
+      const nameMap: Record<string, string> = {};
+      lockedList.forEach(t => nameMap[t.tableNo] = t.lockedByName || "");
+
+      return {
+        tables: finalTables,
+        lockedTableNames: { ...state.lockedTableNames, ...nameMap },
+      };
+    });
   },
 
   getTables: () => get().tables,

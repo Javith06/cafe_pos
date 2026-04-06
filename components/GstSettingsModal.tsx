@@ -1,9 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  Animated,
   Modal,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -12,53 +12,13 @@ import {
 import { Fonts } from "../constants/Fonts";
 import { GstTaxMode, useGstStore } from "../stores/gstStore";
 
-/* ================= TYPES ================= */
-
 interface Props {
   visible: boolean;
   onClose: () => void;
   previewSubtotal?: number;
 }
 
-type Step = 0 | 1 | 2 | 3; // 0=mode, 1=rate, 2=confirm, 3=success
-
-interface TaxModeOption {
-  id: GstTaxMode;
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  desc: string;
-}
-
-const TAX_MODES: TaxModeOption[] = [
-  {
-    id: "none",
-    icon: "close-circle-outline",
-    label: "No Tax",
-    desc: "Prices shown as-is, no GST applied",
-  },
-  {
-    id: "exclusive",
-    icon: "add-circle-outline",
-    label: "Exclusive",
-    desc: "GST added on top at checkout",
-  },
-  {
-    id: "inclusive",
-    icon: "checkmark-circle-outline",
-    label: "Inclusive",
-    desc: "GST already inside the price",
-  },
-];
-
-const PRESETS: { rate: number; label: string }[] = [
-  { rate: 0, label: "Exempt" },
-  { rate: 6, label: "SST" },
-  { rate: 8, label: "Reduced" },
-  { rate: 9, label: "Standard" },
-  { rate: 10, label: "Service" },
-];
-
-/* ================= COMPONENT ================= */
+const PRESETS = [0, 2.15, 6, 9, 10];
 
 export default function GstSettingsModal({
   visible,
@@ -69,479 +29,231 @@ export default function GstSettingsModal({
     percentage,
     registrationNumber,
     taxMode: savedMode,
+    enabled: savedEnabled,
     updateSettings,
   } = useGstStore();
 
-  const [step, setStep] = useState<Step>(0);
-  const [selectedMode, setSelectedMode] = useState<GstTaxMode>("exclusive");
-  const [rateStr, setRateStr] = useState("9");
+  const [percentStr, setPercentStr] = useState("2.15");
   const [regNo, setRegNo] = useState("");
   const [regErr, setRegErr] = useState(false);
+  const [taxMode, setTaxMode] = useState<GstTaxMode>("exclusive");
+  const [enabled, setEnabled] = useState(false);
 
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const slideAnim = useRef(new Animated.Value(0)).current;
-
-  /* sync store values when modal opens */
   useEffect(() => {
     if (visible) {
-      setStep(0);
-      setSelectedMode(savedMode ?? "exclusive");
-      setRateStr(percentage.toString());
+      setPercentStr(percentage.toString());
       setRegNo(registrationNumber);
+      setTaxMode(savedMode ?? "exclusive");
+      setEnabled(savedEnabled ?? false);
       setRegErr(false);
-      fadeAnim.setValue(1);
-      slideAnim.setValue(0);
     }
   }, [visible]);
 
-  /* ── animations ── */
-  const animateStep = (next: Step) => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: -20,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setStep(next);
-      slideAnim.setValue(20);
-      Animated.parallel([
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    });
+  const rate = parseFloat(percentStr) || 0;
+
+  // exclusive: GST added on top  |  inclusive: GST extracted from price
+  const gstAmt =
+    taxMode === "exclusive"
+      ? +((previewSubtotal * rate) / 100).toFixed(2)
+      : +(previewSubtotal - previewSubtotal / (1 + rate / 100)).toFixed(2);
+
+  const total =
+    taxMode === "exclusive"
+      ? +(previewSubtotal + gstAmt).toFixed(2)
+      : previewSubtotal; // inclusive: total IS the subtotal
+
+  const baseAmt =
+    taxMode === "inclusive"
+      ? +(previewSubtotal - gstAmt).toFixed(2)
+      : previewSubtotal;
+
+  const isValid = !isNaN(rate) && rate >= 0 && rate <= 100;
+
+  const handleRegChange = (v: string) => {
+    setRegNo(v);
+    setRegErr(v.trim().length > 0 && v.trim().length < 5);
   };
 
-  /* ── calculations ── */
-  const rate = parseFloat(rateStr) || 0;
-
-  const calcPreview = () => {
-    const base = previewSubtotal;
-    if (selectedMode === "none") return { base, gst: 0, total: base };
-    if (selectedMode === "exclusive")
-      return {
-        base,
-        gst: +((base * rate) / 100).toFixed(2),
-        total: +(base + (base * rate) / 100).toFixed(2),
-      };
-    // inclusive
-    const gst = +(base - base / (1 + rate / 100)).toFixed(2);
-    return { base: +(base - gst).toFixed(2), gst, total: base };
-  };
-
-  const preview = calcPreview();
-
-  /* ── validation ── */
-  const validateReg = (val: string) => {
-    if (!val.trim()) {
-      setRegErr(false);
-      return true;
-    }
-    // Malaysian GST / SST reg or generic alphanumeric 12-15 chars
-    const ok = /^[A-Z0-9\-]{8,20}$/i.test(val.trim());
-    setRegErr(!ok);
-    return ok;
-  };
-
-  const handleRegChange = (val: string) => {
-    setRegNo(val);
-    validateReg(val);
-  };
-
-  /* ── save ── */
   const handleSave = async () => {
-    if (!validateReg(regNo)) return;
-    await updateSettings(rate, regNo.trim(), selectedMode);
-    animateStep(3);
+    if (!isValid || regErr) return;
+    await updateSettings(rate, regNo.trim(), taxMode, enabled);
+    onClose();
   };
-
-  /* ── step helpers ── */
-  const goNext = () => animateStep((step + 1) as Step);
-  const goBack = () => animateStep((step - 1) as Step);
-
-  const modeCanProceed = selectedMode !== undefined;
-  const rateCanProceed = !isNaN(rate) && rate >= 0 && rate <= 100;
-
-  /* ── header labels ── */
-  const HEADERS = [
-    { title: "Tax Mode", sub: "Step 1 of 3  —  How is GST applied?" },
-    { title: "GST Rate", sub: "Step 2 of 3  —  Set your rate" },
-    { title: "Confirm", sub: "Step 3 of 3  —  Review and save" },
-    { title: "", sub: "" },
-  ];
-
-  /* ================= RENDER ================= */
 
   return (
     <Modal visible={visible} transparent animationType="fade">
-      <View style={styles.overlay}>
-        <View style={styles.card}>
-          {/* ── HEADER ── */}
-          {step < 3 && (
-            <View style={styles.header}>
-              <View style={styles.headerTop}>
-                <View style={styles.headerTitleRow}>
-                  <View style={styles.dot} />
-                  <Text style={styles.headerTitle}>{HEADERS[step].title}</Text>
-                </View>
-                <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                  <Ionicons name="close" size={20} color="#555" />
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.headerSub}>{HEADERS[step].sub}</Text>
+      <View style={s.overlay}>
+        <View style={s.card}>
+          {/* ── TITLE ── */}
+          <View style={s.titleRow}>
+            <View style={s.titleLeft}>
+              <View
+                style={[
+                  s.dot,
+                  { backgroundColor: enabled ? "#4ade80" : "#333" },
+                ]}
+              />
+              <Text style={s.title}>GST Settings</Text>
+            </View>
+            <View style={s.titleRight}>
+              <Text
+                style={[s.toggleLabel, { color: enabled ? "#4ade80" : "#444" }]}
+              >
+                {enabled ? "ON" : "OFF"}
+              </Text>
+              <Switch
+                value={enabled}
+                onValueChange={setEnabled}
+                trackColor={{ false: "#222", true: "#166534" }}
+                thumbColor={enabled ? "#4ade80" : "#444"}
+                ios_backgroundColor="#222"
+              />
+              <TouchableOpacity onPress={onClose} style={s.closeBtn}>
+                <Ionicons name="close" size={18} color="#555" />
+              </TouchableOpacity>
+            </View>
+          </View>
 
-              {/* progress pips */}
-              <View style={styles.pips}>
-                {[0, 1, 2].map((i) => (
-                  <View
-                    key={i}
-                    style={[
-                      styles.pip,
-                      i <= step ? styles.pipActive : styles.pipInactive,
-                    ]}
-                  />
-                ))}
+          {/* ── BODY (dimmed when off) ── */}
+          <View
+            style={{ opacity: enabled ? 1 : 0.3 }}
+            pointerEvents={enabled ? "auto" : "none"}
+          >
+            {/* ── TAX MODE TOGGLE ── */}
+            <View style={s.modeRow}>
+              <TouchableOpacity
+                style={[s.modeBtn, taxMode === "exclusive" && s.modeBtnActive]}
+                onPress={() => setTaxMode("exclusive")}
+              >
+                <Ionicons
+                  name="add-circle-outline"
+                  size={15}
+                  color={taxMode === "exclusive" ? "#000" : "#555"}
+                />
+                <Text
+                  style={[
+                    s.modeTxt,
+                    taxMode === "exclusive" && s.modeTxtActive,
+                  ]}
+                >
+                  Excl. GST
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[s.modeBtn, taxMode === "inclusive" && s.modeBtnActive]}
+                onPress={() => setTaxMode("inclusive")}
+              >
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={15}
+                  color={taxMode === "inclusive" ? "#000" : "#555"}
+                />
+                <Text
+                  style={[
+                    s.modeTxt,
+                    taxMode === "inclusive" && s.modeTxtActive,
+                  ]}
+                >
+                  Incl. GST
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* mode hint */}
+            <Text style={s.modeHint}>
+              {taxMode === "exclusive"
+                ? "GST is added on top of the item price at checkout"
+                : "GST is already built into the item price"}
+            </Text>
+
+            {/* ── PREVIEW ── */}
+            <View style={s.preview}>
+              <View>
+                <Text style={s.previewLabel}>BASE</Text>
+                <Text style={s.previewBase}>${baseAmt.toFixed(2)}</Text>
+              </View>
+              <View style={s.previewDivider} />
+              <View style={{ alignItems: "center" }}>
+                <Text style={s.previewLabel}>GST ({rate}%)</Text>
+                <Text style={s.previewGst}>+${gstAmt.toFixed(2)}</Text>
+              </View>
+              <View style={s.previewDivider} />
+              <View style={{ alignItems: "flex-end" }}>
+                <Text style={s.previewLabel}>TOTAL</Text>
+                <Text style={s.previewTotal}>${total.toFixed(2)}</Text>
               </View>
             </View>
-          )}
 
-          {/* ── ANIMATED BODY ── */}
-          <Animated.View
-            style={{
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-            }}
-          >
-            {/* STEP 0 — MODE */}
-            {step === 0 && (
-              <View style={styles.body}>
-                {TAX_MODES.map((m) => (
-                  <TouchableOpacity
-                    key={m.id}
-                    style={[
-                      styles.modeCard,
-                      selectedMode === m.id && styles.modeCardActive,
-                    ]}
-                    onPress={() => setSelectedMode(m.id)}
-                    activeOpacity={0.8}
-                  >
-                    <View
-                      style={[
-                        styles.modeIconWrap,
-                        selectedMode === m.id && styles.modeIconWrapActive,
-                      ]}
-                    >
-                      <Ionicons
-                        name={m.icon}
-                        size={22}
-                        color={selectedMode === m.id ? "#000" : "#4ade80"}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={[
-                          styles.modeLabel,
-                          selectedMode === m.id && styles.modeLabelActive,
-                        ]}
-                      >
-                        {m.label}
-                      </Text>
-                      <Text style={styles.modeDesc}>{m.desc}</Text>
-                    </View>
-                    {selectedMode === m.id && (
-                      <Ionicons
-                        name="checkmark-circle"
-                        size={20}
-                        color="#4ade80"
-                      />
-                    )}
-                  </TouchableOpacity>
-                ))}
-
-                <View style={styles.btnRow}>
-                  <TouchableOpacity style={styles.btnCancel} onPress={onClose}>
-                    <Text style={styles.btnCancelText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.btnNext,
-                      !modeCanProceed && styles.btnDisabled,
-                    ]}
-                    onPress={goNext}
-                    disabled={!modeCanProceed}
-                  >
-                    <Text style={styles.btnNextText}>
-                      {selectedMode === "none" ? "Skip to Confirm" : "Next"}
-                    </Text>
-                    <Ionicons name="arrow-forward" size={16} color="#000" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {/* STEP 1 — RATE */}
-            {step === 1 && (
-              <View style={styles.body}>
-                {/* presets */}
-                <Text style={styles.sectionLabel}>QUICK PRESETS</Text>
-                <View style={styles.presetGrid}>
-                  {PRESETS.map((p) => (
-                    <TouchableOpacity
-                      key={p.rate}
-                      style={[
-                        styles.preset,
-                        parseFloat(rateStr) === p.rate && styles.presetActive,
-                      ]}
-                      onPress={() => setRateStr(p.rate.toString())}
-                    >
-                      <Text
-                        style={[
-                          styles.presetRate,
-                          parseFloat(rateStr) === p.rate &&
-                            styles.presetRateActive,
-                        ]}
-                      >
-                        {p.rate}%
-                      </Text>
-                      <Text
-                        style={[
-                          styles.presetLabel,
-                          parseFloat(rateStr) === p.rate &&
-                            styles.presetLabelActive,
-                        ]}
-                      >
-                        {p.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                {/* custom input */}
-                <Text style={[styles.sectionLabel, { marginTop: 16 }]}>
-                  CUSTOM RATE
-                </Text>
-                <View style={styles.rateInputWrap}>
-                  <TextInput
-                    style={styles.rateInput}
-                    value={rateStr}
-                    onChangeText={(v) => {
-                      setRateStr(v);
-                    }}
-                    keyboardType="numeric"
-                    placeholder="0"
-                    placeholderTextColor="#444"
-                    selectTextOnFocus
-                  />
-                  <Text style={styles.ratePercent}>%</Text>
-                </View>
-
-                {/* live preview */}
-                <View style={styles.previewBox}>
-                  <Text style={styles.previewTitle}>
-                    LIVE PREVIEW — ${previewSubtotal.toFixed(2)} ITEM
+            {/* ── PRESETS ── */}
+            <Text style={s.label}>QUICK SELECT</Text>
+            <View style={s.presetRow}>
+              {PRESETS.map((p) => (
+                <TouchableOpacity
+                  key={p}
+                  style={[s.preset, rate === p && s.presetActive]}
+                  onPress={() => setPercentStr(p.toString())}
+                >
+                  <Text style={[s.presetTxt, rate === p && s.presetTxtActive]}>
+                    {p}%
                   </Text>
-                  <View style={styles.previewRow}>
-                    <Text style={styles.previewLbl}>Base price</Text>
-                    <Text style={styles.previewVal}>
-                      ${preview.base.toFixed(2)}
-                    </Text>
-                  </View>
-                  <View style={styles.previewRow}>
-                    <Text style={styles.previewLbl}>GST ({rate}%)</Text>
-                    <Text style={[styles.previewVal, { color: "#4ade80" }]}>
-                      ${preview.gst.toFixed(2)}
-                    </Text>
-                  </View>
-                  <View style={[styles.previewRow, styles.previewTotalRow]}>
-                    <Text style={styles.previewTotalLbl}>TOTAL</Text>
-                    <Text style={styles.previewTotalVal}>
-                      ${preview.total.toFixed(2)}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.btnRow}>
-                  <TouchableOpacity style={styles.btnBack} onPress={goBack}>
-                    <Ionicons name="arrow-back" size={16} color="#888" />
-                    <Text style={styles.btnBackText}>Back</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.btnNext,
-                      !rateCanProceed && styles.btnDisabled,
-                    ]}
-                    onPress={goNext}
-                    disabled={!rateCanProceed}
-                  >
-                    <Text style={styles.btnNextText}>Next</Text>
-                    <Ionicons name="arrow-forward" size={16} color="#000" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {/* STEP 2 — CONFIRM */}
-            {step === 2 && (
-              <View style={styles.body}>
-                {/* reg no */}
-                <Text style={styles.sectionLabel}>
-                  GST REG NO <Text style={styles.optionalTag}>OPTIONAL</Text>
-                </Text>
-                <TextInput
-                  style={[styles.regInput, regErr && styles.regInputErr]}
-                  value={regNo}
-                  onChangeText={handleRegChange}
-                  placeholder="e.g. M2-1234567-X"
-                  placeholderTextColor="#444"
-                  autoCapitalize="characters"
-                />
-                {regErr && (
-                  <Text style={styles.regErrText}>
-                    Invalid registration number format
-                  </Text>
-                )}
-
-                {/* summary card */}
-                <Text style={[styles.sectionLabel, { marginTop: 18 }]}>
-                  SETTINGS SUMMARY
-                </Text>
-                <View style={styles.summaryCard}>
-                  <SummaryRow
-                    label="Tax Mode"
-                    value={
-                      selectedMode === "none"
-                        ? "No Tax"
-                        : selectedMode === "exclusive"
-                          ? "Exclusive (added on top)"
-                          : "Inclusive (built in)"
-                    }
-                    green
-                  />
-                  {selectedMode !== "none" && (
-                    <SummaryRow label="GST Rate" value={`${rate}%`} green />
-                  )}
-                  {regNo.trim() && !regErr && (
-                    <SummaryRow label="Reg No" value={regNo.toUpperCase()} />
-                  )}
-                  <View style={styles.summaryDivider} />
-                  <SummaryRow
-                    label={`On $${previewSubtotal.toFixed(2)} → Total`}
-                    value={`$${preview.total.toFixed(2)}`}
-                    green
-                    large
-                  />
-                </View>
-
-                <View style={styles.btnRow}>
-                  <TouchableOpacity style={styles.btnBack} onPress={goBack}>
-                    <Ionicons name="arrow-back" size={16} color="#888" />
-                    <Text style={styles.btnBackText}>Back</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.btnNext, regErr && styles.btnDisabled]}
-                    onPress={handleSave}
-                    disabled={regErr}
-                  >
-                    <Ionicons name="checkmark" size={16} color="#000" />
-                    <Text style={styles.btnNextText}>Save GST</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {/* STEP 3 — SUCCESS */}
-            {step === 3 && (
-              <View style={[styles.body, styles.successBody]}>
-                <View style={styles.successRing}>
-                  <Ionicons name="checkmark" size={32} color="#4ade80" />
-                </View>
-                <Text style={styles.successTitle}>GST Applied</Text>
-                <Text style={styles.successSub}>
-                  {selectedMode === "none"
-                    ? "Tax disabled. Prices shown as-is."
-                    : `${selectedMode === "exclusive" ? "Exclusive" : "Inclusive"} · ${rate}% GST\nTotal on $${previewSubtotal.toFixed(2)} → $${preview.total.toFixed(2)}`}
-                </Text>
-                <TouchableOpacity style={styles.btnDone} onPress={onClose}>
-                  <Text style={styles.btnDoneText}>Done</Text>
                 </TouchableOpacity>
-              </View>
+              ))}
+            </View>
+
+            {/* ── RATE INPUT ── */}
+            <Text style={s.label}>GST PERCENTAGE</Text>
+            <View style={s.inputWrap}>
+              <TextInput
+                style={s.input}
+                value={percentStr}
+                onChangeText={setPercentStr}
+                keyboardType="numeric"
+                placeholder="2.15"
+                placeholderTextColor="#444"
+                selectTextOnFocus
+              />
+              <Text style={s.inputSuffix}>%</Text>
+            </View>
+
+            {/* ── REG NO ── */}
+            <Text style={[s.label, { marginTop: 14 }]}>
+              GST REG NO <Text style={s.optional}>OPTIONAL</Text>
+            </Text>
+            <TextInput
+              style={[s.inputFull, regErr && s.inputErr]}
+              value={regNo}
+              onChangeText={handleRegChange}
+              placeholder="e.g. M2-1234567-X"
+              placeholderTextColor="#444"
+              autoCapitalize="characters"
+            />
+            {regErr && (
+              <Text style={s.errTxt}>Too short — check the format</Text>
             )}
-          </Animated.View>
+          </View>
+
+          {/* ── BUTTONS ── */}
+          <View style={s.btns}>
+            <TouchableOpacity style={s.btnCancel} onPress={onClose}>
+              <Text style={s.btnCancelTxt}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.btnSave, (!isValid || regErr) && s.btnDisabled]}
+              onPress={handleSave}
+              disabled={!isValid || regErr}
+            >
+              <Ionicons name="checkmark" size={16} color="#000" />
+              <Text style={s.btnSaveTxt}>Save</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </Modal>
   );
 }
 
-/* ── small helper ── */
-function SummaryRow({
-  label,
-  value,
-  green,
-  large,
-}: {
-  label: string;
-  value: string;
-  green?: boolean;
-  large?: boolean;
-}) {
-  return (
-    <View style={summaryRowStyle.row}>
-      <Text style={summaryRowStyle.key}>{label}</Text>
-      <Text
-        style={[
-          summaryRowStyle.val,
-          green && summaryRowStyle.valGreen,
-          large && summaryRowStyle.valLarge,
-        ]}
-      >
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-const summaryRowStyle = StyleSheet.create({
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 7,
-  },
-  key: {
-    color: "#555",
-    fontSize: 12,
-    fontFamily: Fonts.medium,
-    letterSpacing: 0.5,
-    flex: 1,
-  },
-  val: {
-    color: "#e2e8f0",
-    fontSize: 13,
-    fontFamily: Fonts.extraBold,
-    textAlign: "right",
-    flex: 1,
-  },
-  valGreen: { color: "#4ade80" },
-  valLarge: { fontSize: 18 },
-});
-
-/* ================= STYLES ================= */
-
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.75)",
@@ -552,170 +264,115 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: "#161616",
     width: "100%",
-    maxWidth: 420,
+    maxWidth: 400,
     borderRadius: 20,
+    padding: 22,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
-    overflow: "hidden",
   },
 
-  /* header */
-  header: {
-    paddingHorizontal: 22,
-    paddingTop: 22,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.06)",
-  },
-  headerTop: {
+  titleRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 6,
+    marginBottom: 16,
   },
-  headerTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: "#4ade80",
-  },
-  headerTitle: {
+  titleLeft: { flexDirection: "row", alignItems: "center", gap: 8 },
+  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#4ade80" },
+  title: {
     color: "#f1f5f9",
     fontFamily: Fonts.black,
     fontSize: 16,
     letterSpacing: 0.5,
-    textTransform: "uppercase",
-  },
-  headerSub: {
-    color: "#3a3a3a",
-    fontSize: 11,
-    fontFamily: Fonts.medium,
-    letterSpacing: 0.5,
-    marginBottom: 14,
   },
   closeBtn: {
-    width: 32,
-    height: 32,
+    width: 30,
+    height: 30,
     borderRadius: 8,
     backgroundColor: "rgba(255,255,255,0.06)",
     justifyContent: "center",
     alignItems: "center",
   },
-  pips: {
-    flexDirection: "row",
-    gap: 6,
-  },
-  pip: {
-    height: 3,
-    flex: 1,
-    borderRadius: 2,
-  },
-  pipActive: {
-    backgroundColor: "#4ade80",
-  },
-  pipInactive: {
-    backgroundColor: "#2a2a2a",
-  },
 
-  /* body */
-  body: {
-    padding: 22,
-  },
-
-  /* mode cards */
-  modeCard: {
+  titleRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  toggleLabel: { fontSize: 11, fontFamily: Fonts.black, letterSpacing: 1 },
+  modeRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
     backgroundColor: "#0d0d0d",
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: 10,
+    padding: 3,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: "#222",
+    borderColor: "#1e1e1e",
   },
-  modeCardActive: {
-    borderColor: "#4ade80",
-    backgroundColor: "#052e16",
-  },
-  modeIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: "rgba(74,222,128,0.1)",
-    justifyContent: "center",
+  modeBtn: {
+    flex: 1,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    borderRadius: 8,
   },
-  modeIconWrapActive: {
-    backgroundColor: "#4ade80",
-  },
-  modeLabel: {
-    color: "#e2e8f0",
-    fontFamily: Fonts.extraBold,
-    fontSize: 14,
-    marginBottom: 2,
-  },
-  modeLabelActive: {
-    color: "#4ade80",
-  },
-  modeDesc: {
-    color: "#4a4a4a",
-    fontFamily: Fonts.regular,
-    fontSize: 12,
-    lineHeight: 16,
+  modeBtnActive: { backgroundColor: "#4ade80" },
+  modeTxt: { color: "#555", fontFamily: Fonts.bold, fontSize: 13 },
+  modeTxtActive: { color: "#000" },
+  modeHint: {
+    color: "#2e2e2e",
+    fontSize: 11,
+    fontFamily: Fonts.medium,
+    textAlign: "center",
+    marginBottom: 16,
   },
 
-  /* presets */
-  sectionLabel: {
+  // preview
+  preview: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#0d0d0d",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#1e1e1e",
+  },
+  previewLabel: {
+    color: "#333",
+    fontSize: 9,
+    fontFamily: Fonts.bold,
+    letterSpacing: 1.2,
+    marginBottom: 4,
+  },
+  previewBase: { color: "#666", fontFamily: Fonts.black, fontSize: 18 },
+  previewGst: { color: "#4ade80", fontFamily: Fonts.black, fontSize: 18 },
+  previewTotal: { color: "#fff", fontFamily: Fonts.black, fontSize: 18 },
+  previewDivider: { width: 1, height: 32, backgroundColor: "#1e1e1e" },
+
+  label: {
     color: "#3a3a3a",
     fontSize: 10,
     fontFamily: Fonts.bold,
     letterSpacing: 1.5,
-    marginBottom: 10,
+    marginBottom: 8,
   },
-  presetGrid: {
-    flexDirection: "row",
-    gap: 8,
-  },
+  optional: { color: "#252525", letterSpacing: 1 },
+
+  presetRow: { flexDirection: "row", gap: 8, marginBottom: 16 },
   preset: {
     flex: 1,
-    backgroundColor: "#0d0d0d",
-    borderRadius: 10,
     paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: "#0d0d0d",
     alignItems: "center",
     borderWidth: 1,
     borderColor: "#1e1e1e",
   },
-  presetActive: {
-    backgroundColor: "#052e16",
-    borderColor: "#4ade80",
-  },
-  presetRate: {
-    color: "#666",
-    fontFamily: Fonts.black,
-    fontSize: 14,
-  },
-  presetRateActive: {
-    color: "#4ade80",
-  },
-  presetLabel: {
-    color: "#333",
-    fontFamily: Fonts.medium,
-    fontSize: 9,
-    letterSpacing: 0.5,
-    marginTop: 2,
-  },
-  presetLabelActive: {
-    color: "#166534",
-  },
+  presetActive: { backgroundColor: "#052e16", borderColor: "#4ade80" },
+  presetTxt: { color: "#444", fontFamily: Fonts.black, fontSize: 13 },
+  presetTxtActive: { color: "#4ade80" },
 
-  /* rate input */
-  rateInputWrap: {
+  inputWrap: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#0d0d0d",
@@ -723,77 +380,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#222",
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
   },
-  rateInput: {
+  input: {
     flex: 1,
     color: "#4ade80",
     fontFamily: Fonts.black,
-    fontSize: 24,
+    fontSize: 22,
+    paddingVertical: 12,
   },
-  ratePercent: {
-    color: "#333",
-    fontFamily: Fonts.bold,
-    fontSize: 20,
-  },
+  inputSuffix: { color: "#333", fontFamily: Fonts.bold, fontSize: 18 },
 
-  /* preview */
-  previewBox: {
-    backgroundColor: "#0d0d0d",
-    borderRadius: 12,
-    padding: 14,
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: "#1a1a1a",
-  },
-  previewTitle: {
-    color: "#333",
-    fontSize: 9,
-    fontFamily: Fonts.bold,
-    letterSpacing: 1.5,
-    marginBottom: 10,
-  },
-  previewRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 4,
-  },
-  previewLbl: {
-    color: "#555",
-    fontFamily: Fonts.medium,
-    fontSize: 13,
-  },
-  previewVal: {
-    color: "#888",
-    fontFamily: Fonts.extraBold,
-    fontSize: 13,
-  },
-  previewTotalRow: {
-    borderTopWidth: 1,
-    borderTopColor: "#1e1e1e",
-    marginTop: 8,
-    paddingTop: 10,
-  },
-  previewTotalLbl: {
-    color: "#e2e8f0",
-    fontFamily: Fonts.black,
-    fontSize: 14,
-    letterSpacing: 1,
-  },
-  previewTotalVal: {
-    color: "#fff",
-    fontFamily: Fonts.black,
-    fontSize: 18,
-  },
-
-  /* reg no */
-  optionalTag: {
-    color: "#2a2a2a",
-    fontSize: 10,
-    letterSpacing: 1,
-  },
-  regInput: {
+  inputFull: {
     backgroundColor: "#0d0d0d",
     borderWidth: 1,
     borderColor: "#222",
@@ -802,38 +399,17 @@ const styles = StyleSheet.create({
     color: "#aaa",
     fontFamily: Fonts.medium,
     fontSize: 14,
-    letterSpacing: 1,
+    letterSpacing: 0.8,
   },
-  regInputErr: {
-    borderColor: "#ef4444",
-  },
-  regErrText: {
+  inputErr: { borderColor: "#ef4444" },
+  errTxt: {
     color: "#ef4444",
     fontSize: 11,
     fontFamily: Fonts.medium,
     marginTop: 5,
   },
 
-  /* summary */
-  summaryCard: {
-    backgroundColor: "#0d0d0d",
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#1a1a1a",
-  },
-  summaryDivider: {
-    height: 1,
-    backgroundColor: "#1e1e1e",
-    marginVertical: 8,
-  },
-
-  /* buttons */
-  btnRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 22,
-  },
+  btns: { flexDirection: "row", gap: 10, marginTop: 22 },
   btnCancel: {
     flex: 1,
     height: 50,
@@ -844,90 +420,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#222",
   },
-  btnCancelText: {
-    color: "#555",
-    fontFamily: Fonts.bold,
-    fontSize: 14,
-  },
-  btnBack: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    flex: 1,
-    height: 50,
-    justifyContent: "center",
-    backgroundColor: "#111",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#222",
-  },
-  btnBackText: {
-    color: "#666",
-    fontFamily: Fonts.bold,
-    fontSize: 14,
-  },
-  btnNext: {
+  btnCancelTxt: { color: "#555", fontFamily: Fonts.bold, fontSize: 14 },
+  btnSave: {
     flex: 2,
     height: 50,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     backgroundColor: "#4ade80",
     borderRadius: 12,
   },
-  btnNextText: {
-    color: "#000",
-    fontFamily: Fonts.black,
-    fontSize: 15,
-  },
-  btnDisabled: {
-    backgroundColor: "#1a3a1a",
-  },
-
-  /* success */
-  successBody: {
-    alignItems: "center",
-    paddingVertical: 40,
-  },
-  successRing: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 2,
-    borderColor: "#4ade80",
-    backgroundColor: "#052e16",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  successTitle: {
-    color: "#f1f5f9",
-    fontFamily: Fonts.black,
-    fontSize: 20,
-    marginBottom: 10,
-    letterSpacing: 0.5,
-  },
-  successSub: {
-    color: "#555",
-    fontFamily: Fonts.medium,
-    fontSize: 13,
-    textAlign: "center",
-    lineHeight: 20,
-    marginBottom: 32,
-    paddingHorizontal: 20,
-  },
-  btnDone: {
-    width: "100%",
-    height: 52,
-    backgroundColor: "#4ade80",
-    borderRadius: 14,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  btnDoneText: {
-    color: "#000",
-    fontFamily: Fonts.black,
-    fontSize: 16,
-  },
+  btnSaveTxt: { color: "#000", fontFamily: Fonts.black, fontSize: 15 },
+  btnDisabled: { backgroundColor: "#1a3a1a" },
 });
