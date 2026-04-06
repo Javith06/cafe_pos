@@ -43,17 +43,78 @@ const initDB = async (maxRetries = 3, retryDelay = 3000) => {
       `);
 
       // Ensure MemberMaster table exists
+      // Ensure MemberMaster table exists with correct schema
       await pool.request().query(`
         IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MemberMaster' AND xtype='U')
-        CREATE TABLE MemberMaster (
-          MemberId UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-          Name NVARCHAR(255),
-          Phone NVARCHAR(20) UNIQUE,
-          Email NVARCHAR(255),
-          CreditLimit DECIMAL(18,2) DEFAULT 1000,
-          CurrentBalance DECIMAL(18,2) DEFAULT 0,
-          CreatedAt DATETIME DEFAULT GETDATE()
-        )
+        BEGIN
+          CREATE TABLE MemberMaster (
+            MemberId UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+            Name NVARCHAR(255),
+            Phone NVARCHAR(20) UNIQUE,
+            Email NVARCHAR(255),
+            CreditLimit DECIMAL(18,2) DEFAULT 1000,
+            CurrentBalance DECIMAL(18,2) DEFAULT 0,
+            Balance DECIMAL(18,2) DEFAULT 0,
+            CreatedAt DATETIME DEFAULT GETDATE()
+          );
+        END
+      `);
+
+      // 1. Check if we need to migrate MemberId from INT to UNIQUEIDENTIFIER (if empty)
+      const mmCount = await pool.request().query("SELECT COUNT(*) as cnt FROM MemberMaster");
+      const isMMEmpty = mmCount.recordset[0].cnt === 0;
+      
+      const idType = await pool.request().query(`
+        SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS 
+        WHERE TABLE_NAME = 'MemberMaster' AND COLUMN_NAME = 'MemberId'
+      `);
+      
+      if (isMMEmpty && idType.recordset[0]?.DATA_TYPE === 'int') {
+        console.log("🔄 Migrating MemberMaster schema (Type: int -> UNIQUEIDENTIFIER)...");
+        await pool.request().query(`
+          DROP TABLE MemberMaster;
+          CREATE TABLE MemberMaster (
+            MemberId UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+            Name NVARCHAR(255),
+            Phone NVARCHAR(20) UNIQUE,
+            Email NVARCHAR(255),
+            CreditLimit DECIMAL(18,2) DEFAULT 1000,
+            CurrentBalance DECIMAL(18,2) DEFAULT 0,
+            Balance DECIMAL(18,2) DEFAULT 0,
+            CreatedAt DATETIME DEFAULT GETDATE()
+          );
+        `);
+      }
+
+      // 2. Ensure individual columns exist if they weren't created above
+      const columnsToAdd = [
+        { name: "Email", type: "NVARCHAR(255) NULL" },
+        { name: "CreatedAt", type: "DATETIME DEFAULT GETDATE()" },
+        { name: "CreditLimit", type: "DECIMAL(18,2) DEFAULT 1000" },
+        { name: "CurrentBalance", type: "DECIMAL(18,2) DEFAULT 0" },
+        { name: "Balance", type: "DECIMAL(18,2) DEFAULT 0" }
+      ];
+
+      for (const col of columnsToAdd) {
+        await pool.request().query(`
+          IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'MemberMaster' AND COLUMN_NAME = '${col.name}')
+            ALTER TABLE MemberMaster ADD ${col.name} ${col.type};
+        `);
+      }
+
+      // 3. Synchronize Balance and CurrentBalance (Only works because columns now exist in separate batches)
+      await pool.request().query(`
+        IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'MemberMaster' AND COLUMN_NAME = 'Balance')
+        AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'MemberMaster' AND COLUMN_NAME = 'CurrentBalance')
+        BEGIN
+          -- Sync CurrentBalance from Balance if CurrentBalance is 0
+          UPDATE MemberMaster SET CurrentBalance = Balance 
+          WHERE (CurrentBalance IS NULL OR CurrentBalance = 0) AND Balance IS NOT NULL AND Balance != 0;
+          
+          -- Sync Balance from CurrentBalance if Balance is 0
+          UPDATE MemberMaster SET Balance = CurrentBalance 
+          WHERE (Balance IS NULL OR Balance = 0) AND CurrentBalance IS NOT NULL AND CurrentBalance != 0;
+        END
       `);
 
       // Add MemberId to SettlementHeader if not exists
@@ -156,7 +217,7 @@ const initDB = async (maxRetries = 3, retryDelay = 3000) => {
         )
       `);
 
-      console.log("✅ Database initialized: SettlementItemDetail, cancellation tracking, discount type, and DailyAttendance table ready.");
+      console.log("✅ Database initialized: SettlementItemDetail, MemberMaster/MemberTimeLog, cancellation tracking, discount type, and DailyAttendance table ready.");
       return; // Success - exit
     } catch (err) {
       console.error(`❌ DB Initialization Error (Attempt ${attempt}/${maxRetries}):`, err.message);
@@ -441,7 +502,19 @@ app.post("/api/tables/unlock-persistent", async (req, res) => {
 app.get("/api/members", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const result = await pool.request().query("SELECT * FROM MemberMaster ORDER BY Name");
+    const result = await pool.request().query(`
+      SELECT
+        MemberId,
+        Name,
+        Phone,
+        Email,
+        CreditLimit,
+        CreatedAt,
+        COALESCE(CurrentBalance, Balance, 0) AS CurrentBalance,
+        COALESCE(Balance, CurrentBalance, 0) AS Balance
+      FROM MemberMaster
+      ORDER BY Name
+    `);
     res.json(result.recordset);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -451,18 +524,94 @@ app.get("/api/members", async (req, res) => {
 app.post("/api/members/add", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const { name, phone, email, creditLimit } = req.body;
-    await pool.request()
-      .input("Name", name)
-      .input("Phone", phone)
-      .input("Email", email)
-      .input("CreditLimit", creditLimit || 1000)
+    const { name, phone, email, creditLimit, initialBalance } = req.body;
+    const lim = parseFloat(creditLimit);
+    const credit = Number.isFinite(lim) ? lim : 1000;
+    const ib = parseFloat(initialBalance);
+    const bal = Number.isFinite(ib) ? ib : 0;
+    await pool
+      .request()
+      .input("Name", sql.NVarChar, name)
+      .input("Phone", sql.NVarChar, phone)
+      .input("Email", sql.NVarChar, email || null)
+      .input("CreditLimit", sql.Decimal(18, 2), credit)
+      .input("Bal", sql.Decimal(18, 2), bal)
       .query(`
-        INSERT INTO MemberMaster (Name, Phone, Email, CreditLimit)
-        VALUES (@Name, @Phone, @Email, @CreditLimit)
+        INSERT INTO MemberMaster (Name, Phone, Email, CreditLimit, CurrentBalance, Balance)
+        VALUES (@Name, @Phone, @Email, @CreditLimit, @Bal, @Bal)
       `);
     res.json({ success: true });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update Member
+app.put("/api/members/:memberId", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const { name, phone, email, creditLimit, currentBalance, balance } = req.body;
+    const { memberId } = req.params;
+    
+    console.log(`Updating member ID: ${memberId}...`);
+    
+    const result = await pool
+      .request()
+      .input("MemberId", sql.NVarChar, memberId)
+      .input("Name", sql.NVarChar, name)
+      .input("Phone", sql.NVarChar, phone)
+      .input("Email", sql.NVarChar, email || null)
+      .input("CreditLimit", sql.Decimal(18, 2), parseFloat(creditLimit) || 0)
+      .input("CurrentBalance", sql.Decimal(18, 2), parseFloat(currentBalance) || 0)
+      .input("Balance", sql.Decimal(18, 2), parseFloat(balance) || 0)
+      .query(`
+        UPDATE MemberMaster 
+        SET Name = @Name, 
+            Phone = @Phone, 
+            Email = @Email, 
+            CreditLimit = @CreditLimit, 
+            CurrentBalance = @CurrentBalance, 
+            Balance = @Balance
+        WHERE MemberId = @MemberId
+      `);
+    
+    console.log(`Update result:`, result.rowsAffected);
+    
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).json({ error: "Member ID not found in database." });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("PUT MEMBER ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete Member
+app.delete("/api/members/:memberId", async (req, res) => {
+  try {
+    const pool = await poolPromise;
+    const { memberId } = req.params;
+    
+    console.log(`Deleting member ID: ${memberId}...`);
+
+    const result = await pool
+      .request()
+      .input("MemberId", sql.NVarChar, memberId)
+      .query(`
+        DELETE FROM MemberMaster WHERE MemberId = @MemberId
+      `);
+    
+    console.log(`Delete result:`, result.rowsAffected);
+
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).json({ error: "Member ID not found for deletion." });
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("DELETE MEMBER ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -479,12 +479,12 @@ export default function Category() {
           <View style={[styles.navRightGroup, { gap: isTablet ? 8 : 6 }]}>
             <TouchableOpacity
               style={styles.headerActionBtn}
-              onPress={() => router.push("/TimeEntry")}
+              onPress={() => router.push("/members")}
               activeOpacity={0.75}
             >
-              <Ionicons name="time-outline" size={16} color="#94a3b8" />
+              <Ionicons name="people-outline" size={16} color="#3b82f6" />
               {isTablet && (
-                <Text style={styles.headerActionText}>Time</Text>
+                <Text style={[styles.headerActionText, { color: "#3b82f6" }]}>Members</Text>
               )}
             </TouchableOpacity>
 
@@ -493,7 +493,7 @@ export default function Category() {
               onPress={() => router.push("/locked-tables")}
               activeOpacity={0.75}
             >
-              <Ionicons name="lock-outline" size={16} color="#f59e0b" />
+              <Ionicons name="lock-closed-outline" size={16} color="#f59e0b" />
               {isTablet && (
                 <Text style={[styles.headerActionText, { color: "#f59e0b" }]}>Lock Tables</Text>
               )}
