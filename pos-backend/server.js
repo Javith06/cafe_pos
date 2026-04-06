@@ -589,33 +589,33 @@ app.post("/api/members/update", async (req, res) => {
   }
 });
 
-// Delete Member (ID in body)
+// Delete Member (Combined Cascading Delete)
 app.post("/api/members/delete", async (req, res) => {
   try {
     const pool = await poolPromise;
     const { memberId } = req.body;
     
-    if (!memberId) return res.status(400).json({ error: "Missing memberId in request body" });
+    if (!memberId) return res.status(400).json({ error: "Missing memberId" });
     
-    console.log(`[MEMBER DELETE] Request for ID: "${memberId}"`);
+    console.log(`[MEMBER DELETE] Single-step request for: "${memberId}"`);
 
     const result = await pool
       .request()
       .input("IdParam", sql.UniqueIdentifier, memberId)
       .query(`
-        DELETE FROM MemberMaster WHERE MemberId = @IdParam
+        BEGIN TRANSACTION;
+        DELETE FROM MemberTimeLog WHERE MemberId = @IdParam;
+        DELETE FROM MemberMaster WHERE MemberId = @IdParam;
+        COMMIT TRANSACTION;
       `);
     
-    console.log(`[MEMBER DELETE] Success. Rows affected:`, result.rowsAffected[0]);
+    const count = result.rowsAffected.reduce((a, b) => a + b, 0);
+    console.log(`[DATABASE DELETE] Success. Total Rows Affected: ${count}`);
 
-    if (result.rowsAffected[0] === 0) {
-      return res.status(404).json({ error: `Member not found for deletion.` });
-    }
-
-    res.json({ success: true });
+    res.json({ success: true, totalDeleted: count });
   } catch (err) {
-    console.error("[MEMBER DELETE] ERROR:", err);
-    res.status(500).json({ error: err.message });
+    console.error("[MEMBER DELETE] FINAL ERROR:", err);
+    res.status(500).json({ error: "Database connection lost. Please try again." });
   }
 });
 
