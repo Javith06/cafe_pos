@@ -227,9 +227,8 @@ export default function LockedTablesScreen() {
       return;
     }
 
-    // Validate GUID format
-    const guidPattern =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    // Validate GUID format (basic check)
+    const guidPattern = /^[0-9a-fA-F-]{36}$/;
     if (!guidPattern.test(tableId)) {
       console.error("❌ Invalid table ID format:", tableId);
       Alert.alert(

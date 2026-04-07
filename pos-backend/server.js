@@ -43,85 +43,21 @@ const initDB = async (maxRetries = 3, retryDelay = 3000) => {
       `);
 
       // Ensure MemberMaster table exists
-      // Ensure MemberMaster table exists with correct schema
       await pool.request().query(`
         IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='MemberMaster' AND xtype='U')
-        BEGIN
-          CREATE TABLE MemberMaster (
-            MemberId UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-            Name NVARCHAR(255),
-            Phone NVARCHAR(20) UNIQUE,
-            Email NVARCHAR(255),
-            CreditLimit DECIMAL(18,2) DEFAULT 1000,
-            CurrentBalance DECIMAL(18,2) DEFAULT 0,
-            Balance DECIMAL(18,2) DEFAULT 0,
-            CreatedAt DATETIME DEFAULT GETDATE()
-          );
-        END
+        CREATE TABLE MemberMaster (
+          MemberId UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
+          Name NVARCHAR(255) NOT NULL,
+          Phone NVARCHAR(50) NOT NULL,
+          Email NVARCHAR(255),
+          CreditLimit DECIMAL(18,2) DEFAULT 0,
+          CurrentBalance DECIMAL(18,2) DEFAULT 0,
+          Balance DECIMAL(18,2) DEFAULT 0,
+          CreatedAt DATETIME DEFAULT GETDATE()
+        )
       `);
 
-      // 1. Check if we need to migrate MemberId from INT to UNIQUEIDENTIFIER (if empty)
-      const mmCount = await pool
-        .request()
-        .query("SELECT COUNT(*) as cnt FROM MemberMaster");
-      const isMMEmpty = mmCount.recordset[0].cnt === 0;
-
-      const idType = await pool.request().query(`
-        SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_NAME = 'MemberMaster' AND COLUMN_NAME = 'MemberId'
-      `);
-
-      if (isMMEmpty && idType.recordset[0]?.DATA_TYPE === "int") {
-        console.log(
-          "🔄 Migrating MemberMaster schema (Type: int -> UNIQUEIDENTIFIER)...",
-        );
-        await pool.request().query(`
-          DROP TABLE MemberMaster;
-          CREATE TABLE MemberMaster (
-            MemberId UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),
-            Name NVARCHAR(255),
-            Phone NVARCHAR(20) UNIQUE,
-            Email NVARCHAR(255),
-            CreditLimit DECIMAL(18,2) DEFAULT 1000,
-            CurrentBalance DECIMAL(18,2) DEFAULT 0,
-            Balance DECIMAL(18,2) DEFAULT 0,
-            CreatedAt DATETIME DEFAULT GETDATE()
-          );
-        `);
-      }
-
-      // 2. Ensure individual columns exist if they weren't created above
-      const columnsToAdd = [
-        { name: "Email", type: "NVARCHAR(255) NULL" },
-        { name: "CreatedAt", type: "DATETIME DEFAULT GETDATE()" },
-        { name: "CreditLimit", type: "DECIMAL(18,2) DEFAULT 1000" },
-        { name: "CurrentBalance", type: "DECIMAL(18,2) DEFAULT 0" },
-        { name: "Balance", type: "DECIMAL(18,2) DEFAULT 0" },
-      ];
-
-      for (const col of columnsToAdd) {
-        await pool.request().query(`
-          IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'MemberMaster' AND COLUMN_NAME = '${col.name}')
-            ALTER TABLE MemberMaster ADD ${col.name} ${col.type};
-        `);
-      }
-
-      // 3. Synchronize Balance and CurrentBalance (Only works because columns now exist in separate batches)
-      await pool.request().query(`
-        IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'MemberMaster' AND COLUMN_NAME = 'Balance')
-        AND EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'MemberMaster' AND COLUMN_NAME = 'CurrentBalance')
-        BEGIN
-          -- Sync CurrentBalance from Balance if CurrentBalance is 0
-          UPDATE MemberMaster SET CurrentBalance = Balance 
-          WHERE (CurrentBalance IS NULL OR CurrentBalance = 0) AND Balance IS NOT NULL AND Balance != 0;
-          
-          -- Sync Balance from CurrentBalance if Balance is 0
-          UPDATE MemberMaster SET Balance = CurrentBalance 
-          WHERE (Balance IS NULL OR Balance = 0) AND CurrentBalance IS NOT NULL AND CurrentBalance != 0;
-        END
-      `);
-
-      // Add MemberId to SettlementHeader if not exists
+      // Ensure SettlementHeader has MemberId column for tracking
       await pool.request().query(`
         IF NOT EXISTS(SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='SettlementHeader' AND COLUMN_NAME='MemberId')
            ALTER TABLE SettlementHeader ADD MemberId UNIQUEIDENTIFIER;
@@ -222,7 +158,7 @@ const initDB = async (maxRetries = 3, retryDelay = 3000) => {
       `);
 
       console.log(
-        "✅ Database initialized: SettlementItemDetail, MemberMaster/MemberTimeLog, cancellation tracking, discount type, and DailyAttendance table ready.",
+        "✅ Database initialized: SettlementItemDetail, MemberMaster, cancellation tracking, and DailyAttendance ready.",
       );
       return; // Success - exit
     } catch (err) {
@@ -445,85 +381,90 @@ app.post("/api/tables/lock-persistent", async (req, res) => {
     const pool = await poolPromise;
     const { tableId, lockedByName } = req.body;
 
-    console.log("🔒 Locking table:", { tableId, lockedByName });
+    console.log("🔒 [LOCK] Request for TableID:", tableId, "By:", lockedByName);
 
     if (!tableId) {
       return res.status(400).json({ error: "tableId is required" });
     }
 
-    // TableId is a GUID string - validate it looks like a UUID
-    const guidPattern =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!guidPattern.test(tableId)) {
-      return res
-        .status(400)
-        .json({ error: "Invalid tableId format (must be GUID)" });
-    }
-
     const request = pool.request();
-    request.input("tableId", sql.VarChar, tableId);
+    request.input("tableId", sql.UniqueIdentifier, tableId);
 
     const result = await request.query(`
       UPDATE TableMaster 
       SET Status = 1 
-      WHERE CAST(TableId AS VARCHAR(36)) = @tableId
+      WHERE TableId = @tableId
     `);
 
-    console.log("✅ Lock result:", { rowsAffected: result.rowsAffected[0] });
+    console.log("✅ [LOCK] Result:", result.rowsAffected[0] === 1 ? "SUCCESS" : "NOT FOUND/ALREADY LOCKED");
 
-    if ((result.rowsAffected[0] || 0) === 0) {
-      return res.status(404).json({ error: "Table not found" });
+    if (result.rowsAffected[0] === 0) {
+      // It might be already status 1, but we still return success if the table exists
+      const check = await pool.request().input("id", sql.UniqueIdentifier, tableId)
+        .query("SELECT TableId FROM TableMaster WHERE TableId = @id");
+
+      if (check.recordset.length === 0) {
+        return res.status(404).json({ error: "Table not found" });
+      }
     }
 
-    res.json({ success: true, rowsAffected: result.rowsAffected[0] || 0 });
+    res.json({ success: true, rowsAffected: result.rowsAffected[0] });
   } catch (err) {
     console.error("❌ Lock error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Unlock Table (Persistent) - FIXED VERSION
+// Unlock Table (Persistent)
 app.post("/api/tables/unlock-persistent", async (req, res) => {
   try {
     const pool = await poolPromise;
     const { tableId } = req.body;
 
-    console.log("🔓 Unlocking table:", tableId);
+    console.log("🔓 [UNLOCK] Request for TableID:", tableId);
 
     if (!tableId) {
       return res.status(400).json({ error: "tableId is required" });
     }
 
-    // TableId is a GUID string - validate it looks like a UUID
-    const guidPattern =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!guidPattern.test(tableId)) {
-      console.error("❌ Invalid tableId format:", tableId);
-      return res
-        .status(400)
-        .json({ error: "Invalid tableId format (must be GUID)" });
-    }
-
     const request = pool.request();
-    // FIX: Use sql.VarChar instead of sql.UniqueIdentifier (same as lock endpoint)
-    request.input("tableId", sql.VarChar, tableId);
+    request.input("tableId", sql.UniqueIdentifier, tableId);
 
+    // 1. Update Persistent Status in Database
     const result = await request.query(`
       UPDATE TableMaster 
       SET Status = 0 
-      WHERE CAST(TableId AS VARCHAR(36)) = @tableId
+      WHERE TableId = @tableId
     `);
 
-    console.log("✅ Unlock result:", { rowsAffected: result.rowsAffected[0] });
+    console.log("✅ [UNLOCK] DB Result:", result.rowsAffected[0] === 1 ? "SUCCESS" : "NO ROWS UPDATED");
 
-    if ((result.rowsAffected[0] || 0) === 0) {
-      console.error("❌ Table not found in database for tableId:", tableId);
-      return res.status(404).json({ error: "Table not found" });
+    // 2. Clear In-Memory Lock if it exists (by finding table number first)
+    const tableInfo = await pool.request().input("id", sql.UniqueIdentifier, tableId)
+      .query("SELECT TableNumber FROM TableMaster WHERE TableId = @id");
+
+    if (tableInfo.recordset.length > 0) {
+      const tNum = String(tableInfo.recordset[0].TableNumber);
+      // We look for any lock in memory that matches this table number across sections
+      for (const [key, lock] of tableLocks.entries()) {
+        // Some locks might be keyed by tableNo or orderId
+        if (key === tNum) {
+          tableLocks.delete(key);
+          console.log(`🧹 Cleared in-memory lock for table ${tNum}`);
+        }
+      }
     }
 
-    res.json({ success: true, rowsAffected: result.rowsAffected[0] || 0 });
+    if (result.rowsAffected[0] === 0) {
+      // Check if table even exists
+      if (tableInfo.recordset.length === 0) {
+        return res.status(404).json({ error: "Table not found" });
+      }
+      // If table exists but status was already 0, we still return success: true
+    }
+
+    res.json({ success: true, rowsAffected: result.rowsAffected[0] });
   } catch (err) {
-    console.error("❌ Unlock error:", err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -532,19 +473,7 @@ app.post("/api/tables/unlock-persistent", async (req, res) => {
 app.get("/api/members", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const result = await pool.request().query(`
-      SELECT
-        MemberId,
-        Name,
-        Phone,
-        Email,
-        CreditLimit,
-        CreatedAt,
-        COALESCE(CurrentBalance, Balance, 0) AS CurrentBalance,
-        COALESCE(Balance, CurrentBalance, 0) AS Balance
-      FROM MemberMaster
-      ORDER BY Name
-    `);
+    const result = await pool.request().query("SELECT * FROM MemberMaster ORDER BY Name");
     res.json(result.recordset);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -554,20 +483,17 @@ app.get("/api/members", async (req, res) => {
 app.post("/api/members/add", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const { name, phone, email, creditLimit, initialBalance } = req.body;
-    const lim = parseFloat(creditLimit);
-    const credit = Number.isFinite(lim) ? lim : 1000;
-    const ib = parseFloat(initialBalance);
-    const bal = Number.isFinite(ib) ? ib : 0;
-    await pool
-      .request()
+    const { name, phone, email, creditLimit, currentBalance, balance } = req.body;
+    await pool.request()
       .input("Name", sql.NVarChar, name)
       .input("Phone", sql.NVarChar, phone)
-      .input("Email", sql.NVarChar, email || null)
-      .input("CreditLimit", sql.Decimal(18, 2), credit)
-      .input("Bal", sql.Decimal(18, 2), bal).query(`
+      .input("Email", sql.NVarChar, email)
+      .input("CreditLimit", sql.Decimal(18, 2), parseFloat(creditLimit) || 0)
+      .input("CurrentBalance", sql.Decimal(18, 2), parseFloat(currentBalance) || 0)
+      .input("Balance", sql.Decimal(18, 2), parseFloat(balance) || 0)
+      .query(`
         INSERT INTO MemberMaster (Name, Phone, Email, CreditLimit, CurrentBalance, Balance)
-        VALUES (@Name, @Phone, @Email, @CreditLimit, @Bal, @Bal)
+        VALUES (@Name, @Phone, @Email, @CreditLimit, @CurrentBalance, @Balance)
       `);
     res.json({ success: true });
   } catch (err) {
@@ -575,97 +501,75 @@ app.post("/api/members/add", async (req, res) => {
   }
 });
 
-// Update Member (ID in body)
 app.post("/api/members/update", async (req, res) => {
   try {
     const pool = await poolPromise;
-    const {
-      memberId,
-      name,
-      phone,
-      email,
-      creditLimit,
-      currentBalance,
-      balance,
-    } = req.body;
-
-    if (!memberId)
-      return res
-        .status(400)
-        .json({ error: "Missing memberId in request body" });
-
-    console.log(
-      `[MEMBER UPDATE] ID: "${memberId}" - Body:`,
-      JSON.stringify(req.body),
-    );
-    const result = await pool
-      .request()
-      .input("IdParam", sql.UniqueIdentifier, memberId)
+    const { memberId, name, phone, email, creditLimit, currentBalance, balance } = req.body;
+    await pool.request()
+      .input("Id", sql.UniqueIdentifier, memberId)
       .input("Name", sql.NVarChar, name)
       .input("Phone", sql.NVarChar, phone)
-      .input("Email", sql.NVarChar, email || null)
+      .input("Email", sql.NVarChar, email)
       .input("CreditLimit", sql.Decimal(18, 2), parseFloat(creditLimit) || 0)
-      .input(
-        "CurrentBalance",
-        sql.Decimal(18, 2),
-        parseFloat(currentBalance) || 0,
-      )
-      .input("Balance", sql.Decimal(18, 2), parseFloat(balance) || 0).query(`
-        UPDATE MemberMaster 
-        SET Name = @Name, 
-            Phone = @Phone, 
-            Email = @Email, 
-            CreditLimit = @CreditLimit, 
-            CurrentBalance = @CurrentBalance, 
-            Balance = @Balance
-        WHERE MemberId = @IdParam
+      .input("CurrentBalance", sql.Decimal(18, 2), parseFloat(currentBalance) || 0)
+      .input("Balance", sql.Decimal(18, 2), parseFloat(balance) || 0)
+      .query(`
+        UPDATE MemberMaster SET 
+          Name = @Name, Phone = @Phone, Email = @Email, 
+          CreditLimit = @CreditLimit, CurrentBalance = @CurrentBalance, Balance = @Balance
+        WHERE MemberId = @Id
       `);
-    console.log(
-      `[MEMBER UPDATE] Success. Rows affected:`,
-      result.rowsAffected[0],
-    );
-
-    if (result.rowsAffected[0] === 0) {
-      return res
-        .status(404)
-        .json({ error: `Member record not found for ID: ${memberId}` });
-    }
-
     res.json({ success: true });
   } catch (err) {
-    console.error("[MEMBER UPDATE] ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Delete Member (Combined Cascading Delete)
 app.post("/api/members/delete", async (req, res) => {
+  let transaction;
   try {
     const pool = await poolPromise;
     const { memberId } = req.body;
+    
+    console.log("🗑️ [DELETE] Request for MemberId:", memberId);
+    
+    if (!memberId) {
+      console.error("❌ [DELETE] Missing memberId in request body");
+      return res.status(400).json({ error: "Missing memberId" });
+    }
 
-    if (!memberId) return res.status(400).json({ error: "Missing memberId" });
+    transaction = new sql.Transaction(pool);
+    await transaction.begin();
 
-    console.log(`[MEMBER DELETE] Single-step request for: "${memberId}"`);
+    const request = new sql.Request(transaction);
+    request.input("Id", sql.UniqueIdentifier, memberId);
 
-    const result = await pool
-      .request()
-      .input("IdParam", sql.UniqueIdentifier, memberId).query(`
-        BEGIN TRANSACTION;
-        DELETE FROM MemberTimeLog WHERE MemberId = @IdParam;
-        DELETE FROM MemberMaster WHERE MemberId = @IdParam;
-        COMMIT TRANSACTION;
-      `);
+    // 1. Clean up potential logs
+    console.log("   - Cleaning up logs...");
+    await request.query("IF OBJECT_ID('MemberTimeLog', 'U') IS NOT NULL DELETE FROM MemberTimeLog WHERE MemberId = @Id");
+    
+    // 2. Detach from sales history (Set to NULL instead of deleting history)
+    console.log("   - Detaching from sales history...");
+    await request.query(`
+      IF COL_LENGTH('SettlementHeader', 'MemberId') IS NOT NULL 
+      BEGIN
+        UPDATE SettlementHeader SET MemberId = NULL WHERE MemberId = @Id;
+      END
+    `);
 
-    const count = result.rowsAffected.reduce((a, b) => a + b, 0);
-    console.log(`[DATABASE DELETE] Success. Total Rows Affected: ${count}`);
+    // 3. Delete the Member record
+    console.log("   - Deleting member record from MemberMaster...");
+    const result = await request.query("DELETE FROM MemberMaster WHERE MemberId = @Id");
 
-    res.json({ success: true, totalDeleted: count });
+    await transaction.commit();
+    console.log("✅ [DELETE] Member deleted successfully! Rows affected:", result.rowsAffected[0]);
+    res.json({ success: true, rowsAffected: result.rowsAffected[0] });
   } catch (err) {
-    console.error("[MEMBER DELETE] FINAL ERROR:", err);
-    res
-      .status(500)
-      .json({ error: "Database connection lost. Please try again." });
+    if (transaction) {
+      try { await transaction.rollback(); } catch (e) { console.error("   - Rollback failed:", e.message); }
+    }
+    console.error("❌ [DELETE] Error:", err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

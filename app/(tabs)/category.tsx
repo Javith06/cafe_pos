@@ -173,6 +173,38 @@ export default function Category() {
     }
   };
 
+  const confirmUnlock = (tableId: string, tableLabel: string) => {
+    Alert.alert(
+      "Unlock Table",
+      `Are you sure you want to unlock Table ${tableLabel}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Unlock Now", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              const res = await fetch(`${API_URL}/api/tables/unlock-persistent`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ tableId }),
+              });
+              const data = await res.json();
+              if (res.ok && data.success) {
+                fetchLockedTables();
+                Alert.alert("Success", `Table ${tableLabel} unlocked.`);
+              } else {
+                Alert.alert("Error", data.error || "Failed to unlock");
+              }
+            } catch (err) {
+              Alert.alert("Error", "Network error while unlocking");
+            }
+          }
+        }
+      ]
+    );
+  };
+
   useEffect(() => {
     if (urlSection && SECTIONS.includes(urlSection)) {
       setActiveTab(urlSection);
@@ -319,9 +351,10 @@ export default function Category() {
           },
         ]}
         onPress={() => {
-          // Prevent interaction with locked tables
+          // Allow interaction with locked tables
           if (tableData && tableData.status === "LOCKED") {
-            Alert.alert("Table Locked", "This table is reserved. Visit Lock Tables to unlock it.", [
+            Alert.alert("Table Locked", `Table ${item.label} is reserved. What would you like to do?`, [
+              { text: "Unlock Table", style: "destructive", onPress: () => confirmUnlock(item.id, item.label) },
               { text: "Go to Lock Tables", onPress: () => router.push("/locked-tables") },
               { text: "Cancel", style: "cancel" },
             ]);
