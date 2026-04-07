@@ -49,6 +49,11 @@ export default function LockedTablesScreen() {
   const [lockModalName, setLockModalName] = useState("");
   const [lockingTableId, setLockingTableId] = useState("");
   const [lockingTableNumber, setLockingTableNumber] = useState("");
+  // Unlock modal state
+  const [unlockModalVisible, setUnlockModalVisible] = useState(false);
+  const [unlockingTableId, setUnlockingTableId] = useState("");
+  const [unlockingTableNumber, setUnlockingTableNumber] = useState("");
+  const [unlockingLoading, setUnlockingLoading] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -199,11 +204,20 @@ export default function LockedTablesScreen() {
       if (res.ok) {
         setLockModalVisible(false);
         setLockingLoading(false);
-        Alert.alert(
-          "Success",
-          `Table ${lockingTableNumber} locked${lockModalName ? ` for ${lockModalName}` : ""}`,
-          [{ text: "OK", onPress: () => fetchData() }],
+
+        // Optimistic UI — instantly mark table as locked without waiting for refetch
+        setAllTables((prev) =>
+          prev.map((t) =>
+            t.tableId === lockingTableId ? { ...t, isLocked: true } : t,
+          ),
         );
+        setLockedTables((prev) => [
+          ...prev,
+          { tableId: lockingTableId, tableNumber: lockingTableNumber },
+        ]);
+
+        // Sync fresh data from server in background
+        fetchData();
       } else {
         setLockingLoading(false);
         Alert.alert("Error", data.error || "Failed to lock table");
@@ -218,98 +232,73 @@ export default function LockedTablesScreen() {
     }
   };
 
-  const unlockTable = async (tableId: string, tableNumber: string) => {
-    console.log(`🔓 UNLOCK REQUEST: Table ${tableNumber} (ID: ${tableId})`);
 
-    if (!tableId) {
-      console.error("❌ Table ID is missing!");
-      Alert.alert("Error", "Table ID is missing. Cannot unlock.");
+  // Opens unlock confirmation modal — no nested Alert, no async onPress issues
+  const unlockTable = (tableId: string, tableNumber: string) => {
+    console.log(`🔓 UNLOCK: Table ${tableNumber} (ID: ${tableId})`);
+    if (!tableId || tableId === "undefined") {
+      Alert.alert("Error", "Table ID is missing. Please refresh.");
       return;
     }
+    const cleanId = String(tableId).replace(/^\{|\}$/g, "").trim();
+    setUnlockingTableId(cleanId);
+    setUnlockingTableNumber(tableNumber);
+    setUnlockModalVisible(true);
+  };
 
-    // Validate GUID format (basic check)
-    const guidPattern = /^[0-9a-fA-F-]{36}$/;
-    if (!guidPattern.test(tableId)) {
-      console.error("❌ Invalid table ID format:", tableId);
-      Alert.alert(
-        "Error",
-        "Invalid table ID format. Please refresh and try again.",
-      );
-      return;
+  // Called directly from Modal button onPress — reliable, no nesting
+  const confirmUnlockTable = async () => {
+    try {
+      setUnlockingLoading(true);
+      console.log("🚀 Unlock request:", { tableId: unlockingTableId });
+
+      const res = await fetch(`${API_URL}/api/tables/unlock-persistent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tableId: unlockingTableId }),
+      });
+
+      const rawText = await res.text();
+      console.log("📥 Unlock response:", res.status, rawText);
+
+      let responseData: any = null;
+      try {
+        responseData = JSON.parse(rawText);
+      } catch (_) {}
+
+      setUnlockModalVisible(false);
+      setUnlockingLoading(false);
+
+      if (res.ok && responseData?.success) {
+        console.log(`✅ Table ${unlockingTableNumber} unlocked!`);
+        // Optimistic UI — instantly update cards without waiting for refetch
+        setAllTables((prev) =>
+          prev.map((t) =>
+            t.tableId === unlockingTableId ? { ...t, isLocked: false } : t,
+          ),
+        );
+        setLockedTables((prev) =>
+          prev.filter(
+            (t) =>
+              String(t.tableId).replace(/^\{|\}$/g, "").trim() !==
+              unlockingTableId,
+          ),
+        );
+        // Sync fresh data from server in background
+        fetchData();
+      } else {
+        const errMsg =
+          responseData?.error || rawText || `HTTP ${res.status}`;
+        console.error("❌ Unlock failed:", errMsg);
+        Alert.alert("Unlock Failed", `Could not unlock: ${errMsg}`);
+      }
+    } catch (err) {
+      setUnlockingLoading(false);
+      setUnlockModalVisible(false);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("❌ Unlock error:", msg);
+      Alert.alert("Error", `Failed to unlock: ${msg}`);
     }
-
-    Alert.alert(
-      "Unlock Table",
-      `Are you sure you want to unlock Table ${tableNumber}?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Unlock",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              console.log("🚀 Sending unlock request to server...");
-              console.log("📤 Payload:", { tableId });
-
-              const res = await fetch(
-                `${API_URL}/api/tables/unlock-persistent`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ tableId }),
-                },
-              );
-
-              console.log("📥 Unlock response status:", res.status);
-
-              let responseData: any = null;
-              let errorMessage = "";
-
-              try {
-                responseData = await res.json();
-                console.log("📥 Unlock response data:", responseData);
-                if (responseData.error) {
-                  errorMessage = responseData.error;
-                }
-              } catch (parseErr) {
-                console.error("Failed to parse response as JSON:", parseErr);
-                const responseText = await res.text();
-                console.log("📥 Unlock response text:", responseText);
-                errorMessage = responseText;
-              }
-
-              if (res.ok && responseData?.success) {
-                console.log(`✅ Table ${tableNumber} unlocked successfully!`);
-                console.log(`🔄 Refreshing table data...`);
-
-                // Refresh the data to show updated state
-                await fetchData();
-
-                Alert.alert(
-                  "Success",
-                  `Table ${tableNumber} has been unlocked`,
-                  [{ text: "OK" }],
-                );
-              } else {
-                const fullError = errorMessage || `HTTP ${res.status}`;
-                console.error("❌ Unlock failed:", {
-                  status: res.status,
-                  error: fullError,
-                });
-                Alert.alert(
-                  "Unlock Failed",
-                  `Failed to unlock table: ${fullError}`,
-                );
-              }
-            } catch (err) {
-              const errorMsg = err instanceof Error ? err.message : String(err);
-              console.error("❌ Unlock error:", errorMsg);
-              Alert.alert("Error", `Failed to unlock table: ${errorMsg}`);
-            }
-          },
-        },
-      ],
-    );
   };
 
   const sectionTables = React.useMemo(() => {
@@ -325,27 +314,7 @@ export default function LockedTablesScreen() {
 
   const renderTableItem = ({ item }: { item: TableType }) => (
     <View style={[styles.tableCard, item.isLocked && styles.lockedCard]}>
-      {/* Top bar: unlock button */}
-      {item.isLocked && (
-        <TouchableOpacity
-          style={styles.unlockBtn}
-          onPress={() => {
-            console.log(
-              `👉 [TOUCH] "X" Button Pressed for Table ${item.tableNumber}`,
-            );
-            console.log(`📋 Table Details:`, {
-              tableId: item.tableId,
-              tableNumber: item.tableNumber,
-              isLocked: item.isLocked,
-            });
-            unlockTable(item.tableId, item.tableNumber);
-          }}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="close-circle" size={22} color="#f87171" />
-        </TouchableOpacity>
-      )}
-      {/* Main card content */}
+      {/* Main card content — rendered FIRST so X button on top wins touches */}
       <TouchableOpacity
         style={styles.tableContent}
         onPress={() => {
@@ -381,6 +350,18 @@ export default function LockedTablesScreen() {
           {item.isLocked ? "LOCKED" : "AVAILABLE"}
         </Text>
       </TouchableOpacity>
+
+      {/* X button — rendered AFTER tableContent so it sits on top and gets touches */}
+      {item.isLocked && (
+        <TouchableOpacity
+          style={styles.unlockBtn}
+          onPress={() => unlockTable(item.tableId, item.tableNumber)}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+        >
+          <Ionicons name="close-circle" size={22} color="#f87171" />
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -563,6 +544,51 @@ export default function LockedTablesScreen() {
                 >
                   <Text style={styles.confirmBtnText}>
                     {lockingLoading ? "Locking..." : "Lock Table"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Unlock Confirmation Modal */}
+        <Modal
+          transparent
+          visible={unlockModalVisible}
+          animationType="slide"
+          onRequestClose={() => setUnlockModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={[styles.modalTitle, { color: "#f87171" }]}>
+                🔓 Unlock Table {unlockingTableNumber}
+              </Text>
+              <Text style={styles.modalSubtitle}>
+                Release this reservation? This cannot be undone.
+              </Text>
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.modalBtn, styles.cancelBtn]}
+                  onPress={() => setUnlockModalVisible(false)}
+                  disabled={unlockingLoading}
+                >
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.modalBtn,
+                    {
+                      backgroundColor: "rgba(248,113,113,0.2)",
+                      borderColor: "rgba(248,113,113,0.4)",
+                      borderWidth: 1,
+                    },
+                    unlockingLoading && styles.confirmBtnDisabled,
+                  ]}
+                  onPress={confirmUnlockTable}
+                  disabled={unlockingLoading}
+                >
+                  <Text style={[styles.confirmBtnText, { color: "#f87171" }]}>
+                    {unlockingLoading ? "Unlocking..." : "Unlock Table"}
                   </Text>
                 </TouchableOpacity>
               </View>

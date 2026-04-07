@@ -421,50 +421,52 @@ app.post("/api/tables/unlock-persistent", async (req, res) => {
     const pool = await poolPromise;
     const { tableId } = req.body;
 
-    console.log("🔓 [UNLOCK] Request for TableID:", tableId);
+    console.log("🔓 [UNLOCK] Request received. tableId:", tableId);
 
     if (!tableId) {
+      console.error("❌ [UNLOCK] Missing tableId in request body");
       return res.status(400).json({ error: "tableId is required" });
     }
 
-    const request = pool.request();
-    request.input("tableId", sql.UniqueIdentifier, tableId);
-
-    // 1. Update Persistent Status in Database
-    const result = await request.query(`
-      UPDATE TableMaster 
-      SET Status = 0 
-      WHERE TableId = @tableId
-    `);
-
-    console.log("✅ [UNLOCK] DB Result:", result.rowsAffected[0] === 1 ? "SUCCESS" : "NO ROWS UPDATED");
-
-    // 2. Clear In-Memory Lock if it exists (by finding table number first)
-    const tableInfo = await pool.request().input("id", sql.UniqueIdentifier, tableId)
-      .query("SELECT TableNumber FROM TableMaster WHERE TableId = @id");
-
-    if (tableInfo.recordset.length > 0) {
-      const tNum = String(tableInfo.recordset[0].TableNumber);
-      // We look for any lock in memory that matches this table number across sections
-      for (const [key, lock] of tableLocks.entries()) {
-        // Some locks might be keyed by tableNo or orderId
-        if (key === tNum) {
-          tableLocks.delete(key);
-          console.log(`🧹 Cleared in-memory lock for table ${tNum}`);
-        }
-      }
+    // Check pool is available
+    if (!pool) {
+      console.error("❌ [UNLOCK] Database pool is null");
+      return res.status(503).json({ error: "Database connection unavailable" });
     }
+
+    // Use CAST in SQL instead of sql.UniqueIdentifier to avoid strict GUID parsing issues
+    const result = await pool.request()
+      .input("tableId", sql.VarChar(50), tableId)
+      .query(`
+        UPDATE TableMaster 
+        SET Status = 0 
+        WHERE CAST(TableId AS VARCHAR(50)) = @tableId
+      `);
+
+    console.log("📊 [UNLOCK] rows affected:", result.rowsAffected[0]);
 
     if (result.rowsAffected[0] === 0) {
       // Check if table even exists
-      if (tableInfo.recordset.length === 0) {
-        return res.status(404).json({ error: "Table not found" });
+      const check = await pool.request()
+        .input("tableId2", sql.VarChar(50), tableId)
+        .query("SELECT CAST(TableId AS VARCHAR(50)) AS tid, Status FROM TableMaster WHERE CAST(TableId AS VARCHAR(50)) = @tableId2");
+
+      console.log("🔍 [UNLOCK] Existence check result:", JSON.stringify(check.recordset));
+
+      if (check.recordset.length === 0) {
+        console.error("❌ [UNLOCK] Table not found with ID:", tableId);
+        return res.status(404).json({ error: "Table not found with ID: " + tableId });
       }
-      // If table exists but status was already 0, we still return success: true
+      // Table exists but already Status=0, return success anyway
+      console.log("ℹ️ [UNLOCK] Table already unlocked, returning success");
+    } else {
+      console.log("✅ [UNLOCK] SUCCESS — Status set to 0 in DB");
     }
 
     res.json({ success: true, rowsAffected: result.rowsAffected[0] });
   } catch (err) {
+    console.error("❌ [UNLOCK] Error:", err.message);
+    console.error("❌ [UNLOCK] Stack:", err.stack);
     res.status(500).json({ error: err.message });
   }
 });
