@@ -541,6 +541,17 @@ export default function Category() {
             </TouchableOpacity>
 
             <TouchableOpacity
+              style={styles.headerActionBtn}
+              onPress={() => router.push("/TimeEntry")}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="time-outline" size={16} color="#10b981" />
+              {isTablet && (
+                <Text style={[styles.headerActionText, { color: "#10b981" }]}>Time Entry</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={[styles.headerActionBtn, styles.salesBtn]}
               onPress={() => router.push("/sales-report")}
               activeOpacity={0.75}
